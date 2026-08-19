@@ -1,61 +1,34 @@
 plugins {
-    id 'net.fabricmc.fabric-loom' version "${loom_version}"
-    id 'maven-publish'
+    id 'net.fabricmc.fabric-loom' version "${loom_version}" apply false
 }
 
-loom {
-    splitEnvironmentSourceSets()
-    mods {
-        'client_ui_demo' {
-            sourceSet sourceSets.main
-            sourceSet sourceSets.client
+subprojects {
+    apply plugin: 'net.fabricmc.fabric-loom'
+    apply plugin: 'maven-publish'
+
+    group = rootProject.group
+    version = rootProject.version
+
+    dependencies {
+        minecraft "com.mojang:minecraft:${rootProject.minecraft_version}"
+        implementation "net.fabricmc:fabric-loader:${rootProject.loader_version}"
+        implementation "net.fabricmc.fabric-api:fabric-api:${rootProject.fabric_api_version}"
+    }
+
+    processResources {
+        inputs.property 'version', project.version
+        filesMatching('fabric.mod.json') {
+            expand 'version': project.version
         }
     }
-}
 
-sourceSets {
-    client {
-        java {
-            // Preserved for a future optional browser add-on, not part of the native base artifact.
-            exclude 'dev/clientui/api/ClientUiComponents.java'
-            exclude 'dev/clientui/api/ClientUiDocument.java'
-            exclude 'dev/clientui/api/ClientUiPage.java'
-            exclude 'dev/clientui/api/ClientUiScreen.java'
-            exclude 'dev/clientui/api/ClientUiTheme.java'
-            exclude 'dev/clientui/demo/DemoShowcase.java'
-        }
+    tasks.withType(JavaCompile).configureEach {
+        it.options.release = 25
     }
-}
 
-dependencies {
-    minecraft "com.mojang:minecraft:${project.minecraft_version}"
-    implementation "net.fabricmc:fabric-loader:${project.loader_version}"
-    implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
-}
-
-processResources {
-    inputs.property 'version', project.version
-    filesMatching('fabric.mod.json') {
-        expand 'version': project.version
-    }
-}
-
-tasks.withType(JavaCompile).configureEach {
-    it.options.release = 25
-}
-
-java {
-    withSourcesJar()
-    sourceCompatibility = JavaVersion.VERSION_25
-    targetCompatibility = JavaVersion.VERSION_25
-}
-
-tasks.named('runClient') {
-    if (project.hasProperty('demoPage')) {
-        systemProperty 'clientui.demo.page', project.property('demoPage')
-    }
-    // Dev-only: loads a throwaway world and captures every page in-world. See DemoAutoTest.
-    if (project.hasProperty('autotest')) {
-        systemProperty 'clientui.demo.autotest', 'true'
+    java {
+        withSourcesJar()
+        sourceCompatibility = JavaVersion.VERSION_25
+        targetCompatibility = JavaVersion.VERSION_25
     }
 }

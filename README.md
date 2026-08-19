@@ -1,10 +1,23 @@
-# Client UI Lab
+# Pane
 
-An experimental, 100% client-side Fabric UI library for building desktop-quality Minecraft screens entirely from code.
+A 100% client-side Fabric UI library for building desktop-quality Minecraft screens entirely from code.
 
 The default renderer is native and lightweight. It does not start Chromium, load a webpage, parse CSS, or require MCEF. Pages paint into a retained high-quality surface only when their state changes; Minecraft reuses that GPU texture while the UI is idle.
 
-The project currently targets Minecraft 26.2 and Fabric Loader 0.19.3. The name is temporary.
+The project targets Minecraft 26.2 and Fabric Loader 0.19.3.
+
+## Layout
+
+Two Gradle modules. `pane` is the library other mods depend on; it has no entrypoint and
+contains nothing but the public API. `pane-demo` is a separate showcase mod that consumes
+`pane` exactly the way any other mod would, which is what keeps demo code from leaking into
+the library artifact.
+
+```
+pane/       dev.pane.ui      the public API
+            dev.pane.mcef    preserved browser prototype, excluded from the build
+pane-demo/  dev.pane.demo    showcase screens and the dev test harness
+```
 
 ## Showcase
 
@@ -127,7 +140,7 @@ The MCEF screen, document, and demo files are excluded from the native source se
 
 ## Before 1.0
 
-The renderer and public API work, but this is not compatibility-stable yet. A public release still needs semantic versioning, a standalone Maven artifact, automated visual regression tests, keyboard-focus and accessibility primitives, and profiling on Windows and Linux GPUs.
+The renderer and public API work, but this is not compatibility-stable yet. A public release still needs semantic versioning, a published Maven artifact, automated visual regression tests, keyboard-focus and accessibility primitives, and profiling on Windows and Linux GPUs.
 
 Known gaps:
 

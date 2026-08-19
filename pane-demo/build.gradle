@@ -1,0 +1,23 @@
+// Showcase mod. Consumes Pane exactly the way any other mod would.
+
+loom {
+    mods {
+        'pane_demo' {
+            sourceSet sourceSets.main
+        }
+    }
+}
+
+dependencies {
+    implementation project(":pane")
+}
+
+tasks.named('runClient') {
+    if (project.hasProperty('demoPage')) {
+        systemProperty 'pane.demo.page', project.property('demoPage')
+    }
+    // Dev-only: loads a throwaway world and exercises every page. See DemoAutoTest.
+    if (project.hasProperty('autotest')) {
+        systemProperty 'pane.demo.autotest', 'true'
+    }
+}

@@ -9,4 +9,7 @@ pluginManagement {
     }
 }
 
-rootProject.name = 'client-ui-demo'
+rootProject.name = 'pane'
+
+include ':pane'
+include ':pane-demo'

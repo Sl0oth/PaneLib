@@ -1,0 +1,25 @@
+// The Pane library. Contains the public API and nothing else - no entrypoint, no demo code.
+// Client-only, so a single main source set keeps the artifact consumable by other projects.
+
+loom {
+    mods {
+        'pane' {
+            sourceSet sourceSets.main
+        }
+    }
+}
+
+sourceSets {
+    main {
+        java {
+            // Preserved for a future optional browser add-on, not part of the native artifact.
+            exclude 'dev/pane/mcef/**'
+        }
+    }
+}
+
+// The library has no entrypoint. Runs happen from :pane-demo, so plain `gradlew runClient`
+// launches exactly one client instead of two.
+tasks.matching { it.name == 'runClient' || it.name == 'runServer' }.configureEach {
+    enabled = false
+}

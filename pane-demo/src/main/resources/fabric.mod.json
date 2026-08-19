@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "pane_demo",
+  "version": "${version}",
+  "name": "Pane Showcase",
+  "description": "Demonstration screens built with the Pane UI library.",
+  "authors": ["Sl0oth"],
+  "license": "MIT",
+  "environment": "client",
+  "entrypoints": {
+    "client": ["dev.pane.demo.PaneDemoClient"]
+  },
+  "depends": {
+    "fabricloader": ">=0.19.3",
+    "minecraft": "~26.2",
+    "java": ">=25",
+    "fabric-api": "*",
+    "pane": "*"
+  }
+}
