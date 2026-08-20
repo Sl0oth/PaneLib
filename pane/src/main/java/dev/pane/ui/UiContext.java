@@ -93,6 +93,16 @@ public final class UiContext {
         return value instanceof Boolean bool ? bool : fallback;
     }
 
+    public String stringValue(String key, String fallback) {
+        Object value = state.get(key);
+        return value instanceof String text ? text : fallback;
+    }
+
+    /** True when {@code key} currently holds {@code value}. For radio groups and tabs. */
+    public boolean selected(String key, String value) {
+        return value != null && value.equals(stringValue(key, null));
+    }
+
     public double numberValue(String key, double fallback) {
         Object value = state.get(key);
         return value instanceof Number number ? number.doubleValue() : fallback;
@@ -106,6 +116,16 @@ public final class UiContext {
 
     public void hit(String id, String action, float x, float y, float width, float height) {
         hitRegions.add(new UiHitRegion(id, action, x, y, width, height));
+    }
+
+    /**
+     * Registers a region that sets {@code key} to {@code value} when clicked. This is the
+     * primitive behind radio groups, tabs, segmented controls and filter chips: read the
+     * result back with {@link #selected} or {@link #stringValue}.
+     */
+    public void selectable(String id, String key, String value,
+                           float x, float y, float width, float height) {
+        hit(id, "select:" + key + "=" + value, x, y, width, height);
     }
 
     void hitTracked(String id, String action, float x, float y, float width, float height,

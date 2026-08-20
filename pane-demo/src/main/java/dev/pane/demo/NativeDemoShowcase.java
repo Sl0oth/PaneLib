@@ -177,13 +177,28 @@ public final class NativeDemoShowcase {
         float bodyY = y + 64, listW = Math.min(215, w * .35F), bodyH = h - 64;
         ui.card(x, bodyY, listW, bodyH);
         g.roundRect(0xFF1B1E23, x + 11, bodyY + 11, listW - 22, 28, 8);
-        filter(g, "All", x + 14, bodyY + 14, (listW - 28) / 3, true, t);
-        filter(g, "Overworld", x + 14 + (listW - 28) / 3, bodyY + 14, (listW - 28) / 3, false, t);
-        filter(g, "Nether", x + 14 + (listW - 28) * 2 / 3, bodyY + 14, (listW - 28) / 3, false, t);
-        waypointRow(ui, "Main base", "124, 68, -340 · 182m", x + 11, bodyY + 49, listW - 22, ui.accent(), true);
-        waypointRow(ui, "Nether portal", "18, 64, -42 · 36m", x + 11, bodyY + 98, listW - 22, 0xFFA779EF, false);
-        waypointRow(ui, "Deep mine", "201, -42, -511 · 390m", x + 11, bodyY + 147, listW - 22, 0xFFD6A858, false);
-        waypointRow(ui, "Trading hall", "-88, 71, 640 · 712m", x + 11, bodyY + 196, listW - 22, 0xFF72CC99, false);
+        filter(ui, "all", "All", x + 14, bodyY + 14, (listW - 28) / 3);
+        filter(ui, "overworld", "Overworld", x + 14 + (listW - 28) / 3, bodyY + 14, (listW - 28) / 3);
+        filter(ui, "nether", "Nether", x + 14 + (listW - 28) * 2 / 3, bodyY + 14, (listW - 28) / 3);
+        String zone = ui.stringValue("waypoint-filter", "all");
+        String[][] marks = {
+            {"base", "overworld", "Main base", "124, 68, -340 · 182m"},
+            {"portal", "nether", "Nether portal", "18, 64, -42 · 36m"},
+            {"mine", "overworld", "Deep mine", "201, -42, -511 · 390m"},
+            {"trading", "overworld", "Trading hall", "-88, 71, 640 · 712m"},
+        };
+        int[] colors = {ui.accent(), 0xFFA779EF, 0xFFD6A858, 0xFF72CC99};
+        float rowY = bodyY + 49;
+        int shown = 0;
+        for (int i = 0; i < marks.length; i++) {
+            if (!zone.equals("all") && !zone.equals(marks[i][1])) continue;
+            waypointRow(ui, marks[i][0], marks[i][2], marks[i][3], x + 11, rowY, listW - 22, colors[i]);
+            rowY += 49;
+            shown++;
+        }
+        if (shown == 0) {
+            g.centeredText("No waypoints in this dimension", x + listW / 2, bodyY + 90, 7, t.mutedText(), Font.PLAIN);
+        }
 
         float mapX = x + listW + 9, mapW = w - listW - 9;
         ui.card(mapX, bodyY, mapW, bodyH, t.mediumRadius(), 0xFF14191F);
@@ -271,18 +286,24 @@ public final class NativeDemoShowcase {
         ui.card(x, bodyY, indexW, 164);
         String[] indexes = {"Appearance", "Motion", "Accessibility", "Input", "Advanced"};
         for (int i = 0; i < indexes.length; i++) {
-            if (i == 0) g.roundRect(0xFF232733, x + 8, bodyY + 8 + i * 30, indexW - 16, 27, 8);
-            g.textMedium(indexes[i], x + 17, bodyY + 17 + i * 30, 8, i == 0 ? t.text() : t.mutedText());
+            String key = indexes[i].toLowerCase(java.util.Locale.ROOT);
+            boolean active = key.equals(ui.stringValue("settings-section", "appearance"));
+            float rowY = bodyY + 8 + i * 30;
+            if (active || ui.hovered("section-" + key)) {
+                g.roundRect(active ? 0xFF232733 : 0xFF1D2028, x + 8, rowY, indexW - 16, 27, 8);
+            }
+            g.textMedium(indexes[i], x + 17, rowY + 9, 8, active ? t.text() : t.mutedText());
+            ui.selectable("section-" + key, "settings-section", key, x + 8, rowY, indexW - 16, 27);
         }
         float contentX = x + indexW + 9, contentW = w - indexW - 9;
         ui.card(contentX, bodyY, contentW, 103);
         g.textMedium("Shape language", contentX + 13, bodyY + 12, 10, t.text());
         muted(g, "Choose globally or override per component.", contentX + 13, bodyY + 27, t);
         float shapeY = bodyY + 44, shapeGap = 7, shapeW = (contentW - 26 - shapeGap * 3) / 4;
-        shapeChoice(ui, "shape-square", "Square", contentX + 13, shapeY, shapeW, 48, 1, false);
-        shapeChoice(ui, "shape-rounded", "Rounded", contentX + 13 + (shapeW + shapeGap), shapeY, shapeW, 48, 7, true);
-        shapeChoice(ui, "shape-soft", "Soft", contentX + 13 + (shapeW + shapeGap) * 2, shapeY, shapeW, 48, 13, false);
-        shapeChoice(ui, "shape-pill", "Pill", contentX + 13 + (shapeW + shapeGap) * 3, shapeY, shapeW, 48, 24, false);
+        shapeChoice(ui, "square", "Square", contentX + 13, shapeY, shapeW, 48, 1);
+        shapeChoice(ui, "rounded", "Rounded", contentX + 13 + (shapeW + shapeGap), shapeY, shapeW, 48, 7);
+        shapeChoice(ui, "soft", "Soft", contentX + 13 + (shapeW + shapeGap) * 2, shapeY, shapeW, 48, 13);
+        shapeChoice(ui, "pill", "Pill", contentX + 13 + (shapeW + shapeGap) * 3, shapeY, shapeW, 48, 24);
         float motionY = bodyY + 112;
         ui.card(contentX, motionY, contentW, 166);
         g.textMedium("Motion", contentX + 13, motionY + 12, 10, t.text());
@@ -302,9 +323,10 @@ public final class NativeDemoShowcase {
         ui.card(contentX, previewY, contentW, bodyH - (previewY - bodyY));
         g.textMedium("Component preview", contentX + 13, previewY + 12, 10, t.text());
         muted(g, "Styles can coexist within the same document.", contentX + 13, previewY + 27, t);
-        ui.button("preview-primary", "Primary", "preview-primary", contentX + 13, previewY + 43, 63, 29, PRIMARY, ROUNDED);
-        ui.button("preview-secondary", "Secondary", "preview-secondary", contentX + 83, previewY + 43, 72, 29, SECONDARY, SOFT);
-        ui.button("preview-ghost", "Ghost pill", "preview-ghost", contentX + 162, previewY + 43, 70, 29, GHOST, PILL);
+        UiContext.Shape shape = chosenShape(ui);
+        ui.button("preview-primary", "Primary", "preview-primary", contentX + 13, previewY + 43, 63, 29, PRIMARY, shape);
+        ui.button("preview-secondary", "Secondary", "preview-secondary", contentX + 83, previewY + 43, 72, 29, SECONDARY, shape);
+        ui.button("preview-ghost", "Ghost", "preview-ghost", contentX + 162, previewY + 43, 70, 29, GHOST, shape);
         badge(g, "ONLINE", contentX + 240, previewY + 48, 0xFF75D69C, 0xFF152A20);
         ui.slider("preview-slider", "preview-slider", contentX + contentW - 116, previewY + 50, 96, .48);
     }
@@ -319,8 +341,9 @@ public final class NativeDemoShowcase {
         g.textMedium(name, x + 55, mid - 18, 8.5F, t.text());
         g.text(subtitle, x + 55, mid - 3, 6.5F, t.mutedText());
         g.text(meta, x + 55, mid + 11, 6, 0xFF68716B);
-        ui.button(id + "-button", installed ? "Installed" : "Install", installed ? "installed" : "install-" + id,
-            x + w - 55, y + 16, 46, 25, installed ? SECONDARY : PRIMARY, ROUNDED);
+        boolean on = ui.booleanValue("installed-" + id, installed);
+        ui.button(id + "-button", on ? "Installed" : "Install", "toggle:installed-" + id,
+            x + w - 55, mid - 12, 46, 25, on ? SECONDARY : PRIMARY, ROUNDED);
         ui.hit(id, "open-" + id, x, y, w - 60, h);
     }
 
@@ -353,17 +376,25 @@ public final class NativeDemoShowcase {
         ui.nativeSlot(id, x + 4, y + 4, w - 8, Math.max(16, h - (label.isEmpty() ? 8 : 18)));
     }
 
-    private static void filter(UiCanvas g, String label, float x, float y, float w, boolean active, UiTheme t) {
+    private static void filter(UiContext ui, String value, String label, float x, float y, float w) {
+        UiCanvas g = ui.canvas(); UiTheme t = ui.theme();
+        boolean active = value.equals(ui.stringValue("waypoint-filter", "all"));
         if (active) g.roundRect(0xFF292E35, x, y, w, 22, 6);
+        else if (ui.hovered("filter-" + value)) g.roundRect(0xFF212530, x, y, w, 22, 6);
         g.centeredText(label, x + w / 2, y + 11, 6.5F, active ? t.text() : t.mutedText(), Font.PLAIN);
+        ui.selectable("filter-" + value, "waypoint-filter", value, x, y, w, 22);
     }
 
-    private static void waypointRow(UiContext ui, String title, String subtitle, float x, float y, float w, int color, boolean selected) {
+    private static void waypointRow(UiContext ui, String id, String title, String subtitle, float x, float y, float w, int color) {
         UiCanvas g = ui.canvas(); UiTheme t = ui.theme();
+        boolean selected = id.equals(ui.stringValue("waypoint", "base"));
         if (selected) {
             g.roundRect(0xFF172230, x, y, w, 46, 9);
             g.strokeRoundRect(0xFF2F455D, .8F, x, y, w, 46, 9);
+        } else if (ui.hovered("wp-" + id)) {
+            g.roundRect(0xFF161A20, x, y, w, 46, 9);
         }
+        ui.selectable("wp-" + id, "waypoint", id, x, y, w, 46);
         g.circle(color, x + 12, y + 21, 3.5F);
         g.circle(0xFF172230, x + 12, y + 21, 1.3F);
         g.textMedium(title, x + 28, y + 11, 8, t.text());
@@ -399,13 +430,25 @@ public final class NativeDemoShowcase {
         g.text(value, x + w - 15, y, 6.5F, t.mutedText());
     }
 
-    private static void shapeChoice(UiContext ui, String id, String label, float x, float y, float w, float h, float radius, boolean active) {
+    private static void shapeChoice(UiContext ui, String value, String label, float x, float y, float w, float h, float radius) {
         UiCanvas g = ui.canvas(); UiTheme t = ui.theme();
-        g.roundRect(0xFF1A1D23, x, y, w, h, radius);
+        boolean active = value.equals(ui.stringValue("shape", "rounded"));
+        boolean hover = ui.hovered("shape-" + value);
+        g.roundRect(hover && !active ? 0xFF20242B : 0xFF1A1D23, x, y, w, h, radius);
         g.strokeRoundRect(active ? ui.accent() : t.border(), active ? 1.1F : .8F, x, y, w, h, radius);
         g.strokeRoundRect(active ? ui.accent() : t.mutedText(), 1.7F, x + w / 2 - 15, y + 10, 30, 13, radius);
         g.centeredText(label, x + w / 2, y + 35, 6.5F, active ? ui.accent() : t.mutedText(), Font.PLAIN);
-        ui.hit(id, id, x, y, w, h);
+        ui.selectable("shape-" + value, "shape", value, x, y, w, h);
+    }
+
+    /** The shape family the Settings page is currently demonstrating. */
+    private static UiContext.Shape chosenShape(UiContext ui) {
+        return switch (ui.stringValue("shape", "rounded")) {
+            case "square" -> UiContext.Shape.SQUARE;
+            case "soft" -> SOFT;
+            case "pill" -> PILL;
+            default -> ROUNDED;
+        };
     }
 
     private static void settingDivider(UiCanvas g, float x, float y, float w, UiTheme t) {

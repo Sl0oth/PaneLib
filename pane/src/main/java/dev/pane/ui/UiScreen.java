@@ -111,6 +111,10 @@ public class UiScreen extends Screen {
         return state.get(key) instanceof Number number ? number.doubleValue() : fallback;
     }
 
+    public String stringValue(String key, String fallback) {
+        return state.get(key) instanceof String text ? text : fallback;
+    }
+
     public void setValue(String key, Object value) {
         state.put(key, value);
         invalidate();
@@ -274,6 +278,18 @@ public class UiScreen extends Screen {
         hoverDirty = true;
         if (action.startsWith("page:")) {
             showPage(action.substring("page:".length()));
+            return;
+        }
+        if (action.startsWith("select:")) {
+            String body = action.substring("select:".length());
+            int split = body.indexOf('=');
+            if (split > 0) {
+                String key = body.substring(0, split);
+                String value = body.substring(split + 1);
+                state.put(key, value);
+                dirty = true;
+                eventListener.onEvent("value", key, value);
+            }
             return;
         }
         if (action.startsWith("toggle:")) {

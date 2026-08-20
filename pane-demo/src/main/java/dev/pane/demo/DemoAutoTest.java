@@ -43,8 +43,14 @@ final class DemoAutoTest {
     private int beforeHoverPaints;
     private float hoverBaseline;
 
+    /** Automated verification run. */
     static boolean enabled() {
-        return Boolean.getBoolean("pane.demo.autotest");
+        return Boolean.getBoolean("pane.demo.autotest") || playMode();
+    }
+
+    /** Hands-on mode: load a world, open the showcase, then get out of the way. */
+    static boolean playMode() {
+        return Boolean.getBoolean("pane.demo.play");
     }
 
     void tick(Minecraft client) {
@@ -71,9 +77,14 @@ final class DemoAutoTest {
             case SETTLING -> {
                 if (ticks > 60) {
                     client.gui.setScreen(NativeDemoShowcase.createScreen());
+                    ticks = 0;
+                    if (playMode()) {
+                        log("ready - press Esc to play, H to reopen, 1-5 for pages");
+                        stage = Stage.DONE;
+                        return;
+                    }
                     stage = Stage.CAPTURING;
                     captureIndex = 0;
-                    ticks = 0;
                 }
             }
             case CAPTURING -> {
@@ -102,6 +113,7 @@ final class DemoAutoTest {
                 if (client.gui.screen() instanceof UiScreen screen) {
                     checkSlider(screen);
                     checkToggle(screen);
+                    checkSelection(screen);
                     screen.showPage("discover");
                 }
                 hoverStep = 0;
@@ -269,6 +281,32 @@ final class DemoAutoTest {
         double tolerance = Math.max(0.01, 1.0 / Math.max(1, rail.width()));
         boolean ok = Math.abs(actual - fraction) <= tolerance;
         if (!ok) log("  expected " + fraction + " got " + actual);
+        return ok;
+    }
+
+    /** Radio groups, filter chips and install buttons must actually change state. */
+    private void checkSelection(UiScreen screen) {
+        boolean ok = clickAndExpect(screen, "shape-pill", () -> "pill".equals(screen.stringValue("shape", "rounded")));
+        ok &= clickAndExpect(screen, "section-input", () -> "input".equals(screen.stringValue("settings-section", "appearance")));
+        screen.showPage("waypoints");
+        screen.invalidate();
+        log("selection controls: " + (ok ? "PASS" : "FAIL"));
+    }
+
+    private boolean clickAndExpect(UiScreen screen, String id, java.util.function.BooleanSupplier check) {
+        Optional<UiRect> box = screen.regionBounds(id);
+        if (box.isEmpty()) {
+            log("  " + id + " was not painted");
+            return false;
+        }
+        UiRect r = box.get();
+        float s = screen.layoutScale();
+        double x = (r.x() + r.width() / 2) / s;
+        double y = (r.y() + r.height() / 2) / s;
+        press(screen, x, y);
+        release(screen, x, y);
+        boolean ok = check.getAsBoolean();
+        if (!ok) log("  " + id + " click did not change state");
         return ok;
     }
 

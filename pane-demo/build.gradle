@@ -20,4 +20,8 @@ tasks.named('runClient') {
     if (project.hasProperty('autotest')) {
         systemProperty 'pane.demo.autotest', 'true'
     }
+    // Hands-on: loads a scratch world and opens the showcase, then leaves you to it.
+    if (project.hasProperty('play')) {
+        systemProperty 'pane.demo.play', 'true'
+    }
 }
