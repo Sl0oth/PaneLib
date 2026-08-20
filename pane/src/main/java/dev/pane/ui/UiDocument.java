@@ -9,6 +9,7 @@ public final class UiDocument {
     private final String brand;
     private final UiTheme theme;
     private final UiShell shell;
+    private final UiScaling scaling;
     private final List<UiPage> pages;
     private final String initialPageId;
     private final boolean pageShortcuts;
@@ -18,6 +19,7 @@ public final class UiDocument {
         brand = builder.brand;
         theme = builder.theme == null ? UiTheme.dark() : builder.theme;
         shell = builder.shell == null ? UiShell.NONE : builder.shell;
+        scaling = builder.scaling == null ? UiScaling.standard() : builder.scaling;
         pages = List.copyOf(builder.pages);
         pageShortcuts = builder.pageShortcuts;
         if (pages.isEmpty()) throw new IllegalStateException("A UI document needs at least one page");
@@ -30,6 +32,9 @@ public final class UiDocument {
     public String brand() { return brand; }
     public UiTheme theme() { return theme; }
     public UiShell shell() { return shell; }
+
+    /** How the layout responds to window size. */
+    public UiScaling scaling() { return scaling; }
     public List<UiPage> pages() { return pages; }
     public String initialPageId() { return initialPageId; }
 
@@ -49,6 +54,7 @@ public final class UiDocument {
         private String brand = "Client UI";
         private UiTheme theme = UiTheme.dark();
         private UiShell shell = UiShell.NONE;
+        private UiScaling scaling = UiScaling.standard();
         private final List<UiPage> pages = new ArrayList<>();
         private String initialPageId;
         private boolean pageShortcuts;
@@ -60,6 +66,9 @@ public final class UiDocument {
 
         /** Chrome painted around the active page. Defaults to {@link UiShell#NONE}. */
         public Builder shell(UiShell shell) { this.shell = shell; return this; }
+
+        /** How the layout responds to window size. Defaults to {@link UiScaling#standard()}. */
+        public Builder scaling(UiScaling scaling) { this.scaling = scaling; return this; }
 
         public Builder page(UiPage page) { pages.add(page); return this; }
         public Builder initialPage(String pageId) { initialPageId = pageId; return this; }

@@ -68,8 +68,14 @@ public class UiScreen extends Screen {
     private UiHitRegion draggingSlider;
     private boolean dirty = true;
     private boolean hoverDirty = true;
-    private long animationStart;
-    private long animationEnd;
+    // Two independent clocks. Page transitions drive the entrance motion painters read from
+    // motion(); hover and press drive interactionMotion(). Sharing one clock made every hover
+    // restart the entrance animation, so the whole page appeared to jump on mouse-over.
+    private long transitionStart;
+    private long transitionEnd;
+    private long interactionStart;
+    private long interactionEnd;
+    private boolean opened;
     private long lastPaint;
     private int paintCount;
     private int mouseX;
@@ -149,7 +155,7 @@ public class UiScreen extends Screen {
         nativeBounds.clear();
         hitRegions = List.of();
         hoverDirty = true;
-        startAnimation(210);
+        startTransition(210);
         eventListener.onEvent("page", pageId, "");
     }
 
@@ -160,7 +166,11 @@ public class UiScreen extends Screen {
     protected void init() {
         dirty = true;
         hoverDirty = true;
-        startAnimation(180);
+        // Minecraft also calls init() on resize; only the first one is an entrance.
+        if (!opened) {
+            opened = true;
+            startTransition(180);
+        }
     }
 
     @Override
@@ -181,11 +191,19 @@ public class UiScreen extends Screen {
         this.mouseX = mouseX;
         this.mouseY = mouseY;
         long now = System.nanoTime();
-        if (animationEnd > 0) {
-            if (now < animationEnd) {
+        if (transitionEnd > 0) {
+            if (now < transitionEnd) {
                 if (now - lastPaint >= FRAME_NANOS) dirty = true;
             } else {
-                animationEnd = 0;
+                transitionEnd = 0;
+                dirty = true;
+            }
+        }
+        if (interactionEnd > 0) {
+            if (now < interactionEnd) {
+                if (now - lastPaint >= FRAME_NANOS) dirty = true;
+            } else {
+                interactionEnd = 0;
                 dirty = true;
             }
         }
@@ -216,7 +234,7 @@ public class UiScreen extends Screen {
             draggingSlider = region;
             updateSlider(region, event.x() * layoutScale);
         }
-        startAnimation(100);
+        startInteraction(100);
         return true;
     }
 
@@ -228,10 +246,8 @@ public class UiScreen extends Screen {
         String action = region != null && region.id().equals(pressedId) ? region.action() : null;
         pressedId = null;
         draggingSlider = null;
-        long animationBefore = animationEnd;
         if (action != null) runAction(action);
-        // Do not cut short a longer transition the action just started, such as a page change.
-        if (wasInteracting && animationEnd == animationBefore) startAnimation(150);
+        if (wasInteracting) startInteraction(150);
         return wasInteracting;
     }
 
@@ -285,7 +301,7 @@ public class UiScreen extends Screen {
         String next = region == null ? null : region.id();
         if (Objects.equals(next, hoveredId)) return;
         hoveredId = next;
-        if (animate) startAnimation(120); else dirty = true;
+        if (animate) startInteraction(120); else dirty = true;
     }
 
     private UiHitRegion regionAt(double x, double y) {
@@ -296,21 +312,37 @@ public class UiScreen extends Screen {
         return null;
     }
 
-    private void startAnimation(int milliseconds) {
-        long now = System.nanoTime();
-        float scale = document.theme().motionScale();
+    private void startTransition(int milliseconds) {
+        long duration = scaledDuration(milliseconds);
         dirty = true;
-        if (scale <= 0 || milliseconds <= 0) {
-            animationEnd = 0;
+        if (duration <= 0) {
+            transitionEnd = 0;
             return;
         }
-        animationStart = now;
-        animationEnd = now + (long) (milliseconds * scale * 1_000_000L);
+        transitionStart = System.nanoTime();
+        transitionEnd = transitionStart + duration;
     }
 
-    private float motion(long now) {
-        if (animationEnd == 0 || animationEnd <= animationStart) return 1;
-        float linear = Math.max(0, Math.min(1, (float) (now - animationStart) / (animationEnd - animationStart)));
+    private void startInteraction(int milliseconds) {
+        long duration = scaledDuration(milliseconds);
+        dirty = true;
+        if (duration <= 0) {
+            interactionEnd = 0;
+            return;
+        }
+        interactionStart = System.nanoTime();
+        interactionEnd = interactionStart + duration;
+    }
+
+    private long scaledDuration(int milliseconds) {
+        float scale = document.theme().motionScale();
+        if (scale <= 0 || milliseconds <= 0) return 0;
+        return (long) (milliseconds * scale * 1_000_000L);
+    }
+
+    private static float ease(long now, long start, long end) {
+        if (end == 0 || end <= start) return 1;
+        float linear = Math.max(0, Math.min(1, (float) (now - start) / (end - start)));
         return 1 - (float) Math.pow(1 - linear, 3);
     }
 
@@ -338,7 +370,8 @@ public class UiScreen extends Screen {
             Map<String, NativeBounds> nextNativeBounds = new LinkedHashMap<>();
             UiContext shellContext = new UiContext(canvas, document.theme(), layoutWidth, layoutHeight,
                 page.accent(), new UiRect(0, 0, layoutWidth, layoutHeight), hoveredId, pressedId,
-                motion(now), animationEnd != 0, paintCount, state, nextHits, nextNativeBounds,
+                ease(now, transitionStart, transitionEnd), ease(now, interactionStart, interactionEnd),
+                transitionEnd != 0 || interactionEnd != 0, paintCount, state, nextHits, nextNativeBounds,
                 guiScale() / (double) scale);
 
             UiRect content = document.shell().paint(shellContext, document, page);
@@ -402,8 +435,17 @@ public class UiScreen extends Screen {
      * theme's density, so a screen is the same physical size regardless of Minecraft's GUI scale.
      */
     private float computeLayoutScale() {
-        double density = Math.max(.1, document.theme().density());
-        return (float) clamp(guiScale() / (dpiScale() * density), .5, 4);
+        return (float) clamp(guiScale() / (dpiScale() * uiScale()), .25, 8);
+    }
+
+    /**
+     * How physically large the interface is: the document's adaptive response to window size,
+     * multiplied by the theme's density as a straight user preference.
+     */
+    private double uiScale() {
+        Window window = Minecraft.getInstance().getWindow();
+        double scale = document.scaling().scaleFor(window.getScreenWidth(), window.getScreenHeight());
+        return Math.max(.1, scale * Math.max(.1F, document.theme().density()));
     }
 
     /**
@@ -411,7 +453,8 @@ public class UiScreen extends Screen {
      * lands on real pixels, then clamps so a fullscreen surface stays within the memory budget.
      */
     private float computeQualityScale(int layoutWidth, int layoutHeight) {
-        double target = dpiScale() * Math.max(.1, document.theme().density());
+        // Target the physical framebuffer so text lands on real pixels.
+        double target = dpiScale() * uiScale();
         double memoryCap = Math.min(MAX_SURFACE_WIDTH / Math.max(1, layoutWidth),
             MAX_SURFACE_HEIGHT / Math.max(1, layoutHeight));
         return (float) clamp(Math.min(target, memoryCap), 1, 2);

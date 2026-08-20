@@ -18,6 +18,7 @@ public final class UiContext {
     private final String hoveredId;
     private final String pressedId;
     private final float motion;
+    private final float interactionMotion;
     private final boolean animating;
     private final int paintCount;
     private final Map<String, Object> state;
@@ -26,8 +27,8 @@ public final class UiContext {
     private final double nativeScale;
 
     UiContext(UiCanvas canvas, UiTheme theme, int width, int height, int accent, UiRect content,
-              String hoveredId, String pressedId, float motion, boolean animating, int paintCount,
-              Map<String, Object> state, List<UiHitRegion> hitRegions,
+              String hoveredId, String pressedId, float motion, float interactionMotion,
+              boolean animating, int paintCount, Map<String, Object> state, List<UiHitRegion> hitRegions,
               Map<String, NativeBounds> nativeBounds, double nativeScale) {
         this.canvas = canvas;
         this.theme = theme;
@@ -38,6 +39,7 @@ public final class UiContext {
         this.hoveredId = hoveredId;
         this.pressedId = pressedId;
         this.motion = motion;
+        this.interactionMotion = interactionMotion;
         this.animating = animating;
         this.paintCount = paintCount;
         this.state = state;
@@ -49,7 +51,7 @@ public final class UiContext {
     /** Same drawing surface and state, re-aimed at a different content rectangle. */
     UiContext withContent(UiRect newContent) {
         return new UiContext(canvas, theme, width, height, accent, newContent, hoveredId, pressedId,
-            motion, animating, paintCount, state, hitRegions, nativeBounds, nativeScale);
+            motion, interactionMotion, animating, paintCount, state, hitRegions, nativeBounds, nativeScale);
     }
 
     public UiCanvas canvas() { return canvas; }
@@ -63,8 +65,18 @@ public final class UiContext {
     public float contentWidth() { return content.width(); }
     public float contentHeight() { return content.height(); }
 
-    /** Eased 0..1 progress of the current transition, or 1 when nothing is animating. */
+    /**
+     * Eased 0..1 progress of the current <em>page</em> transition, or 1 when none is running.
+     * Use this for entrance motion. It deliberately does not restart on hover, so pointing at
+     * a control cannot replay a page-level animation.
+     */
     public float motion() { return motion; }
+
+    /**
+     * Eased 0..1 progress of the current hover or press transition. Use this for control-level
+     * feedback such as hover tints.
+     */
+    public float interactionMotion() { return interactionMotion; }
 
     /** True while a finite animation is still scheduling repaints. */
     public boolean animating() { return animating; }
@@ -140,7 +152,7 @@ public final class UiContext {
             case DANGER -> 0xFF7B3439;
             default -> theme.border();
         };
-        if (hover) fill = UiCanvas.mix(fill, 0xFFFFFFFF, style == ButtonStyle.GHOST ? .05F : .08F * motion);
+        if (hover) fill = UiCanvas.mix(fill, 0xFFFFFFFF, style == ButtonStyle.GHOST ? .05F : .08F * interactionMotion);
         if (down) fill = UiCanvas.mix(fill, 0xFF000000, .12F);
         canvas.roundRect(fill, x, y, width, height, radius);
         canvas.strokeRoundRect(border, .8F, x, y, width, height, radius);

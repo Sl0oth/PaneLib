@@ -28,7 +28,7 @@ final class DemoAutoTest {
     private static final String LEVEL_ID = "pane_autotest";
     private static final String[] CAPTURE_PAGES = {"loadout", "discover", "waypoints", "performance", "settings"};
 
-    private enum Stage { WAIT_FOR_TITLE, LOADING_WORLD, SETTLING, CAPTURING, INTERACTION, ALT_SHELL, RESIZE, IDLE_CHECK, DONE }
+    private enum Stage { WAIT_FOR_TITLE, LOADING_WORLD, SETTLING, CAPTURING, INTERACTION, HOVER_JUMP, ALT_SHELL, RESIZE, IDLE_CHECK, DONE }
 
     private Stage stage = Stage.WAIT_FOR_TITLE;
     private int ticks;
@@ -38,7 +38,10 @@ final class DemoAutoTest {
     private double idleMouseY;
     private int resizeStep;
 
-    private static final int[][] RESIZE_SIZES = {{900, 560}, {430, 300}, {1280, 720}, {1024, 640}};
+    private static final int[][] RESIZE_SIZES = {{900, 560}, {430, 300}, {1024, 640}, {1600, 1000}};
+    private int hoverStep;
+    private int beforeHoverPaints;
+    private float hoverBaseline;
 
     static boolean enabled() {
         return Boolean.getBoolean("pane.demo.autotest");
@@ -99,7 +102,59 @@ final class DemoAutoTest {
                 if (client.gui.screen() instanceof UiScreen screen) {
                     checkSlider(screen);
                     checkToggle(screen);
+                    screen.showPage("discover");
                 }
+                hoverStep = 0;
+                stage = Stage.HOVER_JUMP;
+                return;
+            }
+            // Hovering a control must not move page content. This is the regression guard for
+            // the shared animation clock, where every hover replayed the page entrance and the
+            // whole layout visibly jumped.
+            case HOVER_JUMP -> {
+                if (!(client.gui.screen() instanceof UiScreen screen)) {
+                    stage = Stage.DONE;
+                    return;
+                }
+                if (hoverStep == 0) {
+                    if (ticks < 30) return;
+                    Optional<UiRect> anchor = screen.regionBounds("install-sodium");
+                    if (anchor.isEmpty()) {
+                        log("FAILED: install-sodium was not painted");
+                        stage = Stage.ALT_SHELL;
+                        return;
+                    }
+                    hoverBaseline = anchor.get().y();
+                    screen.mouseMoved(0, 0);
+                    hoverStep = 1;
+                    ticks = 0;
+                    return;
+                }
+                if (hoverStep == 1) {
+                    if (ticks < 12) return;
+                    Optional<UiRect> nav = screen.regionBounds("nav-loadout");
+                    if (nav.isEmpty()) {
+                        log("FAILED: nav-loadout was not painted");
+                        stage = Stage.ALT_SHELL;
+                        return;
+                    }
+                    UiRect box = nav.get();
+                    float s = screen.layoutScale();
+                    beforeHoverPaints = screen.paintCount();
+                    screen.mouseMoved((box.x() + box.width() / 2) / s, (box.y() + box.height() / 2) / s);
+                    hoverStep = 2;
+                    ticks = 0;
+                    return;
+                }
+                if (ticks < 1) return;
+                float after = screen.regionBounds("install-sodium").map(UiRect::y).orElse(Float.NaN);
+                boolean repainted = screen.paintCount() > beforeHoverPaints;
+                float drift = Math.abs(after - hoverBaseline);
+                log("hover page drift: " + drift + " layout units"
+                    + (!repainted ? " (INCONCLUSIVE: hover did not repaint)"
+                       : drift < 0.01F ? " (PASS)" : " (FAIL)"));
+                stage = Stage.ALT_SHELL;
+                ticks = 0;
                 // A second, unrelated consumer proves nothing showcase-specific is baked into
                 // the renderer: different shell, different theme, different layout.
                 client.gui.setScreen(AltShellShowcase.createScreen());
@@ -123,6 +178,14 @@ final class DemoAutoTest {
                     int[] size = RESIZE_SIZES[resizeStep++];
                     client.getWindow().setWindowed(size[0], size[1]);
                     return;
+                }
+                if (resizeStep == RESIZE_SIZES.length && client.gui.screen() instanceof UiScreen s) {
+                    log("scale curve: points=" + client.getWindow().getScreenWidth()
+                        + "x" + client.getWindow().getScreenHeight()
+                        + " guiScale=" + client.getWindow().getGuiScale()
+                        + " layoutScale=" + s.layoutScale()
+                        + " layout=" + Math.round(client.getWindow().getGuiScaledWidth() * s.layoutScale())
+                        + "x" + Math.round(client.getWindow().getGuiScaledHeight() * s.layoutScale()));
                 }
                 if (client.gui.screen() instanceof UiScreen screen) {
                     log("survived " + RESIZE_SIZES.length + " resizes, paints=" + screen.paintCount()

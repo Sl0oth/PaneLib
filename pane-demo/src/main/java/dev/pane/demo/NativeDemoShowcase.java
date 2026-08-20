@@ -68,7 +68,12 @@ public final class NativeDemoShowcase {
 
         float bodyY = y + 64;
         float bodyH = h - 64;
-        ui.card(x, bodyY, mainWidth, 88, t.mediumRadius(), 0xFF171A18);
+        // Give the hero card and the two grid rows a share of any extra height instead of
+        // stranding it at the bottom of the page.
+        float featuredH = Math.max(88, Math.min(122, bodyH * .20F));
+        float gridTop = bodyY + featuredH + 27;
+        float cardH = Math.max(58, Math.min(104, (bodyY + bodyH - gridTop - 7) / 2));
+        ui.card(x, bodyY, mainWidth, featuredH, t.mediumRadius(), 0xFF171A18);
         projectIcon(g, "S", x + 13, bodyY + 20, 42, 0xFF1D3323, 0xFFC0E6CA, t);
         badge(g, "FEATURED", x + 66, bodyY + 12, ui.accent(), 0xFF153520);
         g.textMedium("Sodium", x + 66, bodyY + 31, 14, t.text());
@@ -132,21 +137,25 @@ public final class NativeDemoShowcase {
         ui.card(equipmentX, bodyY, equipmentW, topH);
         g.textMedium("Equipment", equipmentX + 14, bodyY + 13, 10, t.text());
         g.text("Native item renderer", equipmentX + equipmentW - 91, bodyY + 14, 6.5F, t.mutedText());
-        float slotGap = 7, slotW = (equipmentW - 28 - slotGap * 2) / 3, slotH = 62;
-        nativeItemSlot(ui, "item-helmet", "Helmet", equipmentX + 14, bodyY + 36, slotW, slotH, false);
-        nativeItemSlot(ui, "item-chest", "Chest", equipmentX + 14 + slotW + slotGap, bodyY + 36, slotW, slotH, false);
-        nativeItemSlot(ui, "item-legs", "Legs", equipmentX + 14 + (slotW + slotGap) * 2, bodyY + 36, slotW, slotH, false);
-        nativeItemSlot(ui, "item-boots", "Boots", equipmentX + 14, bodyY + 36 + slotH + 7, slotW, slotH, false);
-        nativeItemSlot(ui, "item-sword", "Main hand", equipmentX + 14 + slotW + slotGap, bodyY + 36 + slotH + 7, slotW, slotH, true);
-        nativeItemSlot(ui, "item-totem", "Off hand", equipmentX + 14 + (slotW + slotGap) * 2, bodyY + 36 + slotH + 7, slotW, slotH, false);
-        g.roundRect(0xFF1B1E24, equipmentX + 14, bodyY + 36 + (slotH + 7) * 2, equipmentW - 28, 38, 9);
-        g.polygon(ui.accent(), equipmentX + 24, bodyY + 36 + (slotH + 7) * 2 + 19,
-            equipmentX + 31, bodyY + 36 + (slotH + 7) * 2 + 12,
-            equipmentX + 38, bodyY + 36 + (slotH + 7) * 2 + 19,
-            equipmentX + 31, bodyY + 36 + (slotH + 7) * 2 + 26);
-        g.textMedium("Native bridge", equipmentX + 45, bodyY + 36 + (slotH + 7) * 2 + 10, 8, ui.accent());
-        muted(g, "Items keep glint, durability and model overrides.", equipmentX + 45,
-            bodyY + 36 + (slotH + 7) * 2 + 22, t);
+        float slotGap = 7, slotW = (equipmentW - 28 - slotGap * 2) / 3;
+        float slotsTop = bodyY + 36;
+        float bridgeH = 38;
+        float bridgeY = bodyY + topH - 14 - bridgeH;
+        // Let the two slot rows take the room the card actually has, then pin the summary strip
+        // to the bottom edge so a tall window does not leave the card looking half finished.
+        float slotH = Math.max(55, Math.min(104, (bridgeY - 12 - slotsTop - slotGap) / 2));
+        float row2 = slotsTop + slotH + slotGap;
+        nativeItemSlot(ui, "item-helmet", "Helmet", equipmentX + 14, slotsTop, slotW, slotH, false);
+        nativeItemSlot(ui, "item-chest", "Chest", equipmentX + 14 + slotW + slotGap, slotsTop, slotW, slotH, false);
+        nativeItemSlot(ui, "item-legs", "Legs", equipmentX + 14 + (slotW + slotGap) * 2, slotsTop, slotW, slotH, false);
+        nativeItemSlot(ui, "item-boots", "Boots", equipmentX + 14, row2, slotW, slotH, false);
+        nativeItemSlot(ui, "item-sword", "Main hand", equipmentX + 14 + slotW + slotGap, row2, slotW, slotH, true);
+        nativeItemSlot(ui, "item-totem", "Off hand", equipmentX + 14 + (slotW + slotGap) * 2, row2, slotW, slotH, false);
+        g.roundRect(0xFF1B1E24, equipmentX + 14, bridgeY, equipmentW - 28, bridgeH, 9);
+        g.polygon(ui.accent(), equipmentX + 24, bridgeY + 19, equipmentX + 31, bridgeY + 12,
+            equipmentX + 38, bridgeY + 19, equipmentX + 31, bridgeY + 26);
+        g.textMedium("Native bridge", equipmentX + 45, bridgeY + 10, 8, ui.accent());
+        muted(g, "Items keep glint, durability and model overrides.", equipmentX + 45, bridgeY + 22, t);
 
         float hotY = bodyY + topH + 9;
         ui.card(x, hotY, w, h - (hotY - y));
@@ -303,12 +312,13 @@ public final class NativeDemoShowcase {
     private static void projectCard(UiContext ui, String id, String icon, String name, String subtitle, String meta,
                                     float x, float y, float w, float h, int iconBg, int iconFg, boolean installed) {
         UiCanvas g = ui.canvas(); UiTheme t = ui.theme();
-        int fill = ui.hovered(id) ? UiCanvas.mix(t.surface(), t.raisedSurface(), .45F * ui.motion()) : t.surface();
+        int fill = ui.hovered(id) ? UiCanvas.mix(t.surface(), t.raisedSurface(), .45F * ui.interactionMotion()) : t.surface();
         ui.card(x, y, w, h, t.mediumRadius(), fill);
-        projectIcon(g, icon, x + 9, y + 10, 37, iconBg, iconFg, t);
-        g.textMedium(name, x + 55, y + 11, 8.5F, t.text());
-        g.text(subtitle, x + 55, y + 26, 6.5F, t.mutedText());
-        g.text(meta, x + 55, y + 40, 6, 0xFF68716B);
+        float mid = y + h / 2;
+        projectIcon(g, icon, x + 9, mid - 18, 37, iconBg, iconFg, t);
+        g.textMedium(name, x + 55, mid - 18, 8.5F, t.text());
+        g.text(subtitle, x + 55, mid - 3, 6.5F, t.mutedText());
+        g.text(meta, x + 55, mid + 11, 6, 0xFF68716B);
         ui.button(id + "-button", installed ? "Installed" : "Install", installed ? "installed" : "install-" + id,
             x + w - 55, y + 16, 46, 25, installed ? SECONDARY : PRIMARY, ROUNDED);
         ui.hit(id, "open-" + id, x, y, w - 60, h);
