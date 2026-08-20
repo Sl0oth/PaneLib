@@ -28,7 +28,7 @@ final class DemoAutoTest {
     private static final String LEVEL_ID = "pane_autotest";
     private static final String[] CAPTURE_PAGES = {"loadout", "discover", "waypoints", "performance", "settings"};
 
-    private enum Stage { WAIT_FOR_TITLE, LOADING_WORLD, SETTLING, CAPTURING, INTERACTION, HOVER_JUMP, ALT_SHELL, RESIZE, IDLE_CHECK, DONE }
+    private enum Stage { WAIT_FOR_TITLE, LOADING_WORLD, SETTLING, CAPTURING, INTERACTION, HOVER_JUMP, GALLERY, ALT_SHELL, RESIZE, IDLE_CHECK, DONE }
 
     private Stage stage = Stage.WAIT_FOR_TITLE;
     private int ticks;
@@ -39,6 +39,9 @@ final class DemoAutoTest {
     private int resizeStep;
 
     private static final int[][] RESIZE_SIZES = {{900, 560}, {430, 300}, {1024, 640}, {1600, 1000}};
+    private int galleryIndex;
+    private static final String[] GALLERY_PAGES =
+        {"terminal", "editorial", "aurora", "blueprint", "brutalist"};
     private int hoverStep;
     private int beforeHoverPaints;
     private float hoverBaseline;
@@ -165,12 +168,30 @@ final class DemoAutoTest {
                 log("hover page drift: " + drift + " layout units"
                     + (!repainted ? " (INCONCLUSIVE: hover did not repaint)"
                        : drift < 0.01F ? " (PASS)" : " (FAIL)"));
-                stage = Stage.ALT_SHELL;
+                client.gui.setScreen(StyleGallery.createScreen());
+                galleryIndex = 0;
+                stage = Stage.GALLERY;
                 ticks = 0;
-                // A second, unrelated consumer proves nothing showcase-specific is baked into
-                // the renderer: different shell, different theme, different layout.
-                client.gui.setScreen(AltShellShowcase.createScreen());
-                stage = Stage.ALT_SHELL;
+                stage = Stage.GALLERY;
+            }
+            case GALLERY -> {
+                if (ticks < 22) return;
+                ticks = 0;
+                if (!(client.gui.screen() instanceof UiScreen screen)) {
+                    stage = Stage.ALT_SHELL;
+                    return;
+                }
+                if (galleryIndex > 0) {
+                    capture(client, "pane-style-" + GALLERY_PAGES[galleryIndex - 1]);
+                    log("captured style " + GALLERY_PAGES[galleryIndex - 1]);
+                }
+                if (galleryIndex >= GALLERY_PAGES.length) {
+                    client.gui.setScreen(AltShellShowcase.createScreen());
+                    stage = Stage.ALT_SHELL;
+                    return;
+                }
+                screen.showPage(GALLERY_PAGES[galleryIndex]);
+                galleryIndex++;
             }
             case ALT_SHELL -> {
                 if (ticks < 30) return;

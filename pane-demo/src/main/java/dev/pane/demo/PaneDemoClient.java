@@ -12,10 +12,12 @@ import org.lwjgl.glfw.GLFW;
 
 /** Opens the lightweight native UI showcase with H. */
 public final class PaneDemoClient implements ClientModInitializer {
+    private static final KeyMapping.Category CATEGORY =
+        KeyMapping.Category.register(Identifier.fromNamespaceAndPath("pane", "demo"));
     private static final KeyMapping OPEN_DEMO = KeyMappingHelper.registerKeyMapping(new KeyMapping(
-        "key.pane_demo.open", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_H,
-        KeyMapping.Category.register(Identifier.fromNamespaceAndPath("pane", "demo"))
-    ));
+        "key.pane_demo.open", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_H, CATEGORY));
+    private static final KeyMapping OPEN_GALLERY = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+        "key.pane_demo.gallery", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_G, CATEGORY));
     private final DemoAutoTest autoTest = DemoAutoTest.enabled() ? new DemoAutoTest() : null;
     private int startupTicks;
     private boolean demoShown;
@@ -31,6 +33,9 @@ public final class PaneDemoClient implements ClientModInitializer {
             }
             while (OPEN_DEMO.consumeClick()) {
                 client.gui.setScreen(createDemoScreen());
+            }
+            while (OPEN_GALLERY.consumeClick()) {
+                client.gui.setScreen(StyleGallery.createScreen());
             }
         });
     }
