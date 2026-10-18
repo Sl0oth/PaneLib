@@ -20,6 +20,8 @@ public final class NativeOverlayContext {
     private final double guiScale;
     private final int mouseX;
     private final int mouseY;
+    private int renderedItemCount;
+    private int renderedEntityCount;
 
     NativeOverlayContext(GuiGraphicsExtractor graphics, String pageId, Map<String, NativeBounds> bounds,
                          double guiScale, int mouseX, int mouseY) {
@@ -51,6 +53,7 @@ public final class NativeOverlayContext {
         int w = box.logicalWidth(guiScale);
         int h = box.logicalHeight(guiScale);
         if (w <= 0 || h <= 0) return;
+        renderedItemCount++;
         // A vanilla item is 16x16; 18 leaves the slot padding vanilla containers use.
         float itemScale = Math.max(.35F, Math.min(w, h) / 18.0F);
         graphics.pose().pushMatrix();
@@ -60,8 +63,18 @@ public final class NativeOverlayContext {
         graphics.pose().popMatrix();
     }
 
-    /** Draws a living entity in the named slot, sized to its bounding box and tracking the cursor. */
-    public void player(String slotId, LivingEntity entity) {
+    /**
+     * Draws any living Minecraft entity in the named slot, sized to its real bounding box and
+     * oriented with the cursor using Minecraft's inventory-preview camera.
+     *
+     * <p>The slot is rectangular in the native renderer. Pane hides it when a scroll viewport
+     * would only partially contain it, but native entities cannot inherit rounded or circular
+     * {@link UiCanvas} clips. Reserve padding in the slot when it sits inside a rounded card.</p>
+     *
+     * <p>This reads the entity's current pose but does not add it to a level or mutate it. Supply
+     * a live client-world entity, or a client-only preview entity created for the active level.</p>
+     */
+    public void entity(String slotId, LivingEntity entity) {
         NativeBounds box = bounds.get(slotId);
         if (box == null || entity == null) return;
         int x1 = box.logicalX(guiScale);
@@ -69,6 +82,7 @@ public final class NativeOverlayContext {
         int width = box.logicalWidth(guiScale);
         int height = box.logicalHeight(guiScale);
         if (width <= 0 || height <= 0) return;
+        renderedEntityCount++;
         // Fit the entity's real bounding box rather than guessing from the slot's short edge, so
         // tall slots do not leave a small model floating and wide entities do not overflow.
         float boxWidth = Math.max(.1F, entity.getBbWidth());
@@ -79,6 +93,17 @@ public final class NativeOverlayContext {
         );
     }
 
+    /**
+     * Compatibility alias for {@link #entity(String, LivingEntity)}. Use {@code entity} for
+     * villagers, mobs, and player previews in new consumer code.
+     */
+    public void player(String slotId, LivingEntity entity) {
+        entity(slotId, entity);
+    }
+
     /** The local player, or null outside a world. */
     public LivingEntity localPlayer() { return Minecraft.getInstance().player; }
+
+    int renderedItemCount() { return renderedItemCount; }
+    int renderedEntityCount() { return renderedEntityCount; }
 }

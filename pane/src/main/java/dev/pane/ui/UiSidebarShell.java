@@ -97,7 +97,7 @@ public final class UiSidebarShell implements UiShell {
                 active ? theme.text() : theme.mutedText(), Font.PLAIN);
             canvas.textMedium(candidate.navigationLabel(), margin + 48, y + 9, 10,
                 active ? theme.text() : theme.mutedText());
-            context.hit("nav-" + candidate.id(), "page:" + candidate.id(), margin + 10, y, sidebar - 20, 30);
+            context.pageLink("nav-" + candidate.id(), candidate.id(), margin + 10, y, sidebar - 20, 30);
         }
 
         if (!footnote.isEmpty()) {

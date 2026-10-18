@@ -2,15 +2,33 @@ package dev.pane.demo;
 
 import dev.pane.ui.NativeOverlayContext;
 import dev.pane.ui.UiCanvas;
+import dev.pane.ui.UiBackdrop;
 import dev.pane.ui.UiContext;
+import dev.pane.ui.UiDialog;
 import dev.pane.ui.UiDocument;
+import dev.pane.ui.UiLayout;
+import dev.pane.ui.UiMenuItem;
 import dev.pane.ui.UiPage;
+import dev.pane.ui.UiRect;
+import dev.pane.ui.UiRichText;
 import dev.pane.ui.UiScreen;
+import dev.pane.ui.UiScreenOptions;
+import dev.pane.ui.UiSelectOption;
 import dev.pane.ui.UiSidebarShell;
 import dev.pane.ui.UiTheme;
+import dev.pane.ui.UiToast;
+import dev.pane.ui.UiToastPlacement;
+import dev.pane.ui.UiToastSettings;
+import dev.pane.ui.UiToastStyle;
 import java.awt.Font;
+import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Locale;
 import java.util.Map;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -24,11 +42,133 @@ import static dev.pane.ui.UiContext.Shape.SOFT;
 
 /** Five practical screens rendered by the lightweight native backend. */
 public final class NativeDemoShowcase {
+    private static final int DIRECTORY_PROJECTS = 10_000;
+    private static final String[] DIRECTORY_NAMES = {
+        "Sodium", "Iris Shaders", "Mod Menu", "Zoomify", "LambDynamicLights", "ImmediatelyFast",
+        "FerriteCore", "Entity Culling", "AppleSkin", "Xaero's Minimap", "Continuity", "Indium",
+        "BetterF3", "Jade", "Dynamic FPS", "No Chat Reports", "Mouse Tweaks", "Inventory Profiles Next"
+    };
+    private static final String[] DIRECTORY_PREFIXES = {
+        "Copper", "Quiet", "Wanderer's", "Northern", "Tiny", "Practical", "Cobalt", "Lantern"
+    };
+    private static final String[] DIRECTORY_SUFFIXES = {
+        "Tools", "Tweaks", "Library", "HUD", "Utilities", "Performance", "Companion", "Overlays"
+    };
+    private static final String[] DIRECTORY_CATEGORIES = {
+        "Optimization", "Graphics", "Management", "Utility", "Adventure", "World", "Storage", "Social"
+    };
+    private static final String[][] SEARCH_OPTIONS = {
+        {"Sodium", "Fast rendering for Minecraft"},
+        {"Iris Shaders", "Shaders compatible with Sodium"},
+        {"Zoomify", "Configurable zoom controls"},
+        {"Mod Menu", "Manage installed mods"},
+        {"LambDynamicLights", "Dynamic item and entity lighting"},
+    };
+    private static final UiRichText FORMATTED_DIRECTORY_MOTD = UiRichText.legacy(
+        "§bFast rendering §7for §lmodern Minecraft §r§o— smooth, native, and ready ✦");
+    private static final UiToastStyle COPY_TOAST = UiToastStyle.builder()
+        .background(0xFF10263C).border(0xFF3A82BD).titleColor(0xFFE4F3FF).messageColor(0xFF9AC9ED)
+        .iconBackground(0xFF1F5C8B).iconColor(0xFFFFFFFF).closeBackground(0xFF234A69).closeColor(0xFFE4F3FF)
+        .radius(14).build();
+    private static final UiToastStyle SHARE_TOAST = UiToastStyle.builder()
+        .background(0xFF13291F).border(0xFF4EBF83).titleColor(0xFFE0F8E9).messageColor(0xFF9ACCAA)
+        .iconBackground(0xFF256842).iconColor(0xFFFFFFFF).radius(4).build();
+    private static final UiToastStyle REMOVE_TOAST = UiToastStyle.builder()
+        .background(0xFF321A1E).border(0xFFD46770).titleColor(0xFFFFE6E8).messageColor(0xFFE3A7AD)
+        .iconBackground(0xFF8D3742).iconColor(0xFFFFFFFF).closeBackground(0xFF5D2830).closeColor(0xFFFFE6E8)
+        .radius(18).build();
+
     private NativeDemoShowcase() {}
 
     public static UiScreen createScreen() {
-        return new UiScreen(document(), NativeDemoShowcase::renderNativeLayer,
-            (type, key, value) -> System.out.println("[Pane demo] " + type + " " + key + " " + value));
+        return createScreen(Minecraft.getInstance().gui.screen());
+    }
+
+    public static UiScreen createScreen(Screen parent) {
+        UiScreen[] holder = new UiScreen[1];
+        UiScreenOptions options = UiScreenOptions.builder()
+            .parent(parent)
+            .backdrop(parent == null ? UiBackdrop.MINECRAFT : UiBackdrop.PARENT_BACKGROUND)
+            .onKey((screen, event) -> {
+                if (event.key() == org.lwjgl.glfw.GLFW.GLFW_KEY_F6) {
+                    screen.setValue("raw-key-received", true);
+                    return true;
+                }
+                if (!"discover".equals(screen.pageId())
+                        || (event.key() != org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN
+                        && event.key() != org.lwjgl.glfw.GLFW.GLFW_KEY_UP)) return false;
+                int current = (int) screen.numberValue("directory-key-selected", -1);
+                if (current < 0) current = Math.max(0, screen.virtualFirstVisible("discover-directory"));
+                int direction = event.key() == org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN ? 1 : -1;
+                int selected = Math.max(0, Math.min(DIRECTORY_PROJECTS - 1, current + direction));
+                screen.setValue("directory-key-selected", (double) selected);
+                screen.scrollVirtualItemIntoView("discover-directory", selected);
+                return true;
+            })
+            .onClick((screen, event) -> {
+                if (!event.doubleClick()) return false;
+                if (event.hasTarget("preview-secondary")) {
+                    screen.setValue("double-click-received", true);
+                    return true;
+                }
+                String target = event.targetId();
+                if (target == null || !target.startsWith("directory-row-")) return false;
+                try {
+                    int index = Integer.parseInt(target.substring("directory-row-".length()));
+                    if (index < 0 || index >= DIRECTORY_PROJECTS) return false;
+                    screen.setValue("directory-double-clicked-index", (double) index);
+                    return true;
+                } catch (NumberFormatException ignored) {
+                    return false;
+                }
+            })
+            .build();
+        UiScreen screen = new UiScreen(document(), NativeDemoShowcase::renderNativeLayer,
+            (type, key, value) -> handleEvent(holder[0], type, key, value), options);
+        holder[0] = screen;
+        return screen;
+    }
+
+    private static void handleEvent(UiScreen screen, String type, String key, String value) {
+        if (type.equals("action") && key.equals("open-style-gallery")) {
+            Minecraft.getInstance().gui.setScreen(StyleGallery.createScreen());
+            return;
+        }
+        if (type.equals("action") && key.startsWith("open-directory-project:")) {
+            try {
+                screen.setValue("directory-opened-index", Integer.parseInt(key.substring(key.indexOf(':') + 1)));
+            } catch (NumberFormatException ignored) { }
+        }
+        if (type.equals("action") && key.equals("toggle:consumer-owned")) {
+            screen.setValue("reserved-action-received", true);
+        }
+        if (type.equals("action") && key.equals("remove-client-tag")) {
+            screen.setValue("client-tag-removed", true);
+        }
+        if (type.equals("action") && key.equals("copy-waypoint")) {
+            Minecraft.getInstance().keyboardHandler.setClipboard("124, 68, -340");
+            screen.setValue("waypoint-menu-result", "Coordinates copied to clipboard");
+            screen.toast(UiToast.builder("coordinates-copied", "Coordinates copied")
+                .message("124, 68, -340 is on your clipboard").icon("✓").placement(UiToastPlacement.TOP_RIGHT)
+                .style(COPY_TOAST).build());
+        } else if (type.equals("action") && key.equals("share-waypoint")) {
+            screen.setValue("waypoint-menu-result", "Waypoint shared with your party");
+            screen.toast(UiToast.builder("waypoint-shared", "Waypoint shared")
+                .message("Your party can see this route now").icon("→").durationMillis(5_000)
+                .placement(UiToastPlacement.TOP_LEFT).style(SHARE_TOAST).dismissible(false).build());
+        } else if (type.equals("action") && key.equals("remove-waypoint")) {
+            screen.setValue("waypoint-menu-result", "Waypoint removed (demo only)");
+            screen.toast(UiToast.builder("waypoint-removed", "Waypoint removed")
+                .message("Demo data was not changed").icon("!").durationMillis(4_000)
+                .placement(UiToastPlacement.BOTTOM_LEFT).style(REMOVE_TOAST).build());
+        } else if (type.equals("action") && key.equals("reset-routes")) {
+            screen.setValue("waypoint-menu-result", "Routes reset (demo only)");
+            screen.toast(UiToast.builder("routes-reset", "Routes reset")
+                .message("Demo route plan cleared").icon("↺").build());
+        } else if (type.equals("action") && key.equals("cancel-reset-routes")) {
+            screen.setValue("waypoint-menu-result", "Reset cancelled");
+        }
+        System.out.println("[Pane demo] " + type + " " + key + " " + value);
     }
 
     private static UiDocument document() {
@@ -42,6 +182,9 @@ public final class NativeDemoShowcase {
                 .footnote("H \u00b7 open")
                 .statusIndicator(true))
             .pageShortcuts(true)
+            .tooltipDelayMillis(650)
+            .toastSettings(new UiToastSettings(UiToastPlacement.BOTTOM_RIGHT, 4, 16, 8, 240,
+                UiToastStyle.builder().radius(10).build()))
             .page(new UiPage("discover", "Discover", "⌕", 0xFF1BD96A, NativeDemoShowcase::discover))
             .page(new UiPage("loadout", "Loadout", "◇", 0xFFF0B64D, NativeDemoShowcase::loadout))
             .page(new UiPage("waypoints", "Waypoints", "+", 0xFF5AA7FF, NativeDemoShowcase::waypoints))
@@ -63,37 +206,34 @@ public final class NativeDemoShowcase {
         float updateWidth = Math.min(156, w * .24F);
         float mainWidth = w - updateWidth - 9;
         float searchWidth = Math.min(180, mainWidth * .34F);
-        search(g, x + mainWidth - searchWidth - 75, y + 1, searchWidth, 28, t);
+        float galleryWidth = 64;
+        float searchX = x + mainWidth - searchWidth - galleryWidth - 82;
+        ui.textField("project-search", "project-search", "Search projects", searchX, y + 1, searchWidth, 28, "", 64);
+        ui.tooltip("project-search", "Search projects; close matches are suggested.");
+        ui.button("style-gallery", "Styles", "open-style-gallery", x + mainWidth - galleryWidth - 75, y + 1,
+            galleryWidth, 28, SECONDARY, PILL);
+        ui.tooltip("style-gallery", "Open five completely different native UI styles.");
         ui.button("update-all", "Update all", "update-all", x + mainWidth - 67, y + 1, 67, 28, PRIMARY, PILL);
+        ui.tooltip("update-all", "Install all verified updates.");
 
         float bodyY = y + 64;
         float bodyH = h - 64;
-        // Give the hero card and the two grid rows a share of any extra height instead of
-        // stranding it at the bottom of the page.
-        float featuredH = Math.max(88, Math.min(122, bodyH * .20F));
-        float gridTop = bodyY + featuredH + 27;
-        float cardH = Math.max(58, Math.min(104, (bodyY + bodyH - gridTop - 7) / 2));
-        ui.card(x, bodyY, mainWidth, featuredH, t.mediumRadius(), 0xFF171A18);
-        projectIcon(g, "S", x + 13, bodyY + 20, 42, 0xFF1D3323, 0xFFC0E6CA, t);
-        badge(g, "FEATURED", x + 66, bodyY + 12, ui.accent(), 0xFF153520);
-        g.textMedium("Sodium", x + 66, bodyY + 31, 14, t.text());
-        muted(g, "A fast rendering engine, ready for this version.", x + 66, bodyY + 49, t);
-        g.text("41.2M downloads    Fabric 26.2    Client", x + 66, bodyY + 65, 6.5F, 0xFF748078);
-        ui.button("install-sodium", "Install", "install-sodium", x + mainWidth - 63, bodyY + 30, 50, 27, PRIMARY, ROUNDED);
-
-        g.textMedium("Recommended for you", x + 2, bodyY + 99, 9, t.text());
-        g.textMedium("View all  →", x + mainWidth - 56, bodyY + 99, 7, ui.accent());
-        float gridY = bodyY + 115;
-        float gap = 7;
-        float cardW = (mainWidth - gap) / 2;
-        projectCard(ui, "iris", "I", "Iris Shaders", "Shaders compatible with Sodium.", "Graphics · 18.7M",
-            x, gridY, cardW, 58, 0xFF242B42, 0xFFB7CAFF, true);
-        projectCard(ui, "zoomify", "Z", "Zoomify", "Configurable zoom controls.", "Utility · 3.1M",
-            x + cardW + gap, gridY, cardW, 58, 0xFF37301D, 0xFFFFE19C, false);
-        projectCard(ui, "mod-menu", "M", "Mod Menu", "Manage installed mods.", "Management · 22M",
-            x, gridY + 65, cardW, 58, 0xFF1F3732, 0xFFB9E7DB, true);
-        projectCard(ui, "lights", "L", "LambDynamicLights", "Dynamic item and entity lighting.", "Graphics · 14M",
-            x + cardW + gap, gridY + 65, cardW, 58, 0xFF37341E, 0xFFFFF1A8, false);
+        g.text("PROJECT", x + 11, bodyY + 7, 6.5F, t.mutedText(), Font.BOLD);
+        g.text("CATEGORY", x + mainWidth - 153, bodyY + 7, 6.5F, t.mutedText(), Font.BOLD);
+        g.text("10,000 RESULTS", x + mainWidth - 76, bodyY + 7, 6.5F, ui.accent(), Font.BOLD);
+        float listY = bodyY + 22;
+        float listH = bodyH - 22;
+        ui.setValue("directory-painted-rows", 0D);
+        ui.setValue("directory-first-visible", -1D);
+        ui.setValue("directory-last-visible", -1D);
+        ui.virtualList("discover-directory", new UiRect(x, listY, mainWidth, listH),
+            DIRECTORY_PROJECTS, 47, 1, (list, item) -> {
+                int painted = (int) list.numberValue("directory-painted-rows", 0);
+                list.setValue("directory-painted-rows", (double) painted + 1);
+                if (painted == 0) list.setValue("directory-first-visible", (double) item.index());
+                list.setValue("directory-last-visible", (double) item.index());
+                directoryRow(list, item.index(), item.bounds());
+            });
 
         float sideX = x + mainWidth + 9;
         ui.card(sideX, bodyY, updateWidth, bodyH, t.mediumRadius(), 0xFF151815);
@@ -103,6 +243,56 @@ public final class NativeDemoShowcase {
         updateRow(g, "M", "Mod Menu", "18.0 → 18.1", sideX + 11, bodyY + 76, updateWidth - 22, 0xFF1F3732, t);
         updateRow(g, "Z", "Zoomify", "3.0.2 → 3.1", sideX + 11, bodyY + 115, updateWidth - 22, 0xFF37301D, t);
         g.text("Verified for this profile", sideX + 11, bodyY + bodyH - 20, 6.5F, 0xFF657068);
+        searchSuggestions(ui, ui.stringValue("project-search", ""), searchX, y + 34, searchWidth);
+    }
+
+    private static void directoryRow(UiContext ui, int index, UiRect row) {
+        UiCanvas g = ui.canvas(); UiTheme t = ui.theme();
+        String name = directoryName(index);
+        String id = "directory-row-" + index;
+        boolean hovered = ui.hovered(id);
+        if (hovered) g.roundRect(0xFF1A211D, row.x(), row.y(), row.width() - 5, row.height(), 7);
+        g.line(hovered ? 0xFF33433A : 0xFF262C28, .65F,
+            row.x(), row.y() + row.height(), row.x() + row.width() - 5, row.y() + row.height());
+        int hue = index % 4;
+        int[] backgrounds = {0xFF1D3323, 0xFF242B42, 0xFF37301D, 0xFF253035};
+        int[] foregrounds = {0xFFC0E6CA, 0xFFB7CAFF, 0xFFFFE19C, 0xFFB9E7DB};
+        projectIcon(g, name.substring(0, 1).toUpperCase(Locale.ROOT), row.x() + 8, row.y() + 6,
+            35, backgrounds[hue], foregrounds[hue], t);
+        g.textMedium(name, row.x() + 54, row.y() + 6, 8.5F, t.text());
+        if (index == 0) {
+            g.formattedText(FORMATTED_DIRECTORY_MOTD, row.x() + 54, row.y() + 20,
+                6.3F, t.mutedText(), t.fontFamily());
+        } else {
+            g.text("A lightweight client mod built for modern Fabric profiles.",
+                row.x() + 54, row.y() + 20, 6.3F, t.mutedText());
+        }
+        g.text(directoryDownloads(index) + " downloads  ·  Fabric 26.2  ·  Client",
+            row.x() + 54, row.y() + 33, 6F, 0xFF718078);
+        g.text(DIRECTORY_CATEGORIES[index % DIRECTORY_CATEGORIES.length],
+            row.x() + row.width() - 153, row.y() + 18, 6.5F, t.mutedText());
+        ui.hit(id, "open-directory-project:" + index, row.x(), row.y(), row.width() - 58, row.height());
+        ui.tooltip(id, "Select this project");
+        boolean installed = index == 2 || index == 6 || index == 8;
+        String buttonId = index == 0 ? "install-sodium" : "directory-install-" + index;
+        ui.button(buttonId, installed ? "Installed" : "Install", "install-directory:" + index,
+            row.x() + row.width() - 53, row.y() + 11, 46, 25,
+            installed ? SECONDARY : PRIMARY, ROUNDED);
+    }
+
+    private static String directoryName(int index) {
+        if (index < DIRECTORY_NAMES.length) return DIRECTORY_NAMES[index];
+        String prefix = DIRECTORY_PREFIXES[index % DIRECTORY_PREFIXES.length];
+        String suffix = DIRECTORY_SUFFIXES[(index / DIRECTORY_PREFIXES.length) % DIRECTORY_SUFFIXES.length];
+        return prefix + " " + suffix + " " + (index + 1);
+    }
+
+    private static String directoryDownloads(int index) {
+        if (index == 0) return "41.2M";
+        if (index < 12) return (18 - index) + "." + ((index * 7) % 10) + "M";
+        long thousands = 120 + (index * 7919L) % 980_000L;
+        if (thousands < 1_000) return thousands + "K";
+        return (thousands / 1_000) + "." + ((thousands % 1_000) / 100) + "M";
     }
 
     private static void loadout(UiContext ui) {
@@ -123,6 +313,8 @@ public final class NativeDemoShowcase {
         g.roundRect(0xFF181B20, playerBoxX, playerBoxY, playerBoxW, playerBoxH, 12);
         g.strokeRoundRect(0xFF353A43, .8F, playerBoxX, playerBoxY, playerBoxW, playerBoxH, 12);
         ui.nativeSlot("player", playerBoxX, playerBoxY, playerBoxW, playerBoxH);
+        ui.tooltip("live-player-preview", "Minecraft renders this live player preview.",
+            playerBoxX, playerBoxY, playerBoxW, playerBoxH);
         if (net.minecraft.client.Minecraft.getInstance().player == null) {
             g.centeredText("Join a world to render your live player", playerBoxX + playerBoxW / 2,
                 playerBoxY + playerBoxH / 2, 7, 0xFF69717D, Font.PLAIN);
@@ -173,7 +365,18 @@ public final class NativeDemoShowcase {
         kicker(g, "WORLD NAVIGATION", x, y, ui.accent());
         title(g, "Waypoints", x, y + 14, t);
         muted(g, "Plan routes, group locations and share exact coordinates.", x, y + 43, t);
+        ui.menuButton("waypoint-actions", "Actions", x + w - 184, y + 1, 73, 29, SECONDARY, PILL,
+            List.of(
+                new UiMenuItem("copy", "Copy coordinates", "copy-waypoint"),
+                new UiMenuItem("share", "Share with party", "share-waypoint"),
+                new UiMenuItem("remove", "Remove waypoint", "remove-waypoint")
+            ));
+        ui.dialogButton("reset-routes", "Reset", x + w - 238, y + 1, 47, 29, GHOST, PILL,
+            new UiDialog("Reset all routes?", "This clears the current route plan in the demo.",
+                "Reset", "reset-routes", "Cancel", "cancel-reset-routes"));
         ui.button("new-waypoint", "+  New waypoint", "new-waypoint", x + w - 103, y + 1, 103, 29, PRIMARY, PILL);
+        String menuResult = ui.stringValue("waypoint-menu-result", "");
+        if (!menuResult.isEmpty()) muted(g, menuResult, x, y + 52, t);
         float bodyY = y + 64, listW = Math.min(215, w * .35F), bodyH = h - 64;
         ui.card(x, bodyY, listW, bodyH);
         g.roundRect(0xFF1B1E23, x + 11, bodyY + 11, listW - 22, 28, 8);
@@ -281,9 +484,14 @@ public final class NativeDemoShowcase {
         kicker(g, "PREFERENCES", x, y, ui.accent());
         title(g, "Interface settings", x, y + 14, t);
         muted(g, "Every native token and component can be overridden by the consuming mod.", x, y + 43, t);
+        ui.dropdown("accent-preset", "accent-preset", x + w - 225, y + 1, 130, 29, "system", List.of(
+            new UiSelectOption("system", "System accent"),
+            new UiSelectOption("ocean", "Ocean blue"),
+            new UiSelectOption("forest", "Forest green")
+        ));
         ui.button("save-settings", "Save changes", "save-settings", x + w - 88, y + 1, 88, 29, PRIMARY, PILL);
         float bodyY = y + 64, indexW = Math.min(155, w * .23F), bodyH = h - 64;
-        ui.card(x, bodyY, indexW, 164);
+        ui.card(x, bodyY, indexW, Math.min(164, bodyH));
         String[] indexes = {"Appearance", "Motion", "Accessibility", "Input", "Advanced"};
         for (int i = 0; i < indexes.length; i++) {
             String key = indexes[i].toLowerCase(java.util.Locale.ROOT);
@@ -296,39 +504,86 @@ public final class NativeDemoShowcase {
             ui.selectable("section-" + key, "settings-section", key, x + 8, rowY, indexW - 16, 27);
         }
         float contentX = x + indexW + 9, contentW = w - indexW - 9;
-        ui.card(contentX, bodyY, contentW, 103);
-        g.textMedium("Shape language", contentX + 13, bodyY + 12, 10, t.text());
-        muted(g, "Choose globally or override per component.", contentX + 13, bodyY + 27, t);
-        float shapeY = bodyY + 44, shapeGap = 7, shapeW = (contentW - 26 - shapeGap * 3) / 4;
-        shapeChoice(ui, "square", "Square", contentX + 13, shapeY, shapeW, 48, 1);
-        shapeChoice(ui, "rounded", "Rounded", contentX + 13 + (shapeW + shapeGap), shapeY, shapeW, 48, 7);
-        shapeChoice(ui, "soft", "Soft", contentX + 13 + (shapeW + shapeGap) * 2, shapeY, shapeW, 48, 13);
-        shapeChoice(ui, "pill", "Pill", contentX + 13 + (shapeW + shapeGap) * 3, shapeY, shapeW, 48, 24);
-        float motionY = bodyY + 112;
-        ui.card(contentX, motionY, contentW, 166);
-        g.textMedium("Motion", contentX + 13, motionY + 12, 10, t.text());
-        muted(g, "Finite, event-driven animations that stop when complete.", contentX + 13, motionY + 27, t);
-        settingDivider(g, contentX + 13, motionY + 45, contentW - 26, t);
-        settingLabel(g, "Interface motion", "Page, hover and state transitions", contentX + 13, motionY + 54, t);
-        ui.toggle("motion-toggle", "interface-motion", contentX + contentW - 45, motionY + 57, true);
-        settingDivider(g, contentX + 13, motionY + 88, contentW - 26, t);
-        settingLabel(g, "Motion intensity", "Scales duration and distance", contentX + 13, motionY + 98, t);
-        ui.slider("motion-slider", "motion-intensity", contentX + contentW - 166, motionY + 103, 122, .65);
-        g.text(Math.round(ui.numberValue("motion-intensity", .65) * 100) + "%",
-            contentX + contentW - 36, motionY + 103, 7, t.mutedText());
-        settingDivider(g, contentX + 13, motionY + 130, contentW - 26, t);
-        settingLabel(g, "Reduced motion fallback", "Honors the operating system preference", contentX + 13, motionY + 139, t);
-        ui.toggle("reduce-toggle", "reduced-motion", contentX + contentW - 45, motionY + 136, false);
-        float previewY = motionY + 175;
-        ui.card(contentX, previewY, contentW, bodyH - (previewY - bodyY));
-        g.textMedium("Component preview", contentX + 13, previewY + 12, 10, t.text());
-        muted(g, "Styles can coexist within the same document.", contentX + 13, previewY + 27, t);
-        UiContext.Shape shape = chosenShape(ui);
-        ui.button("preview-primary", "Primary", "preview-primary", contentX + 13, previewY + 43, 63, 29, PRIMARY, shape);
-        ui.button("preview-secondary", "Secondary", "preview-secondary", contentX + 83, previewY + 43, 72, 29, SECONDARY, shape);
-        ui.button("preview-ghost", "Ghost", "preview-ghost", contentX + 162, previewY + 43, 70, 29, GHOST, shape);
-        badge(g, "ONLINE", contentX + 240, previewY + 48, 0xFF75D69C, 0xFF152A20);
-        ui.slider("preview-slider", "preview-slider", contentX + contentW - 116, previewY + 50, 96, .48);
+        UiRect viewport = new UiRect(contentX, bodyY, contentW, bodyH);
+        UiLayout form = ui.column(new UiRect(contentX, bodyY, contentW, 0)).gap(8);
+        UiRect shapeCard = form.next(103);
+        UiRect motionCard = form.next(166);
+        UiRect previewCard = form.next(112);
+        UiRect displayCard = form.next(112);
+        UiRect inputCard = form.next(122);
+        UiRect notesCard = form.next(152);
+
+        ui.scroll("settings-content", viewport, form.contentHeight(), page -> {
+            UiCanvas pageCanvas = page.canvas();
+            page.card(shapeCard.x(), shapeCard.y(), shapeCard.width(), shapeCard.height());
+            pageCanvas.textMedium("Shape language", shapeCard.x() + 13, shapeCard.y() + 12, 10, t.text());
+            muted(pageCanvas, "Choose globally or override per component.", shapeCard.x() + 13, shapeCard.y() + 27, t);
+            float shapeY = shapeCard.y() + 44, shapeGap = 7, shapeW = (contentW - 26 - shapeGap * 3) / 4;
+            shapeChoice(page, "square", "Square", contentX + 13, shapeY, shapeW, 48, 1);
+            shapeChoice(page, "rounded", "Rounded", contentX + 13 + (shapeW + shapeGap), shapeY, shapeW, 48, 7);
+            shapeChoice(page, "soft", "Soft", contentX + 13 + (shapeW + shapeGap) * 2, shapeY, shapeW, 48, 13);
+            shapeChoice(page, "pill", "Pill", contentX + 13 + (shapeW + shapeGap) * 3, shapeY, shapeW, 48, 24);
+
+            page.card(motionCard.x(), motionCard.y(), motionCard.width(), motionCard.height());
+            pageCanvas.textMedium("Motion", contentX + 13, motionCard.y() + 12, 10, t.text());
+            muted(pageCanvas, "Finite, event-driven animations that stop when complete.", contentX + 13, motionCard.y() + 27, t);
+            settingDivider(pageCanvas, contentX + 13, motionCard.y() + 45, contentW - 26, t);
+            settingLabel(pageCanvas, "Interface motion", "Page, hover and state transitions", contentX + 13, motionCard.y() + 54, t);
+            page.toggle("motion-toggle", "interface-motion", contentX + contentW - 45, motionCard.y() + 57, true);
+            settingDivider(pageCanvas, contentX + 13, motionCard.y() + 88, contentW - 26, t);
+            settingLabel(pageCanvas, "Motion intensity", "Scales duration and distance", contentX + 13, motionCard.y() + 98, t);
+            page.slider("motion-slider", "motion-intensity", contentX + contentW - 166,
+                motionCard.y() + 103, 122, 0, 100, 65);
+            pageCanvas.text(Math.round(page.numberValue("motion-intensity", 65)) + "%",
+                contentX + contentW - 36, motionCard.y() + 103, 7, t.mutedText());
+            settingDivider(pageCanvas, contentX + 13, motionCard.y() + 130, contentW - 26, t);
+            settingLabel(pageCanvas, "Reduced motion fallback", "Honors the operating system preference", contentX + 13, motionCard.y() + 139, t);
+            page.toggle("reduce-toggle", "reduced-motion", contentX + contentW - 45, motionCard.y() + 136, false);
+
+            page.card(previewCard.x(), previewCard.y(), previewCard.width(), previewCard.height());
+            pageCanvas.textMedium("Component preview", contentX + 13, previewCard.y() + 12, 10, t.text());
+            muted(pageCanvas, "Styles can coexist within the same document.", contentX + 13, previewCard.y() + 27, t);
+            UiContext.Shape shape = chosenShape(page);
+            page.button("preview-primary", "Primary", "toggle:consumer-owned", contentX + 13, previewCard.y() + 43, 63, 29, PRIMARY, shape);
+            page.button("preview-secondary", "Secondary", "preview-secondary", contentX + 83, previewCard.y() + 43, 72, 29, SECONDARY, shape);
+            page.button("preview-ghost", "Ghost", "preview-ghost", contentX + 162, previewCard.y() + 43, 70, 29, GHOST, shape);
+            badge(pageCanvas, "ONLINE", contentX + 240, previewCard.y() + 48, 0xFF75D69C, 0xFF152A20);
+            page.slider("preview-slider", "preview-slider", contentX + contentW - 116, previewCard.y() + 50, 96, .48);
+
+            page.card(displayCard.x(), displayCard.y(), displayCard.width(), displayCard.height());
+            pageCanvas.textMedium("Display", contentX + 13, displayCard.y() + 12, 10, t.text());
+            muted(pageCanvas, "A real long-form setting group — scroll to keep going.", contentX + 13, displayCard.y() + 27, t);
+            settingDivider(pageCanvas, contentX + 13, displayCard.y() + 45, contentW - 26, t);
+            settingLabel(pageCanvas, "Compact density", "Tighter spacing for smaller windows", contentX + 13, displayCard.y() + 54, t);
+            page.toggle("density-toggle", "compact-density", contentX + contentW - 45, displayCard.y() + 57, false);
+            settingDivider(pageCanvas, contentX + 13, displayCard.y() + 88, contentW - 26, t);
+            settingLabel(pageCanvas, "Contrast", "Strength of borders and dividers", contentX + 13, displayCard.y() + 96, t);
+            page.slider("contrast-slider", "contrast", contentX + contentW - 166, displayCard.y() + 96, 122, .5);
+
+            page.card(inputCard.x(), inputCard.y(), inputCard.width(), inputCard.height());
+            pageCanvas.textMedium("Input", contentX + 13, inputCard.y() + 12, 10, t.text());
+            muted(pageCanvas, "Scrolling, pointer editing, and keyboard focus share the same layout coordinates.", contentX + 13, inputCard.y() + 27, t);
+            settingDivider(pageCanvas, contentX + 13, inputCard.y() + 46, contentW - 26, t);
+            settingLabel(pageCanvas, "Scroll speed", "How far each wheel step moves", contentX + 13, inputCard.y() + 56, t);
+            page.slider("scroll-speed", "scroll-speed", contentX + contentW - 166, inputCard.y() + 59, 122, .5);
+            settingDivider(pageCanvas, contentX + 13, inputCard.y() + 91, contentW - 26, t);
+            settingLabel(pageCanvas, "Developer tools", "Show layout bounds in a later pass", contentX + 13, inputCard.y() + 100, t);
+            page.toggle("dev-tools", "developer-tools", contentX + contentW - 45, inputCard.y() + 101, false);
+
+            page.card(notesCard.x(), notesCard.y(), notesCard.width(), notesCard.height());
+            pageCanvas.textMedium("Project notes", contentX + 13, notesCard.y() + 12, 10, t.text());
+            muted(pageCanvas, "A real soft-wrapped native editor, not a painted mockup.",
+                contentX + 13, notesCard.y() + 27, t);
+            page.textArea("project-notes", "project-notes", "Write a short release note...",
+                contentX + 13, notesCard.y() + 45, contentW - 26, 66, "", 1000);
+            float tagX = contentX + 13;
+            if (!page.booleanValue("client-tag-removed", false)) {
+                tagX += page.tag("tag-client", "client", "remove-client-tag", tagX,
+                    notesCard.y() + 119, 21, 0xFF222C29, 0xFF8BD7B0) + 6;
+            }
+            page.tag("tag-performance", "performance", "remove-performance-tag", tagX,
+                notesCard.y() + 119, 21, 0xFF22272D, t.mutedText());
+        });
     }
 
     private static void projectCard(UiContext ui, String id, String icon, String name, String subtitle, String meta,
@@ -342,8 +597,8 @@ public final class NativeDemoShowcase {
         g.text(subtitle, x + 55, mid - 3, 6.5F, t.mutedText());
         g.text(meta, x + 55, mid + 11, 6, 0xFF68716B);
         boolean on = ui.booleanValue("installed-" + id, installed);
-        ui.button(id + "-button", on ? "Installed" : "Install", "toggle:installed-" + id,
-            x + w - 55, mid - 12, 46, 25, on ? SECONDARY : PRIMARY, ROUNDED);
+        ui.toggleButton(id + "-button", "installed-" + id, "Install", "Installed",
+            x + w - 55, mid - 12, 46, 25, installed, PRIMARY, SECONDARY, ROUNDED);
         ui.hit(id, "open-" + id, x, y, w - 60, h);
     }
 
@@ -360,13 +615,63 @@ public final class NativeDemoShowcase {
         g.text(version, x + 34, y + 14, 6, t.mutedText());
     }
 
-    private static void search(UiCanvas g, float x, float y, float w, float h, UiTheme t) {
-        g.roundRect(0xFF171A18, x, y, w, h, t.smallRadius());
-        g.strokeRoundRect(t.border(), .7F, x, y, w, h, t.smallRadius());
-        g.strokeCircle(t.mutedText(), 1, x + 12, y + 13, 3.5F);
-        g.line(t.mutedText(), 1, x + 15, y + 16, x + 18, y + 19);
-        g.text("Search projects", x + 24, y + 8, 7, t.mutedText());
+    private static void searchSuggestions(UiContext ui, String query, float x, float y, float width) {
+        if (!ui.focused("project-search") || query == null || query.isBlank()) return;
+        List<SearchMatch> matches = searchMatches(query);
+        if (matches.isEmpty()) return;
+        UiCanvas g = ui.canvas(); UiTheme t = ui.theme();
+        float rowHeight = 34, height = 22 + matches.size() * rowHeight + 6;
+        g.shadow(0x66000000, 8, 0, 3, x, y, width, height, t.smallRadius());
+        g.roundRect(0xFF1A1E24, x, y, width, height, t.smallRadius());
+        g.strokeRoundRect(t.border(), .8F, x, y, width, height, t.smallRadius());
+        SearchMatch first = matches.getFirst();
+        g.text(first.correction() ? "DID YOU MEAN" : "SUGGESTIONS", x + 10, y + 7, 6.5F,
+            first.correction() ? ui.accent() : t.mutedText(), Font.BOLD);
+        for (int i = 0; i < matches.size(); i++) {
+            SearchMatch match = matches.get(i);
+            float rowY = y + 22 + i * rowHeight;
+            String id = "search-suggestion-" + match.label().toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "-");
+            if (ui.hovered(id) || ui.focused(id)) g.roundRect(0xFF242B34, x + 4, rowY, width - 8, rowHeight - 2, 6);
+            g.text(match.label(), x + 10, rowY + 5, 8, t.text(), Font.BOLD);
+            g.text(match.description(), x + 10, rowY + 18, 6.5F, t.mutedText());
+            ui.selectable(id, "project-search", match.label(), x + 4, rowY, width - 8, rowHeight - 2);
+        }
     }
+
+    private static List<SearchMatch> searchMatches(String query) {
+        String needle = query.toLowerCase(Locale.ROOT).trim();
+        List<SearchMatch> matches = new ArrayList<>();
+        for (String[] option : SEARCH_OPTIONS) {
+            String name = option[0].toLowerCase(Locale.ROOT);
+            String description = option[1].toLowerCase(Locale.ROOT);
+            int distance = editDistance(needle, name);
+            int score;
+            if (name.startsWith(needle)) score = 0;
+            else if (name.contains(needle) || description.contains(needle)) score = 10;
+            else if (distance <= Math.max(2, needle.length() / 3)) score = 20 + distance;
+            else continue;
+            matches.add(new SearchMatch(option[0], option[1], score, score >= 20));
+        }
+        matches.sort(Comparator.comparingInt(SearchMatch::score).thenComparing(SearchMatch::label));
+        return matches.size() <= 3 ? matches : matches.subList(0, 3);
+    }
+
+    private static int editDistance(String first, String second) {
+        int[] previous = new int[second.length() + 1];
+        for (int j = 0; j <= second.length(); j++) previous[j] = j;
+        for (int i = 1; i <= first.length(); i++) {
+            int[] current = new int[second.length() + 1];
+            current[0] = i;
+            for (int j = 1; j <= second.length(); j++) {
+                int replacement = previous[j - 1] + (first.charAt(i - 1) == second.charAt(j - 1) ? 0 : 1);
+                current[j] = Math.min(Math.min(current[j - 1] + 1, previous[j] + 1), replacement);
+            }
+            previous = current;
+        }
+        return previous[second.length()];
+    }
+
+    private record SearchMatch(String label, String description, int score, boolean correction) {}
 
     private static void nativeItemSlot(UiContext ui, String id, String label, float x, float y, float w, float h, boolean selected) {
         UiCanvas g = ui.canvas(); UiTheme t = ui.theme();

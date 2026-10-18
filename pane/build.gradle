@@ -1,12 +1,20 @@
 // The Pane library. Contains the public API and nothing else - no entrypoint, no demo code.
 // Client-only, so a single main source set keeps the artifact consumable by other projects.
 
+base {
+    archivesName = 'panelib'
+}
+
 loom {
     mods {
-        'pane' {
+        'panelib' {
             sourceSet sourceSets.main
         }
     }
+}
+
+java {
+    withJavadocJar()
 }
 
 sourceSets {
@@ -16,6 +24,66 @@ sourceSets {
             exclude 'dev/pane/mcef/**'
         }
     }
+}
+
+dependencies {
+    testImplementation platform('org.junit:junit-bom:5.12.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            artifactId = 'panelib'
+            from components.java
+            pom {
+                name = 'PaneLib'
+                description = 'A native, retained-mode Fabric UI library for desktop-quality Minecraft screens.'
+                licenses {
+                    license {
+                        name = 'MIT License'
+                        url = 'https://opensource.org/license/mit'
+                    }
+                }
+                developers {
+                    developer {
+                        id = 'sl0oth'
+                        name = 'Sl0oth'
+                    }
+                }
+            }
+        }
+    }
+    repositories {
+        maven {
+            name = 'localBuild'
+            url = rootProject.layout.buildDirectory.dir('maven')
+        }
+    }
+}
+
+tasks.register('verifyPaneArtifact') {
+    dependsOn tasks.named('jar')
+    doLast {
+        def artifact = tasks.named('jar').get().archiveFile.get().asFile
+        def entries = zipTree(artifact).matching { include '**/*' }.files.collect {
+            it.path.replace('\\', '/')
+        }
+        def forbidden = entries.findAll { it.contains('/dev/pane/demo/') || it.contains('/dev/pane/mcef/') }
+        if (!forbidden.isEmpty()) throw new GradleException("Pane artifact contains excluded classes: ${forbidden}")
+        if (!zipTree(artifact).matching { include 'dev/pane/ui/UiScreen.class' }.files) {
+            throw new GradleException('Pane artifact is missing the public native renderer')
+        }
+    }
+}
+
+tasks.named('check') {
+    dependsOn tasks.named('verifyPaneArtifact')
 }
 
 // The library has no entrypoint. Runs happen from :pane-demo, so plain `gradlew runClient`

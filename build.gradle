@@ -8,6 +8,7 @@ subprojects {
 
     group = rootProject.group
     version = rootProject.version
+    def resolvedProjectVersion = version.toString()
 
     dependencies {
         minecraft "com.mojang:minecraft:${rootProject.minecraft_version}"
@@ -16,9 +17,9 @@ subprojects {
     }
 
     processResources {
-        inputs.property 'version', project.version
+        inputs.property 'version', resolvedProjectVersion
         filesMatching('fabric.mod.json') {
-            expand 'version': project.version
+            expand 'version': resolvedProjectVersion
         }
     }
 
@@ -30,5 +31,9 @@ subprojects {
         withSourcesJar()
         sourceCompatibility = JavaVersion.VERSION_25
         targetCompatibility = JavaVersion.VERSION_25
+    }
+
+    tasks.withType(Javadoc).configureEach {
+        options.addStringOption('Xdoclint:none', '-quiet')
     }
 }

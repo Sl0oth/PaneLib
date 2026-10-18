@@ -2,15 +2,24 @@ package dev.pane.demo;
 
 import dev.pane.ui.UiCanvas;
 import dev.pane.ui.UiContext;
+import dev.pane.ui.UiDialog;
+import dev.pane.ui.UiDialogStyle;
 import dev.pane.ui.UiDocument;
+import dev.pane.ui.UiMenuItem;
 import dev.pane.ui.UiPage;
+import dev.pane.ui.UiRect;
 import dev.pane.ui.UiScreen;
+import dev.pane.ui.UiSelectOption;
 import dev.pane.ui.UiShell;
 import dev.pane.ui.UiTheme;
+import dev.pane.ui.UiToast;
+import dev.pane.ui.UiToastPlacement;
+import dev.pane.ui.UiToastStyle;
 import java.awt.Font;
+import net.minecraft.client.Minecraft;
 
 /**
- * Five screens that share one library and look nothing alike.
+ * Nine screens that share one library and look nothing alike.
  * <p>
  * Every page uses {@link UiShell#NONE}, so each owns the whole surface and paints its own
  * background, chrome, navigation and typography. Nothing here is a theme preset: the styles
@@ -23,14 +32,19 @@ public final class StyleGallery {
         {"aurora", "AURORA"},
         {"blueprint", "BLUEPRINT"},
         {"brutalist", "BRUTALIST"},
+        {"harbor", "HARBOR"},
+        {"pixelport", "PIXELPORT"},
+        {"fieldnotes", "FIELD NOTES"},
+        {"orbit", "ORBIT"},
     };
 
     private StyleGallery() {}
 
     public static UiScreen createScreen() {
-        return new UiScreen(UiDocument.builder("Pane Style Gallery")
+        UiScreen[] holder = new UiScreen[1];
+        UiScreen screen = new UiScreen(UiDocument.builder("Pane Style Gallery")
             .brand("Pane")
-            .theme(UiTheme.dark())
+            .theme(UiTheme.light())
             .shell(UiShell.NONE)
             .pageShortcuts(true)
             .page(new UiPage("terminal", "Terminal", "", 0xFF35F58A, StyleGallery::terminal))
@@ -38,7 +52,54 @@ public final class StyleGallery {
             .page(new UiPage("aurora", "Aurora", "", 0xFF6FE3D0, StyleGallery::aurora))
             .page(new UiPage("blueprint", "Blueprint", "", 0xFF4FD8E8, StyleGallery::blueprint))
             .page(new UiPage("brutalist", "Brutalist", "", 0xFFE24E1B, StyleGallery::brutalist))
+            .page(new UiPage("harbor", "Harbor", "", 0xFF1771C6, StyleGallery::harbor))
+            .page(new UiPage("pixelport", "Pixelport", "", 0xFF4DCC82, StyleGallery::pixelport))
+            .page(new UiPage("fieldnotes", "Field Notes", "", 0xFF637A43, StyleGallery::fieldnotes))
+            .page(new UiPage("orbit", "Orbit", "", 0xFF6CC7E8, StyleGallery::orbit))
+            .build(), null, (type, key, value) -> handleEvent(holder[0], type, key, value));
+        holder[0] = screen;
+        return screen;
+    }
+
+    private static void handleEvent(UiScreen screen, String type, String key, String value) {
+        if (screen == null || !"action".equals(type)) return;
+        String title = switch (key) {
+            case "harbor-invite" -> "Invite sent";
+            case "harbor-archive" -> "Board archived";
+            case "pixel-launch" -> "Launch queue ready";
+            case "pixel-buy" -> "Pack added";
+            case "field-save" -> "Note saved";
+            case "field-discard" -> "Draft discarded";
+            case "orbit-calibrate" -> "Calibration started";
+            case "orbit-abort" -> "Sequence held";
+            default -> "Action complete";
+        };
+        String page = screen.pageId();
+        screen.toast(UiToast.builder("gallery-" + key, title)
+            .message("The " + screen.pageId() + " example updated its local state.")
+            .icon(page.equals("pixelport") ? "+" : page.equals("fieldnotes") ? "•" : "✓")
+            .placement(UiToastPlacement.AUTO).style(galleryToastStyle(page))
             .build());
+    }
+
+    private static UiToastStyle galleryToastStyle(String page) {
+        return switch (page) {
+            case "harbor" -> UiToastStyle.builder().background(0xFFE8F5FF).border(0xFF5EA8DF)
+                .titleColor(0xFF17354D).messageColor(0xFF54728B).iconBackground(0xFF1771C6).iconColor(0xFFFFFFFF)
+                .closeBackground(0xFFD6EAF9).closeColor(0xFF17354D).radius(16).build();
+            case "pixelport" -> UiToastStyle.builder().background(0xFF182641).border(0xFF4DCC82)
+                .titleColor(0xFFF1F5FF).messageColor(0xFFB7C8E3).iconBackground(0xFF4DCC82).iconColor(0xFF101522)
+                .closeBackground(0xFF263A5F).closeColor(0xFFF1F5FF).radius(0).build();
+            case "fieldnotes" -> UiToastStyle.builder().background(0xFFFFFDF5).border(0xFF9BA77C)
+                .titleColor(0xFF303425).messageColor(0xFF737562).iconBackground(0xFF637A43).iconColor(0xFFFFFFFF)
+                .closeBackground(0xFFE6E4D6).closeColor(0xFF303425).radius(3).build();
+            case "orbit" -> UiToastStyle.builder().background(0xFF0B1D29).border(0xFF5BAFCB)
+                .titleColor(0xFFD8F4FF).messageColor(0xFF8AB4C3).iconBackground(0xFF1F6986).iconColor(0xFFFFFFFF)
+                .closeBackground(0xFF153344).closeColor(0xFFD8F4FF).radius(2).build();
+            default -> UiToastStyle.builder().background(0xFF14293A).border(0xFF3E8EBB)
+                .titleColor(0xFFE8F6FF).messageColor(0xFFA9D6ED).iconBackground(0xFF1E6693)
+                .iconColor(0xFFFFFFFF).radius(12).build();
+        };
     }
 
     // ================================================================ 1 · terminal
@@ -307,6 +368,238 @@ public final class StyleGallery {
         switcher(ui, orange, ink, paper, UiCanvas.SANS, 4);
     }
 
+    // ================================================================ 6 · harbor
+
+    /** Bright, calm productivity UI: text input, menus, selectors, confirmation, and toasts. */
+    private static void harbor(UiContext ui) {
+        UiCanvas g = ui.canvas();
+        float w = ui.width(), h = ui.height();
+        int sky = 0xFFF5FAFF, blue = 0xFF1771C6, ink = 0xFF16324A, muted = 0xFF668197;
+        g.fill(sky, 0, 0, w, h);
+        g.radialRect(0x284DB8FA, 0x00F5FAFF, w * .92F, h * .08F, w * .55F, 0, 0, w, h, 0);
+        float x = 34, y = 28 + (1 - ui.motion()) * 7;
+        g.text("Harbor", x, y, 28, ink, Font.BOLD, UiCanvas.SANS);
+        g.text("a soft, useful workspace", x, y + 33, 9, muted, Font.PLAIN, UiCanvas.SANS);
+        ui.textField("harbor-search", "harbor-search", "Search workspaces", Math.max(x + 190, w - 390), y,
+            Math.max(100, Math.min(210, w - 520)), "");
+        ui.menuButton("harbor-actions", "Invite", w - 196, y, 72, 30, UiContext.ButtonStyle.SECONDARY,
+            UiContext.Shape.PILL, java.util.List.of(new UiMenuItem("invite", "Invite teammate", "harbor-invite"),
+                new UiMenuItem("copy", "Copy board link", "harbor-invite")));
+        ui.dialogButton("harbor-archive", "Archive", w - 112, y, 78, 30, UiContext.ButtonStyle.GHOST,
+            UiContext.Shape.PILL, new UiDialog("Archive this board?", "You can restore it later from the archive.",
+                "Archive", "harbor-archive", "Keep it", "harbor-archive", UiDialogStyle.builder()
+                    .backdrop(0x663D79A5).surface(0xFFF9FCFF).border(0xFF77B5E4).titleColor(0xFF17354D)
+                    .messageColor(0xFF58758B).cancelBackground(0xFFE7F2FB).cancelBorder(0xFF9DC6E5)
+                    .cancelText(0xFF17354D).confirmBackground(0xFF1771C6).confirmText(0xFFFFFFFF).radius(18).build()));
+        ui.tooltip("harbor-archive", "A confirmation dialog protects this board.");
+
+        float navY = y + 74, navW = 150;
+        g.roundRect(0xFFFFFFFF, x, navY, navW, h - navY - 72, 18);
+        g.strokeRoundRect(0xFFD7E6F1, .8F, x, navY, navW, h - navY - 72, 18);
+        String[] nav = {"Today", "Projects", "People", "Archive"};
+        for (int i = 0; i < nav.length; i++) {
+            float ny = navY + 20 + i * 34;
+            boolean selected = ui.stringValue("harbor-nav", "Today").equals(nav[i]);
+            if (selected) g.roundRect(0xFFE4F2FF, x + 10, ny - 5, navW - 20, 26, 9);
+            g.text(nav[i], x + 24, ny + 2, 9, selected ? blue : muted, selected ? Font.BOLD : Font.PLAIN, UiCanvas.SANS);
+            ui.selectable("harbor-nav-" + i, "harbor-nav", nav[i], x + 10, ny - 5, navW - 20, 26);
+        }
+        float boardX = x + navW + 18, boardW = w - boardX - 34, boardY = navY;
+        g.roundRect(0xFFFFFFFF, boardX, boardY, boardW, h - boardY - 72, 18);
+        g.strokeRoundRect(0xFFD7E6F1, .8F, boardX, boardY, boardW, h - boardY - 72, 18);
+        String section = ui.stringValue("harbor-nav", "Today");
+        ui.setValue("harbor-nav", section);
+        String heading = switch (section) {
+            case "Projects" -> "Project harbor";
+            case "People" -> "People aboard";
+            case "Archive" -> "Quiet archive";
+            default -> "Today’s tide";
+        };
+        String subheading = switch (section) {
+            case "Projects" -> "Three projects are moving with the tide.";
+            case "People" -> "A small team, all moving together.";
+            case "Archive" -> "Old boards stay safe and out of the way.";
+            default -> "Small steps, clear water.";
+        };
+        g.text(heading, boardX + 22, boardY + 20, 16, ink, Font.BOLD, UiCanvas.SANS);
+        g.text(subheading, boardX + 22, boardY + 43, 8.5F, muted, Font.PLAIN, UiCanvas.SANS);
+        String mode = ui.dropdown("harbor-view", "harbor-view", boardX + boardW - 142, boardY + 18, 118, 28, "Board",
+            java.util.List.of(new UiSelectOption("Board", "Board"), new UiSelectOption("Timeline", "Timeline"),
+                new UiSelectOption("Calendar", "Calendar")));
+        String[] cards = switch (section) {
+            case "Projects" -> new String[] {"Lantern release", "Board refresh", "Open docs"};
+            case "People" -> new String[] {"Maya is reviewing", "Ben joined the board", "Two invites pending"};
+            case "Archive" -> new String[] {"Spring planning", "Old launch notes", "Research shelf"};
+            default -> new String[] {"Outline launch", "Review the path", "Send the note"};
+        };
+        for (int i = 0; i < cards.length; i++) {
+            float cy = boardY + 78 + i * 62;
+            int color = i == 0 ? 0xFFE5F3FF : 0xFFF6FAFD;
+            g.roundRect(color, boardX + 20, cy, boardW - 40, 50, 13);
+            g.circle(i == 0 ? blue : 0xFF9DB5C7, boardX + 42, cy + 25, 6);
+            g.text(cards[i], boardX + 58, cy + 11, 10, ink, Font.BOLD, UiCanvas.SANS);
+            g.text(i == 0 ? "Ready to share" : "A quiet next step", boardX + 58, cy + 27, 8, muted, Font.PLAIN, UiCanvas.SANS);
+        }
+        g.text(section + " / " + mode + " view", boardX + 22, boardY + h - boardY - 104, 8, muted, Font.PLAIN, UiCanvas.SANS);
+        switcher(ui, blue, muted, sky, UiCanvas.SANS, 5);
+    }
+
+    // ================================================================ 7 · pixelport
+
+    /** Chunky pixel arcade UI: selectable state, slider, tooltips, actions, and a hard-edged dialog. */
+    private static void pixelport(UiContext ui) {
+        UiCanvas g = ui.canvas();
+        float w = ui.width(), h = ui.height();
+        int bg = 0xFF172033, mint = 0xFF4DCC82, yellow = 0xFFFFD45A, pink = 0xFFFF7B8E, ink = 0xFF101522;
+        g.fill(bg, 0, 0, w, h);
+        g.grid(0xFF263553, .65F, 12, 0, 0, w, h);
+        float x = 34, y = 30 + (1 - ui.motion()) * 7;
+        g.fill(mint, x, y, 11, 11); g.fill(yellow, x + 14, y, 11, 11); g.fill(pink, x + 28, y, 11, 11);
+        g.text("PIXELPORT", x + 52, y - 5, 24, 0xFFF1F5FF, Font.BOLD, UiCanvas.MONO);
+        g.text("LOCAL ARCADE CATALOG", x + 52, y + 24, 8, 0xFF9CB1D6, Font.PLAIN, UiCanvas.MONO);
+        float cabinetX = x, cabinetY = y + 65, cabinetW = Math.min(278, w * .42F), cabinetH = h - cabinetY - 76;
+        g.fill(ink, cabinetX + 8, cabinetY + 8, cabinetW, cabinetH);
+        g.fill(0xFF273C61, cabinetX, cabinetY, cabinetW, cabinetH);
+        g.strokeRoundRect(mint, 2, cabinetX, cabinetY, cabinetW, cabinetH, 0);
+        g.fill(0xFF0B101A, cabinetX + 18, cabinetY + 22, cabinetW - 36, Math.min(154, cabinetH * .48F));
+        g.grid(0xFF14253C, .5F, 10, cabinetX + 18, cabinetY + 22, cabinetW - 36, Math.min(154, cabinetH * .48F));
+        String mode = ui.stringValue("pixel-mode", "CO-OP");
+        ui.setValue("pixel-mode", mode);
+        int modeColor = mode.equals("VERSUS") ? pink : mode.equals("SOLO") ? yellow : mint;
+        g.text(mode + " READY", cabinetX + 34, cabinetY + 48, 10, modeColor, Font.BOLD, UiCanvas.MONO);
+        g.text("01:42", cabinetX + 34, cabinetY + 78, 31, yellow, Font.BOLD, UiCanvas.MONO);
+        String[] modes = {"CO-OP", "SOLO", "VERSUS"};
+        for (int i = 0; i < modes.length; i++) {
+            float mx = cabinetX + 20 + i * ((cabinetW - 40) / 3F), my = cabinetY + cabinetH - 74;
+            boolean on = mode.equals(modes[i]);
+            g.fill(on ? mint : 0xFF16223A, mx, my, (cabinetW - 48) / 3F, 28);
+            g.text(modes[i], mx + 7, my + 9, 7, on ? ink : 0xFFB7C8E3, Font.BOLD, UiCanvas.MONO);
+            ui.selectable("pixel-mode-" + i, "pixel-mode", modes[i], mx, my, (cabinetW - 48) / 3F, 28);
+        }
+        float panelX = cabinetX + cabinetW + 28, panelW = w - panelX - 34;
+        g.text("GAME SETTINGS", panelX, cabinetY, 10, mint, Font.BOLD, UiCanvas.MONO);
+        g.text("Cabinet volume", panelX, cabinetY + 36, 9, 0xFFCAD7ED, Font.PLAIN, UiCanvas.MONO);
+        ui.slider("pixel-volume", "pixel-volume", panelX, cabinetY + 54, Math.min(190, panelW - 12), .72);
+        ui.tooltip("pixel-volume", "Drag to change the cabinet volume.");
+        g.text("Difficulty", panelX, cabinetY + 94, 9, 0xFFCAD7ED, Font.PLAIN, UiCanvas.MONO);
+        ui.dropdown("pixel-difficulty", "pixel-difficulty", panelX, cabinetY + 110, Math.min(180, panelW - 12), 28, "Normal",
+            java.util.List.of(new UiSelectOption("Easy", "Easy"), new UiSelectOption("Normal", "Normal"),
+                new UiSelectOption("Hard", "Hard")));
+        ui.button("pixel-launch", "INSERT COIN", "pixel-launch", panelX, cabinetY + 164, Math.min(172, panelW - 12), 34,
+            UiContext.ButtonStyle.PRIMARY, UiContext.Shape.SQUARE);
+        ui.dialogButton("pixel-buy", "BUY PACK", panelX, cabinetY + 210, Math.min(172, panelW - 12), 30,
+            UiContext.ButtonStyle.SECONDARY, UiContext.Shape.SQUARE,
+            new UiDialog("Buy pixel pack?", "This is a pretend purchase inside the showcase.", "Buy", "pixel-buy", "Back", "pixel-buy",
+                UiDialogStyle.builder().backdrop(0xBB07101D).surface(0xFF182641).border(0xFF4DCC82)
+                    .titleColor(0xFFF1F5FF).messageColor(0xFFB7C8E3).cancelBackground(0xFF263A5F).cancelBorder(0xFF4A628D)
+                    .cancelText(0xFFF1F5FF).confirmBackground(0xFF4DCC82).confirmText(0xFF101522).radius(0).build()));
+        g.text("mode: " + mode + " / " + ui.stringValue("pixel-difficulty", "Normal"), panelX, cabinetY + 270, 8, modeColor, Font.PLAIN, UiCanvas.MONO);
+        switcher(ui, mint, 0xFFB7C8E3, bg, UiCanvas.MONO, 6);
+    }
+
+    // ================================================================ 8 · field notes
+
+    /** Paper-and-ink field journal: editable note, filter, scrolling log, and save/discard actions. */
+    private static void fieldnotes(UiContext ui) {
+        UiCanvas g = ui.canvas();
+        float w = ui.width(), h = ui.height();
+        int paper = 0xFFF3F0E3, green = 0xFF637A43, ink = 0xFF303425, muted = 0xFF7E806F;
+        g.fill(paper, 0, 0, w, h); g.grain(0x0C2E2513, .12F, 0, 0, w, h);
+        float x = Math.max(34, w * .07F), y = 28 + (1 - ui.motion()) * 6;
+        g.trackedText("FIELD NOTES / 26.2", x, y, 8, green, Font.BOLD, UiCanvas.SANS, 2F);
+        g.text("A small place to notice things.", x, y + 24, 25, ink, Font.PLAIN, UiCanvas.SERIF);
+        float leftW = Math.min(290, w * .43F), pageY = y + 65, pageH = h - pageY - 74;
+        g.roundRect(0xFFFFFDF5, x, pageY, leftW, pageH, 3); g.strokeRoundRect(0xFFD5D1C0, .8F, x, pageY, leftW, pageH, 3);
+        g.text("NEW OBSERVATION", x + 18, pageY + 18, 8, green, Font.BOLD, UiCanvas.SANS);
+        ui.textField("field-title", "field-title", "Title this note", x + 18, pageY + 38, leftW - 36, "");
+        ui.dropdown("field-weather", "field-weather", x + 18, pageY + 78, leftW - 36, 28, "Clear",
+            java.util.List.of(new UiSelectOption("Clear", "Clear"), new UiSelectOption("Rain", "Rain"), new UiSelectOption("Wind", "Wind")));
+        g.line(0xFFD9D5C2, .8F, x + 18, pageY + 124, x + leftW - 18, pageY + 124);
+        g.text("The creek sounded different after rain.", x + 18, pageY + 144, 9, ink, Font.PLAIN, UiCanvas.SERIF);
+        g.text("Add a thought with the title field above.", x + 18, pageY + 164, 8, muted, Font.ITALIC, UiCanvas.SERIF);
+        ui.button("field-save", "Save note", "field-save", x + 18, pageY + pageH - 50, 92, 30,
+            UiContext.ButtonStyle.PRIMARY, UiContext.Shape.ROUNDED);
+        ui.dialogButton("field-discard", "Discard", x + 120, pageY + pageH - 50, 82, 30,
+            UiContext.ButtonStyle.GHOST, UiContext.Shape.ROUNDED,
+            new UiDialog("Discard this draft?", "The field note will not be saved.", "Discard", "field-discard", "Keep", "field-discard",
+                UiDialogStyle.builder().backdrop(0x884A5032).surface(0xFFFFFDF5).border(0xFF9BA77C)
+                    .titleColor(0xFF303425).messageColor(0xFF737562).cancelBackground(0xFFF0EEDF).cancelBorder(0xFFC8C6B2)
+                    .cancelText(0xFF303425).confirmBackground(0xFF637A43).confirmText(0xFFFFFFFF).radius(3).build()));
+        float logX = x + leftW + 28, logW = w - logX - x;
+        g.text("RECENT TRAIL", logX, pageY, 8, green, Font.BOLD, UiCanvas.SANS);
+        UiRect viewport = new UiRect(logX, pageY + 20, logW, pageH - 20);
+        ui.scroll("field-log", viewport, 460, page -> {
+            UiCanvas c = page.canvas();
+            String[] notes = {"09:14  cedar waxwing near the east fence", "08:47  fog stayed low over the water",
+                "Yesterday  moss brightened after the storm", "Yesterday  a new trail marker at the bend",
+                "Monday  three crows sharing one branch", "Sunday  first cold wind from the north"};
+            for (int i = 0; i < notes.length; i++) {
+                float ny = pageY + 20 + i * 68;
+                c.roundRect(0xFFFFFDF5, logX, ny, logW, 54, 3); c.strokeRoundRect(0xFFD5D1C0, .7F, logX, ny, logW, 54, 3);
+                c.text(notes[i], logX + 14, ny + 13, 8.5F, ink, Font.PLAIN, UiCanvas.SERIF);
+                c.text("weather: " + ui.stringValue("field-weather", "Clear"), logX + 14, ny + 31, 7.5F, muted, Font.PLAIN, UiCanvas.SANS);
+            }
+        });
+        switcher(ui, green, muted, paper, UiCanvas.SANS, 7);
+    }
+
+    // ================================================================ 9 · orbit
+
+    /** Dense orbital console: toggles, sliders, selection, confirmation, and live numeric state. */
+    private static void orbit(UiContext ui) {
+        UiCanvas g = ui.canvas();
+        float w = ui.width(), h = ui.height();
+        int bg = 0xFF061018, cyan = 0xFF6CC7E8, pale = 0xFFD8F4FF, dim = 0xFF6D9CAC;
+        g.fill(bg, 0, 0, w, h); g.grid(0xFF102834, .5F, 18, 0, 0, w, h); g.vignette(0x99000000, 0, 0, w, h);
+        float x = 34, y = 28 + (1 - ui.motion()) * 6;
+        g.trackedText("ORBITAL CONTROL / LINK STABLE", x, y, 8, cyan, Font.BOLD, UiCanvas.MONO, 2F);
+        g.text("ORBIT", x, y + 23, 31, pale, Font.BOLD, UiCanvas.MONO);
+        g.text("local guidance console", x + 118, y + 36, 8, dim, Font.PLAIN, UiCanvas.MONO);
+        float railY = y + 78, railW = Math.min(240, w * .34F);
+        g.strokeRoundRect(0xFF28566B, 1, x, railY, railW, h - railY - 75, 3);
+        String[] systems = {"NAVIGATION", "COMMS", "THERMAL"};
+        for (int i = 0; i < systems.length; i++) {
+            float sy = railY + 24 + i * 44;
+            boolean on = ui.stringValue("orbit-system", "NAVIGATION").equals(systems[i]);
+            if (on) g.fill(0xFF123242, x + 12, sy - 7, railW - 24, 30);
+            g.text(systems[i], x + 24, sy + 1, 9, on ? cyan : dim, Font.BOLD, UiCanvas.MONO);
+            ui.selectable("orbit-system-" + i, "orbit-system", systems[i], x + 12, sy - 7, railW - 24, 30);
+        }
+        float mainX = x + railW + 28, mainW = w - mainX - 34;
+        g.strokeRoundRect(0xFF28566B, 1, mainX, railY, mainW, h - railY - 75, 3);
+        String system = ui.stringValue("orbit-system", "NAVIGATION");
+        ui.setValue("orbit-system", system);
+        String readout = switch (system) {
+            case "COMMS" -> "UPLINK ARRAY";
+            case "THERMAL" -> "THERMAL BIAS";
+            default -> "GUIDANCE VECTOR";
+        };
+        String allocation = switch (system) {
+            case "COMMS" -> "Signal allocation";
+            case "THERMAL" -> "Cooling allocation";
+            default -> "Thrust allocation";
+        };
+        g.text(readout, mainX + 20, railY + 18, 10, pale, Font.BOLD, UiCanvas.MONO);
+        g.text(allocation, mainX + 20, railY + 54, 8, dim, Font.PLAIN, UiCanvas.MONO);
+        ui.slider("orbit-thrust", "orbit-thrust", mainX + 20, railY + 72, Math.min(250, mainW - 44), .58);
+        g.text("Telemetry uplink", mainX + 20, railY + 116, 8, dim, Font.PLAIN, UiCanvas.MONO);
+        ui.toggle("orbit-uplink", "orbit-uplink", mainX + 166, railY + 108, true);
+        g.text("Auto-correct", mainX + 20, railY + 156, 8, dim, Font.PLAIN, UiCanvas.MONO);
+        ui.toggle("orbit-correct", "orbit-correct", mainX + 166, railY + 148, false);
+        double thrust = ui.numberValue("orbit-thrust", .58) * 100;
+        g.text(String.format(java.util.Locale.ROOT, "THRUST %05.1f%%", thrust), mainX + 20, railY + 205, 18, cyan, Font.BOLD, UiCanvas.MONO);
+        ui.button("orbit-calibrate", "CALIBRATE", "orbit-calibrate", mainX + 20, railY + 242, 116, 30,
+            UiContext.ButtonStyle.PRIMARY, UiContext.Shape.SQUARE);
+        ui.dialogButton("orbit-abort", "HOLD", mainX + 146, railY + 242, 76, 30, UiContext.ButtonStyle.DANGER,
+            UiContext.Shape.SQUARE, new UiDialog("Hold guidance sequence?", "The virtual craft will keep its current vector.",
+                "Hold", "orbit-abort", "Continue", "orbit-abort", UiDialogStyle.builder()
+                    .backdrop(0xBB02080D).surface(0xFF0B1D29).border(0xFF5BAFCB).titleColor(0xFFD8F4FF)
+                    .messageColor(0xFF8AB4C3).cancelBackground(0xFF153344).cancelBorder(0xFF35667B)
+                    .cancelText(0xFFD8F4FF).confirmBackground(0xFFB9414F).confirmText(0xFFFFFFFF).radius(2).build()));
+        ui.tooltip("orbit-thrust", "This slider uses normal Pane state and input mapping.");
+        switcher(ui, cyan, dim, bg, UiCanvas.MONO, 8);
+    }
+
     // ================================================================ shared switcher
 
     /**
@@ -319,19 +612,20 @@ public final class StyleGallery {
         float barY = h - 44;
         g.fill(UiCanvas.fade(background, .92F), 0, barY - 8, w, 52);
         g.line(UiCanvas.fade(muted, .35F), .8F, 0, barY - 8, w, barY - 8);
-        float cursor = 44;
+        float segment = w / STYLES.length;
         for (int i = 0; i < STYLES.length; i++) {
             String id = "style-" + STYLES[i][0];
             String label = STYLES[i][1];
-            float labelW = g.trackedTextWidth(label, 7.5F, Font.BOLD, family, 2F);
+            float size = Math.max(5.2F, Math.min(7.5F, segment / Math.max(6F, label.length() * 1.25F)));
+            float labelW = g.trackedTextWidth(label, size, Font.BOLD, family, 1F);
+            float cursor = segment * i + (segment - labelW) / 2F;
             boolean on = i == active;
             boolean hover = ui.hovered(id);
-            if (on) g.fill(accent, cursor - 8, barY + 20, labelW + 16, 2);
-            g.trackedText(label, cursor, barY + 4, 7.5F, on ? accent : hover ? muted : UiCanvas.fade(muted, .6F),
-                Font.BOLD, family, 2F);
-            ui.hit(id, "page:" + STYLES[i][0], cursor - 8, barY - 2, labelW + 16, 26);
-            cursor += labelW + 34;
+            if (on) g.fill(accent, segment * i + 5, barY + 20, Math.max(1, segment - 10), 2);
+            g.trackedText(label, cursor, barY + 4, size, on ? accent : hover ? muted : UiCanvas.fade(muted, .6F),
+                Font.BOLD, family, 1F);
+            ui.pageLink(id, STYLES[i][0], segment * i, barY - 2, segment, 26);
         }
-        g.trackedText("1-5 · ESC", w - 100, barY + 4, 7, UiCanvas.fade(muted, .5F), Font.PLAIN, family, 1.5F);
+        g.trackedText("1-9 · ESC", w - 70, barY - 14, 6, UiCanvas.fade(muted, .5F), Font.PLAIN, family, 1F);
     }
 }

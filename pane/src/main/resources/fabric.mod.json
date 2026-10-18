@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
-  "id": "pane",
+  "id": "panelib",
   "version": "${version}",
-  "name": "Pane",
+  "name": "PaneLib",
   "description": "A native, client-side UI library for building desktop-quality Minecraft screens entirely from code.",
   "authors": ["Sl0oth"],
   "license": "MIT",

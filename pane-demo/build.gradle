@@ -1,6 +1,11 @@
 // Showcase mod. Consumes Pane exactly the way any other mod would.
 
 loom {
+    runs {
+        client {
+            if (project.hasProperty('benchmark') || project.hasProperty('isolated')) runDir 'run-benchmark'
+        }
+    }
     mods {
         'pane_demo' {
             sourceSet sourceSets.main
@@ -13,6 +18,36 @@ dependencies {
 }
 
 tasks.named('runClient') {
+    if (project.hasProperty('benchmark')) {
+        systemProperty 'pane.demo.studioTest', 'true'
+        systemProperty 'pane.demo.benchmark', 'true'
+        systemProperty 'pane.demo.benchLabel', project.findProperty('benchLabel') ?: 'sample'
+        if (project.hasProperty('profile')) {
+            def label = (project.findProperty('benchLabel') ?: 'sample').toString().replaceAll('[^a-zA-Z0-9_-]', '_')
+            def recording = rootProject.file("build/performance/${label}.jfr")
+            jvmArgs "-XX:StartFlightRecording=filename=${recording.absolutePath},settings=profile,dumponexit=true,maxsize=128m"
+        }
+    }
+    if (project.hasProperty('apiTest')) systemProperty 'pane.demo.apiTest', 'true'
+    if (project.hasProperty('studio')) systemProperty 'pane.demo.studio', 'true'
+    if (project.hasProperty('studioPreview')) {
+        systemProperty 'pane.demo.studioTest', 'true'
+        systemProperty 'pane.demo.studioRecord', 'true'
+        systemProperty 'pane.demo.studioPreview', 'true'
+    }
+    if (project.hasProperty('studioRecord')) {
+        systemProperty 'pane.demo.studioTest', 'true'
+        systemProperty 'pane.demo.studioRecord', 'true'
+    }
+    if (project.hasProperty('studioTest')) systemProperty 'pane.demo.studioTest', 'true'
+    if (project.hasProperty('designLab')) systemProperty 'pane.demo.designLab', 'true'
+    if (project.hasProperty('designTest')) systemProperty 'pane.demo.designTest', 'true'
+    if (project.hasProperty('autotestExit')) {
+        systemProperty 'pane.demo.autotestExit', 'true'
+    }
+    if (project.hasProperty('perftest')) {
+        systemProperty 'pane.demo.perftest', 'true'
+    }
     if (project.hasProperty('demoPage')) {
         systemProperty 'pane.demo.page', project.property('demoPage')
     }
@@ -23,5 +58,28 @@ tasks.named('runClient') {
     // Hands-on: loads a scratch world and opens the showcase, then leaves you to it.
     if (project.hasProperty('play')) {
         systemProperty 'pane.demo.play', 'true'
+    }
+    // Hands-on gallery mode: open the style gallery directly after the scratch world loads.
+    if (project.hasProperty('gallery')) {
+        systemProperty 'pane.demo.gallery', 'true'
+    }
+    // Hands-on consumer-layout test: opens the native YouTube-style screen after a scratch world loads.
+    if (project.hasProperty('youtube')) {
+        systemProperty 'pane.demo.youtube', 'true'
+    }
+    // Hands-on Minecraft texture and player-skin fill reference.
+    if (project.hasProperty('textures')) {
+        systemProperty 'pane.demo.textures', 'true'
+    }
+    // Hands-on native iron-golem and villager card-preview reference.
+    if (project.hasProperty('entities')) {
+        systemProperty 'pane.demo.entities', 'true'
+    }
+    // Minimal retained-surface shadow regression reference.
+    if (project.hasProperty('shadows')) {
+        systemProperty 'pane.demo.shadows', 'true'
+    }
+    if (project.hasProperty('levelId')) {
+        systemProperty 'pane.demo.levelId', project.property('levelId')
     }
 }

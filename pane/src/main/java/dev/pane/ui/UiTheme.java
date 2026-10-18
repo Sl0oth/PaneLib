@@ -20,7 +20,8 @@ public record UiTheme(
     float mediumRadius,
     float largeRadius,
     float density,
-    float motionScale
+    float motionScale,
+    String fontFamily
 ) {
     public UiTheme {
         smallRadius = clamp(smallRadius, 0, 40);
@@ -28,13 +29,22 @@ public record UiTheme(
         largeRadius = clamp(largeRadius, 0, 64);
         density = clamp(density, .72F, 1.35F);
         motionScale = clamp(motionScale, 0, 2);
+        fontFamily = fontFamily == null || fontFamily.isBlank() ? UiCanvas.SANS : fontFamily;
+    }
+
+    /** Source-compatible constructor using Pane's dependable native sans-serif default. */
+    public UiTheme(int background, int surface, int raisedSurface, int border, int text, int mutedText,
+                   int accent, int accentText, float smallRadius, float mediumRadius, float largeRadius,
+                   float density, float motionScale) {
+        this(background, surface, raisedSurface, border, text, mutedText, accent, accentText, smallRadius,
+            mediumRadius, largeRadius, density, motionScale, UiCanvas.SANS);
     }
 
     public static UiTheme dark() {
         return new UiTheme(
             0xFF0D0F11, 0xFF15171A, 0xFF1B1E22, 0xFF2D3137,
             0xFFF2F4F7, 0xFF929BAA, 0xFF58A6FF, 0xFF07111D,
-            8, 13, 18, 1, 1
+            8, 13, 18, 1, 1, UiCanvas.SANS
         );
     }
 
@@ -42,23 +52,29 @@ public record UiTheme(
         return new UiTheme(
             0xFFF4F5F7, 0xFFFFFFFF, 0xFFEFF1F4, 0xFFDFE3E8,
             0xFF11161C, 0xFF5D6875, 0xFF2F6FEB, 0xFFFFFFFF,
-            8, 13, 18, 1, 1
+            8, 13, 18, 1, 1, UiCanvas.SANS
         );
     }
 
     public UiTheme withDensity(float newDensity) {
         return new UiTheme(background, surface, raisedSurface, border, text, mutedText,
-            accent, accentText, smallRadius, mediumRadius, largeRadius, newDensity, motionScale);
+            accent, accentText, smallRadius, mediumRadius, largeRadius, newDensity, motionScale, fontFamily);
     }
 
     public UiTheme withMotionScale(float newMotionScale) {
         return new UiTheme(background, surface, raisedSurface, border, text, mutedText,
-            accent, accentText, smallRadius, mediumRadius, largeRadius, density, newMotionScale);
+            accent, accentText, smallRadius, mediumRadius, largeRadius, density, newMotionScale, fontFamily);
     }
 
     public UiTheme withAccent(int newAccent) {
         return new UiTheme(background, surface, raisedSurface, border, text, mutedText,
-            newAccent, accentText, smallRadius, mediumRadius, largeRadius, density, motionScale);
+            newAccent, accentText, smallRadius, mediumRadius, largeRadius, density, motionScale, fontFamily);
+    }
+
+    /** Sets the family used by Pane's built-in controls and overlay chrome. */
+    public UiTheme withFontFamily(String newFontFamily) {
+        return new UiTheme(background, surface, raisedSurface, border, text, mutedText,
+            accent, accentText, smallRadius, mediumRadius, largeRadius, density, motionScale, newFontFamily);
     }
 
     private static float clamp(float value, float min, float max) {

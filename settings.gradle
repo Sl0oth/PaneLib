@@ -9,7 +9,7 @@ pluginManagement {
     }
 }
 
-rootProject.name = 'pane'
+rootProject.name = 'panelib'
 
 include ':pane'
 include ':pane-demo'

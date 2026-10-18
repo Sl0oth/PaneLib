@@ -11,6 +11,7 @@ import java.awt.MultipleGradientPaint;
 import java.awt.Paint;
 import java.awt.RadialGradientPaint;
 import java.awt.RenderingHints;
+import java.awt.Rectangle;
 import java.awt.Shape;
 import java.awt.TexturePaint;
 import java.awt.geom.AffineTransform;
@@ -21,8 +22,18 @@ import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
+import java.awt.image.ConvolveOp;
+import java.awt.image.Kernel;
+import java.io.IOException;
+import java.io.InputStream;
+import javax.imageio.ImageIO;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.texture.DynamicTexture;
+import net.minecraft.resources.Identifier;
 
 /**
  * Code-only raster canvas for the retained renderer.
@@ -40,7 +51,9 @@ public final class UiCanvas {
 
     private static final int FONT_CACHE_LIMIT = 512;
     private static final Map<String, Font> FONTS = new ConcurrentHashMap<>();
+    private static final Map<String, Font> REGISTERED_FONTS = new ConcurrentHashMap<>();
     private static final Map<String, BufferedImage> TEXTURES = new ConcurrentHashMap<>();
+    private static final Map<Identifier, BufferedImage> MINECRAFT_TEXTURES = new ConcurrentHashMap<>();
     private static final int TEXTURE_CACHE_LIMIT = 64;
 
     static {
@@ -52,11 +65,53 @@ public final class UiCanvas {
     }
 
     private final Graphics2D graphics;
+    private final BufferedImage target;
+
+    /**
+     * Registers a TrueType or OpenType font under a stable family name. The font stays local to
+     * Pane's rasterizer; it is not installed into the operating system. Passing that name to any
+     * text method uses it on every platform, with {@link #SANS} as the safe fallback on failure.
+     */
+    public static boolean registerFont(String family, InputStream source) {
+        if (family == null || family.isBlank() || source == null) return false;
+        try (InputStream input = source) {
+            Font loaded = Font.createFont(Font.TRUETYPE_FONT, input);
+            REGISTERED_FONTS.put(family, loaded);
+            FONTS.clear();
+            return true;
+        } catch (IOException | java.awt.FontFormatException ignored) {
+            return false;
+        }
+    }
+
+    /**
+     * Optional CPU-only warmup for cold font initialization. Call on a worker during startup,
+     * after registering custom fonts, rather than on the first visible HUD frame. No GPU access.
+     */
+    public static void prewarmFonts(String... families) {
+        String[] selected = families == null || families.length == 0 ? new String[] {SANS, MONO} : families;
+        var image = new BufferedImage(300, 80, BufferedImage.TYPE_INT_ARGB);
+        var graphics = image.createGraphics();
+        try {
+            var canvas = new UiCanvas(graphics, image);
+            for (String family : selected) for (int style : new int[] {Font.PLAIN, Font.BOLD})
+                for (int size : new int[] {7, 9, 12, 18, 28})
+                    canvas.text("Atlas 0123456789 / Ready", 0, 0, size, 0xFFFFFFFF, style, family);
+        } finally { graphics.dispose(); }
+    }
 
     UiCanvas(Graphics2D graphics) {
+        this(graphics, null);
+    }
+
+    UiCanvas(Graphics2D graphics, BufferedImage target) {
         this.graphics = graphics;
+        this.target = target;
         graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-        graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_LCD_HRGB);
+        // This image becomes a GPU texture and may be scaled by Minecraft. LCD sub-pixel text
+        // assumes a final red/green/blue pixel layout, so it turns soft or colour-fringed after
+        // that sampling step. Grayscale antialiasing remains sharp and neutral in the texture.
+        graphics.setRenderingHint(RenderingHints.KEY_TEXT_ANTIALIASING, RenderingHints.VALUE_TEXT_ANTIALIAS_ON);
         graphics.setRenderingHint(RenderingHints.KEY_FRACTIONALMETRICS, RenderingHints.VALUE_FRACTIONALMETRICS_ON);
         graphics.setRenderingHint(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
         graphics.setRenderingHint(RenderingHints.KEY_STROKE_CONTROL, RenderingHints.VALUE_STROKE_PURE);
@@ -87,6 +142,18 @@ public final class UiCanvas {
         graphics.setStroke(new BasicStroke(stroke, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
         float half = stroke / 2F;
         graphics.draw(roundShape(x + half, y + half, width - stroke, height - stroke, Math.max(0, radius - half)));
+    }
+
+    /** Dashed rounded outline, useful for focus guides, drop targets, and cut-paper treatments. */
+    public void dashedRoundRect(int color, float stroke, float dash, float x, float y,
+                                float width, float height, float radius) {
+        graphics.setColor(awtColor(color));
+        float safeDash = Math.max(.5F, dash);
+        graphics.setStroke(new BasicStroke(Math.max(.25F, stroke), BasicStroke.CAP_BUTT,
+            BasicStroke.JOIN_ROUND, 10, new float[]{safeDash, safeDash}, 0));
+        float half = stroke / 2F;
+        graphics.draw(roundShape(x + half, y + half, Math.max(0, width - stroke),
+            Math.max(0, height - stroke), Math.max(0, radius - half)));
     }
 
     /** Outlined rectangle with independent corner radii, clockwise from the top left. */
@@ -196,6 +263,55 @@ public final class UiCanvas {
     /** Coloured glow centred on a shape. Reads as light rather than shade. */
     public void glow(int color, float spread, float x, float y, float width, float height, float radius) {
         shadow(color, spread, 0, 0, x, y, width, height, radius);
+    }
+
+    /**
+     * Blurs pixels already painted behind a region. This is intended for modal scrims and small
+     * translucent overlays, not every card on a page. It is evaluated only when the retained
+     * surface repaints and therefore has no idle-frame cost.
+     *
+     * @return false when no readable backing surface or visible blur region is available
+     */
+    public boolean backdropBlur(float radius, float x, float y, float width, float height) {
+        if (target == null || radius <= 0 || width <= 0 || height <= 0) return false;
+        Rectangle pixels = graphics.getTransform().createTransformedShape(
+            new Rectangle2D.Float(x, y, width, height)).getBounds();
+        int left = Math.max(0, pixels.x), top = Math.max(0, pixels.y);
+        int right = Math.min(target.getWidth(), pixels.x + pixels.width);
+        int bottom = Math.min(target.getHeight(), pixels.y + pixels.height);
+        int pixelWidth = right - left, pixelHeight = bottom - top;
+        if (pixelWidth <= 0 || pixelHeight <= 0) return false;
+        Shape clip = graphics.getClip();
+        Shape deviceClip = clip == null ? null : graphics.getTransform().createTransformedShape(clip);
+        if (deviceClip != null && !deviceClip.intersects(left, top, pixelWidth, pixelHeight)) return false;
+
+        BufferedImage source = new BufferedImage(pixelWidth, pixelHeight, BufferedImage.TYPE_INT_ARGB);
+        Graphics2D copyGraphics = source.createGraphics();
+        copyGraphics.drawImage(target, 0, 0, pixelWidth, pixelHeight,
+            left, top, right, bottom, null);
+        copyGraphics.dispose();
+
+        int maximumRadius = Math.max(1, (Math.min(pixelWidth, pixelHeight) - 1) / 2);
+        int pixelRadius = Math.max(1, Math.min(Math.min(24, maximumRadius), Math.round(radius *
+            (float) Math.max(Math.abs(graphics.getTransform().getScaleX()), Math.abs(graphics.getTransform().getScaleY())))));
+        int kernelSize = pixelRadius * 2 + 1;
+        float[] weights = new float[kernelSize];
+        java.util.Arrays.fill(weights, 1F / kernelSize);
+        BufferedImage horizontal = new BufferedImage(pixelWidth, pixelHeight, BufferedImage.TYPE_INT_ARGB);
+        BufferedImage blurred = new BufferedImage(pixelWidth, pixelHeight, BufferedImage.TYPE_INT_ARGB);
+        new ConvolveOp(new Kernel(kernelSize, 1, weights), ConvolveOp.EDGE_NO_OP, null).filter(source, horizontal);
+        new ConvolveOp(new Kernel(1, kernelSize, weights), ConvolveOp.EDGE_NO_OP, null).filter(horizontal, blurred);
+
+        Graphics2D output = (Graphics2D) graphics.create();
+        try {
+            output.setTransform(new AffineTransform());
+            output.setClip(deviceClip);
+            output.clipRect(left, top, pixelWidth, pixelHeight);
+            output.drawImage(blurred, left, top, null);
+        } finally {
+            output.dispose();
+        }
+        return true;
     }
 
     // ---------------------------------------------------------------- procedural texture
@@ -322,17 +438,169 @@ public final class UiCanvas {
             centerY + (metrics.getAscent() - metrics.getDescent()) / 2F);
     }
 
+    /**
+     * Measures the horizontal advance of text drawn with {@link #SANS}. The result uses the same
+     * size, style, antialiasing metrics, and one-sixteenth-pixel size quantisation as
+     * {@link #text(String, float, float, float, int, int)}; {@code null} measures as zero.
+     */
     public float textWidth(String value, float size, int style) {
         return textWidth(value, size, style, SANS);
     }
 
+    /**
+     * Measures the horizontal advance of text using the exact font selection used by
+     * {@link #text(String, float, float, float, int, int, String)}. Pass the same {@code size},
+     * {@code style}, and {@code family} to both calls when aligning a label. {@code family} may
+     * be {@link #SANS}, {@link #SERIF}, {@link #MONO}, a system family, or a name registered with
+     * {@link #registerFont(String, InputStream)}; a null or empty family falls back to
+     * {@link #SANS}. {@code null} text measures as zero.
+     */
     public float textWidth(String value, float size, int style, String family) {
         return graphics.getFontMetrics(font(size, style, family)).stringWidth(value == null ? "" : value);
+    }
+
+    /** Height of the same font metrics used by text(), in layout units. */
+    public float textHeight(float size, int style, String family) {
+        return graphics.getFontMetrics(font(size, style, family)).getHeight();
     }
 
     public float trackedTextWidth(String value, float size, int style, String family, float tracking) {
         if (value == null || value.isEmpty()) return 0;
         return textWidth(value, size, style, family) + tracking * (value.length() - 1);
+    }
+
+    /**
+     * Draws prepared Minecraft-style text while keeping ordinary {@link #text} calls literal.
+     * Colors, bold, italic, underline, strikethrough, obfuscation, newlines, and Unicode code
+     * points are preserved. The returned value is the widest painted line.
+     */
+    public float formattedText(UiRichText value, float x, float top, float size, int fallbackColor) {
+        return formattedText(value, x, top, size, size * 1.25F, fallbackColor, SANS);
+    }
+
+    public float formattedText(UiRichText value, float x, float top, float size,
+                               int fallbackColor, String family) {
+        return formattedText(value, x, top, size, size * 1.25F, fallbackColor, family);
+    }
+
+    /** Draws explicit newlines with a caller-selected line height. */
+    public float formattedText(UiRichText value, float x, float top, float size, float lineHeight,
+                               int fallbackColor, String family) {
+        if (value == null || value.isEmpty()) return 0;
+        float step = Math.max(size, lineHeight);
+        float lineTop = top;
+        float cursor = x;
+        float widest = 0;
+        for (UiRichText.Span span : value.spans()) {
+            String[] lines = span.text().split("\\R", -1);
+            for (int line = 0; line < lines.length; line++) {
+                if (line > 0) {
+                    widest = Math.max(widest, cursor - x);
+                    cursor = x;
+                    lineTop += step;
+                }
+                if (!lines[line].isEmpty()) {
+                    cursor += drawFormattedSpan(lines[line], span, cursor, lineTop, size,
+                        fallbackColor, family);
+                }
+            }
+        }
+        return Math.max(widest, cursor - x);
+    }
+
+    /** Measures the widest explicit line using the same fonts as {@link #formattedText}. */
+    public float formattedTextWidth(UiRichText value, float size, String family) {
+        if (value == null || value.isEmpty()) return 0;
+        float lineWidth = 0;
+        float widest = 0;
+        for (UiRichText.Span span : value.spans()) {
+            String[] lines = span.text().split("\\R", -1);
+            for (int line = 0; line < lines.length; line++) {
+                if (line > 0) {
+                    widest = Math.max(widest, lineWidth);
+                    lineWidth = 0;
+                }
+                lineWidth += formattedSpanWidth(lines[line], span, size, family);
+            }
+        }
+        return Math.max(widest, lineWidth);
+    }
+
+    /**
+     * Returns a one-line styled value shortened with an ellipsis. Cache the result with prepared
+     * row data when the width is stable; it does not need to be recomputed during scrolling.
+     */
+    public UiRichText ellipsizeFormatted(UiRichText value, float maxWidth, float size, String family) {
+        if (value == null || value.isEmpty()) return UiRichText.plain("");
+        if (formattedTextWidth(value, size, family) <= maxWidth && !value.plainText().contains("\n")
+                && !value.plainText().contains("\r")) return value;
+        List<UiRichText.Span> kept = new ArrayList<>();
+        float width = 0;
+        boolean cut = false;
+        outer:
+        for (UiRichText.Span span : value.spans()) {
+            StringBuilder run = new StringBuilder();
+            for (int offset = 0; offset < span.text().length();) {
+                int codePoint = span.text().codePointAt(offset);
+                if (codePoint == '\n' || codePoint == '\r') {
+                    cut = true;
+                    break outer;
+                }
+                String glyph = new String(Character.toChars(codePoint));
+                float glyphWidth = formattedSpanWidth(glyph, span, size, family);
+                UiRichText.Span ellipsisStyle = new UiRichText.Span("…", span.color(), span.bold(),
+                    span.italic(), span.underlined(), span.strikethrough(), false);
+                float ellipsisWidth = formattedSpanWidth("…", ellipsisStyle, size, family);
+                if (ellipsisWidth > Math.max(0, maxWidth)) return UiRichText.plain("");
+                if (width + glyphWidth + ellipsisWidth > Math.max(0, maxWidth)) {
+                    if (!run.isEmpty()) kept.add(copySpan(span, run.toString()));
+                    kept.add(ellipsisStyle);
+                    cut = true;
+                    break outer;
+                }
+                run.append(glyph);
+                width += glyphWidth;
+                offset += Character.charCount(codePoint);
+            }
+            if (!run.isEmpty()) kept.add(copySpan(span, run.toString()));
+        }
+        if (!cut) return value;
+        return UiRichText.of(kept);
+    }
+
+    private float drawFormattedSpan(String text, UiRichText.Span span, float x, float top,
+                                    float size, int fallbackColor, String family) {
+        int style = (span.bold() ? Font.BOLD : Font.PLAIN) | (span.italic() ? Font.ITALIC : Font.PLAIN);
+        Font font = font(size, style, family);
+        FontMetrics metrics = graphics.getFontMetrics(font);
+        float width = metrics.stringWidth(text);
+        int color = span.color() == null ? fallbackColor
+            : (fallbackColor & 0xFF000000) | (span.color() & 0x00FFFFFF);
+        float baseline = top + metrics.getAscent();
+        graphics.setFont(font);
+        graphics.setColor(awtColor(color));
+        graphics.drawString(text, x, baseline);
+        float stroke = Math.max(.65F, size / 14F);
+        graphics.setStroke(new BasicStroke(stroke));
+        if (span.underlined()) {
+            float underline = baseline + Math.max(1, metrics.getDescent() * .2F);
+            graphics.draw(new Line2D.Float(x, underline, x + width, underline));
+        }
+        if (span.strikethrough()) {
+            float strike = baseline - metrics.getAscent() * .32F;
+            graphics.draw(new Line2D.Float(x, strike, x + width, strike));
+        }
+        return width;
+    }
+
+    private float formattedSpanWidth(String text, UiRichText.Span span, float size, String family) {
+        int style = (span.bold() ? Font.BOLD : Font.PLAIN) | (span.italic() ? Font.ITALIC : Font.PLAIN);
+        return graphics.getFontMetrics(font(size, style, family)).stringWidth(text);
+    }
+
+    private static UiRichText.Span copySpan(UiRichText.Span span, String text) {
+        return new UiRichText.Span(text, span.color(), span.bold(), span.italic(), span.underlined(),
+            span.strikethrough(), span.obfuscated());
     }
 
     /** Truncates with an ellipsis so a label never overruns its box. */
@@ -342,6 +610,66 @@ public final class UiCanvas {
         int end = value.length();
         while (end > 0 && textWidth(value.substring(0, end) + suffix, size, style, family) > maxWidth) end--;
         return end <= 0 ? suffix : value.substring(0, end) + suffix;
+    }
+
+    /**
+     * Wraps text at words while preserving explicit newlines. A word wider than the measure is
+     * split safely, so user-provided text can never force a layout wider than its container.
+     */
+    public List<String> wrapText(String value, float maxWidth, float size, int style, String family) {
+        List<String> lines = new ArrayList<>();
+        if (value == null || value.isEmpty()) return lines;
+        float width = Math.max(1, maxWidth);
+        for (String paragraph : value.split("\\R", -1)) {
+            if (paragraph.isEmpty()) {
+                lines.add("");
+                continue;
+            }
+            StringBuilder line = new StringBuilder();
+            for (String word : paragraph.trim().split("\\s+")) {
+                String candidate = line.isEmpty() ? word : line + " " + word;
+                if (textWidth(candidate, size, style, family) <= width) {
+                    line.setLength(0);
+                    line.append(candidate);
+                    continue;
+                }
+                if (!line.isEmpty()) {
+                    lines.add(line.toString());
+                    line.setLength(0);
+                }
+                if (textWidth(word, size, style, family) <= width) {
+                    line.append(word);
+                    continue;
+                }
+                StringBuilder piece = new StringBuilder();
+                for (int offset = 0; offset < word.length();) {
+                    int codePoint = word.codePointAt(offset);
+                    String glyph = new String(Character.toChars(codePoint));
+                    if (!piece.isEmpty() && textWidth(piece + glyph, size, style, family) > width) {
+                        lines.add(piece.toString());
+                        piece.setLength(0);
+                    }
+                    piece.append(glyph);
+                    offset += Character.charCount(codePoint);
+                }
+                line.append(piece);
+            }
+            if (!line.isEmpty()) lines.add(line.toString());
+        }
+        return List.copyOf(lines);
+    }
+
+    public List<String> wrapText(String value, float maxWidth, float size, int style) {
+        return wrapText(value, maxWidth, size, style, SANS);
+    }
+
+    /** Draws wrapped text and returns the height consumed. */
+    public float wrappedText(String value, float x, float top, float maxWidth, float size,
+                             float lineHeight, int color, int style, String family) {
+        List<String> lines = wrapText(value, maxWidth, size, style, family);
+        float step = Math.max(size, lineHeight);
+        for (int i = 0; i < lines.size(); i++) text(lines.get(i), x, top + i * step, size, color, style, family);
+        return lines.isEmpty() ? 0 : lines.size() * step;
     }
 
     // ---------------------------------------------------------------- scoped state
@@ -402,17 +730,144 @@ public final class UiCanvas {
         }
     }
 
-    /** Fades everything drawn inside as one group, rather than per shape. */
+    /** Translates everything drawn inside. Used by scroll containers and custom viewports. */
+    public void withTranslation(float offsetX, float offsetY, Runnable painter) {
+        AffineTransform old = graphics.getTransform();
+        graphics.translate(offsetX, offsetY);
+        try {
+            painter.run();
+        } finally {
+            graphics.setTransform(old);
+        }
+    }
+
+    /** Multiplies opacity per drawing operation. Use withLayer for overlapping shapes as one group. */
     public void withOpacity(float opacity, Runnable painter) {
         Composite old = graphics.getComposite();
+        float inherited = old instanceof AlphaComposite alpha ? alpha.getAlpha() : 1;
         graphics.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER,
-            Math.max(0F, Math.min(1F, opacity))));
+            inherited * Math.max(0F, Math.min(1F, opacity))));
         try {
             painter.run();
         } finally {
             graphics.setComposite(old);
         }
     }
+
+    /**
+     * Paints overlapping shapes into a reusable bounded layer, then fades the result once.
+     * Bounds include shadows; coordinates and clipping match this canvas. No blur is implied.
+     */
+    public void withLayer(UiLayer layer, float opacity, UiRect bounds, java.util.function.Consumer<UiCanvas> painter) {
+        if (layer == null || painter == null || opacity <= 0 || bounds.width() <= 0 || bounds.height() <= 0) return;
+        Rectangle pixels = graphics.getTransform().createTransformedShape(
+            new Rectangle2D.Float(bounds.x(), bounds.y(), bounds.width(), bounds.height())).getBounds();
+        if (target != null) pixels = pixels.intersection(new Rectangle(0, 0, target.getWidth(), target.getHeight()));
+        if (pixels.width <= 0 || pixels.height <= 0) return;
+        Shape existingClip = graphics.getClip();
+        if (existingClip != null && !graphics.getTransform().createTransformedShape(existingClip).intersects(pixels)) return;
+        var image = layer.prepare(pixels.width, pixels.height);
+        Graphics2D child = image.createGraphics();
+        try {
+            child.translate(-pixels.x, -pixels.y);
+            child.transform(graphics.getTransform());
+            Shape clip = graphics.getClip();
+            if (clip != null) child.clip(clip);
+            painter.accept(new UiCanvas(child, image));
+        } finally { child.dispose(); }
+        Graphics2D output = (Graphics2D) graphics.create();
+        try {
+            output.setTransform(new AffineTransform());
+            float inherited = graphics.getComposite() instanceof AlphaComposite alpha ? alpha.getAlpha() : 1;
+            output.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER,
+                inherited * Math.max(0, Math.min(1, opacity))));
+            output.drawImage(image, pixels.x, pixels.y, null);
+        } finally { output.dispose(); }
+    }
+
+    // ---------------------------------------------------------------- Minecraft textures
+
+    /** Transforms drawing around a pivot. Interactive consumers should use UiContext.withTransform. */
+    public void withTransform(UiTransform transform, float pivotX, float pivotY, Runnable painter) {
+        AffineTransform previous = graphics.getTransform();
+        graphics.transform(transform.matrix(pivotX, pivotY));
+        try { withOpacity(transform.opacity(), painter); }
+        finally { graphics.setTransform(previous); }
+    }
+
+    /**
+     * Reuses drawing at a caller-owned revision, transforming the cached pixels on later paints.
+     * Keep bounds size stable and change revision whenever content changes. Drawing only: register
+     * interactive targets through the surrounding UiContext on every paint.
+     * Transparent margins are trimmed internally; drawing coordinates and caller bounds stay fixed.
+     */
+    public void cachedLayer(UiLayer layer, Object revision, UiRect bounds, java.util.function.Consumer<UiCanvas> painter) {
+        if (layer == null || painter == null || bounds.width() <= 0 || bounds.height() <= 0) return;
+        var matrix = graphics.getTransform();
+        float quality = Math.max(1, Math.min(4, Math.round(Math.max(
+            Math.hypot(matrix.getScaleX(), matrix.getShearY()), Math.hypot(matrix.getShearX(), matrix.getScaleY())))));
+        int w = Math.max(1, (int) Math.ceil(bounds.width() * quality));
+        int h = Math.max(1, (int) Math.ceil(bounds.height() * quality));
+        if (!layer.reuse(w, h, revision)) {
+            var child = layer.image().createGraphics();
+            try {
+                child.scale(quality, quality); child.translate(-bounds.x(), -bounds.y());
+                painter.accept(new UiCanvas(child, layer.image()));
+            } finally { child.dispose(); }
+            layer.finishCache();
+        }
+        if (layer.cachedImage() == null) return;
+        var previous = graphics.getTransform();
+        graphics.translate(bounds.x(), bounds.y());
+        graphics.scale(bounds.width() / w, bounds.height() / h);
+        try { graphics.drawImage(layer.cachedImage(), layer.cachedX(), layer.cachedY(), null); }
+        finally { graphics.setTransform(previous); }
+    }
+
+    /**
+     * Paints a Minecraft texture as a cover fill. The image keeps its aspect ratio and crops at
+     * the edges if needed; wrap this in {@link #withRoundedClip} or {@link #withCircleClip} to
+     * make a rounded texture card or circular avatar.
+     *
+     * @return {@code true} when the texture was available, or {@code false} when it could not be
+     * read (for example, while a dynamic skin is still downloading).
+     */
+    public boolean minecraftTexture(Identifier texture, float x, float y, float width, float height) {
+        BufferedImage image = minecraftTextureImage(texture);
+        if (image == null || width <= 0 || height <= 0) return false;
+        float sourceAspect = image.getWidth() / (float) image.getHeight();
+        float targetAspect = width / height;
+        int sourceX = 0, sourceY = 0, sourceW = image.getWidth(), sourceH = image.getHeight();
+        if (sourceAspect > targetAspect) {
+            sourceW = Math.max(1, Math.round(sourceH * targetAspect));
+            sourceX = (image.getWidth() - sourceW) / 2;
+        } else if (sourceAspect < targetAspect) {
+            sourceH = Math.max(1, Math.round(sourceW / targetAspect));
+            sourceY = (image.getHeight() - sourceH) / 2;
+        }
+        drawMinecraftImage(image, sourceX, sourceY, sourceW, sourceH, x, y, width, height);
+        return true;
+    }
+
+    /**
+     * Paints an exact rectangular crop from a Minecraft texture. It is useful for skin faces:
+     * vanilla player skins use {@code (8, 8, 8, 8)} for the base head and {@code (40, 8, 8, 8)}
+     * for its outer hat layer.
+     */
+    public boolean minecraftTextureRegion(Identifier texture, int sourceX, int sourceY, int sourceWidth,
+                                          int sourceHeight, float x, float y, float width, float height) {
+        BufferedImage image = minecraftTextureImage(texture);
+        if (image == null || sourceWidth <= 0 || sourceHeight <= 0 || width <= 0 || height <= 0) return false;
+        int safeX = Math.max(0, Math.min(sourceX, image.getWidth() - 1));
+        int safeY = Math.max(0, Math.min(sourceY, image.getHeight() - 1));
+        int safeW = Math.max(1, Math.min(sourceWidth, image.getWidth() - safeX));
+        int safeH = Math.max(1, Math.min(sourceHeight, image.getHeight() - safeY));
+        drawMinecraftImage(image, safeX, safeY, safeW, safeH, x, y, width, height);
+        return true;
+    }
+
+    /** Drops decoded resource and skin pixels; call after a resource-pack reload if needed. */
+    public static void clearMinecraftTextureCache() { MINECRAFT_TEXTURES.clear(); }
 
     // ---------------------------------------------------------------- colour helpers
 
@@ -458,6 +913,60 @@ public final class UiCanvas {
         graphics.setPaint(new TexturePaint(tile, new Rectangle2D.Float(x, y, tile.getWidth(), tile.getHeight())));
         graphics.fill(new Rectangle2D.Float(x, y, width, height));
         graphics.setPaint(awtColor(0xFF000000));
+    }
+
+    private void drawMinecraftImage(BufferedImage image, int sourceX, int sourceY, int sourceWidth,
+                                    int sourceHeight, float x, float y, float width, float height) {
+        Object old = graphics.getRenderingHint(RenderingHints.KEY_INTERPOLATION);
+        graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+        try {
+            graphics.drawImage(image, Math.round(x), Math.round(y), Math.round(x + width), Math.round(y + height),
+                sourceX, sourceY, sourceX + sourceWidth, sourceY + sourceHeight, null);
+        } finally {
+            graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION,
+                old == null ? RenderingHints.VALUE_INTERPOLATION_BILINEAR : old);
+        }
+    }
+
+    private static BufferedImage minecraftTextureImage(Identifier texture) {
+        if (texture == null) return null;
+        BufferedImage cached = MINECRAFT_TEXTURES.get(texture);
+        if (cached != null) return cached;
+        BufferedImage image = readMinecraftResource(texture);
+        if (image == null) image = readDynamicMinecraftTexture(texture);
+        if (image != null) {
+            if (MINECRAFT_TEXTURES.size() >= TEXTURE_CACHE_LIMIT) MINECRAFT_TEXTURES.clear();
+            MINECRAFT_TEXTURES.put(texture, image);
+        }
+        return image;
+    }
+
+    private static BufferedImage readMinecraftResource(Identifier texture) {
+        try (InputStream input = Minecraft.getInstance().getResourceManager().open(texture)) {
+            return ImageIO.read(input);
+        } catch (IOException | RuntimeException ignored) {
+            return null;
+        }
+    }
+
+    private static BufferedImage readDynamicMinecraftTexture(Identifier texture) {
+        try {
+            if (!(Minecraft.getInstance().getTextureManager().getTexture(texture) instanceof DynamicTexture dynamic)) return null;
+            var pixels = dynamic.getPixels();
+            if (pixels == null || pixels.isClosed()) return null;
+            int width = pixels.getWidth(), height = pixels.getHeight();
+            BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+            int[] source = pixels.getPixelsABGR();
+            int[] target = new int[source.length];
+            for (int i = 0; i < source.length; i++) {
+                int abgr = source[i];
+                target[i] = (abgr & 0xFF00FF00) | ((abgr & 0x000000FF) << 16) | ((abgr >>> 16) & 0x000000FF);
+            }
+            image.setRGB(0, 0, width, height, target, 0, width);
+            return image;
+        } catch (RuntimeException ignored) {
+            return null;
+        }
     }
 
     private static BufferedImage texture(String key, int width, int height, java.util.function.Consumer<Graphics2D> draw) {
@@ -509,7 +1018,9 @@ public final class UiCanvas {
         Font cached = FONTS.get(key);
         if (cached != null) return cached;
         if (FONTS.size() >= FONT_CACHE_LIMIT) FONTS.clear();
-        Font font = new Font(resolved, style, 1).deriveFont(quantised);
+        Font registered = REGISTERED_FONTS.get(resolved);
+        Font font = registered == null ? new Font(resolved, style, 1).deriveFont(quantised)
+            : registered.deriveFont(style, quantised);
         FONTS.put(key, font);
         return font;
     }

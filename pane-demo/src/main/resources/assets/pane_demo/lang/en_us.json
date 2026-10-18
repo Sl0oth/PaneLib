@@ -1,0 +1,8 @@
+{
+  "key.category.pane.demo": "PaneLib Showcase",
+  "key.pane_demo.open": "Open Atlas console",
+  "key.pane_demo.gallery": "Open style gallery",
+  "key.pane_demo.video_test": "Open consumer layout demo",
+  "key.pane_demo.texture_test": "Open texture and skin demo",
+  "key.pane_demo.hud": "Toggle field HUD"
+}

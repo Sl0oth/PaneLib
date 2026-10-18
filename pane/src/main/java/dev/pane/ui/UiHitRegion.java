@@ -9,14 +9,20 @@ package dev.pane.ui;
  * still be mapped against the track, not the padded rectangle.
  */
 record UiHitRegion(String id, String action, float x, float y, float width, float height,
-                   float trackX, float trackWidth) {
+                   float trackX, float trackWidth, java.awt.Shape hitShape) {
+
+    UiHitRegion(String id, String action, float x, float y, float width, float height,
+                float trackX, float trackWidth) {
+        this(id, action, x, y, width, height, trackX, trackWidth, null);
+    }
 
     UiHitRegion(String id, String action, float x, float y, float width, float height) {
         this(id, action, x, y, width, height, x, width);
     }
 
     boolean contains(double mouseX, double mouseY) {
-        return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height;
+        return mouseX >= x && mouseX < x + width && mouseY >= y && mouseY < y + height
+            && (hitShape == null || hitShape.contains(mouseX, mouseY));
     }
 
     /** Fraction of the value track at the given layout-space x, clamped to 0..1. */

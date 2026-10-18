@@ -1,7 +1,14 @@
 .gradle/
+.gradle-cached/
 build/
 run/
 out/
+pane/logs/
 *.iml
 .idea/
 .DS_Store
+*.log
+*.hprof
+*.jfr
+
+pane-demo/run-benchmark/
