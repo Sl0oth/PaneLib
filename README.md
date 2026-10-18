@@ -77,7 +77,7 @@ var screen = new UiScreen(document, NativeOverlayRenderer.NONE, event -> {
 Minecraft.getInstance().gui.setScreen(screen);
 ```
 
-Start with [the documentation](docs/index.md). The [Minecraft integration guide](docs/minecraft-integration.md)
+Start with [the documentation website](https://sl0oth.github.io/PaneLib/) or [the Markdown guides](docs/index.md). The [Minecraft integration guide](docs/minecraft-integration.md)
 covers panorama-backed screens, Escape, raw input, and asynchronous server data. The
 [paper-craft recipe](docs/paper-craft.md) maps the PaneLib marketing design directly to native API calls.
 

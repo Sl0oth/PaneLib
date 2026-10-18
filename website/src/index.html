@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PaneLib — native Minecraft interfaces for Fabric</title>
+<meta name="description" content="Documentation for PaneLib 0.9.8, a native retained-mode Java UI library for Minecraft Fabric client mods.">
+<meta name="theme-color" content="#102E45">
+<link rel="preload" href="assets/Roboto-Variable.ttf" as="font" type="font/ttf" crossorigin>
+<link rel="stylesheet" href="site.css">
+<link rel="stylesheet" href="pygments.css">
+<script src="site.js" defer></script>
+</head>
+<body data-view="home">
+<a class="skip-link" href="#site-main">Skip to content</a>
+
+<header class="masthead">
+  <button class="icon-btn masthead__menu" type="button" aria-controls="site-drawer" aria-expanded="false" data-drawer-open>
+    <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M3 5h14M3 10h14M3 15h14"/></svg>
+    <span class="vh">Open documentation menu</span>
+  </button>
+  <a class="brand" href="#site-home-title">
+    <svg class="brand__mark" viewBox="0 0 32 32" aria-hidden="true">
+      <rect x="9" y="3" width="20" height="16" rx="2" class="m-back"/>
+      <rect x="3" y="11" width="20" height="16" rx="2" class="m-front"/>
+      <path d="M3 16h20" class="m-bar"/>
+    </svg>
+    <span>PaneLib</span>
+  </a>
+  <span class="release"><span data-version>0.9.8</span> / release candidate</span>
+  <span class="masthead__gap"></span>
+  <button class="search-trigger" type="button" aria-haspopup="dialog" aria-controls="site-search" aria-label="Search documentation" data-search-open>
+    <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4.5 4.5"/></svg>
+    <span class="search-trigger__label">Search docs</span>
+    <kbd data-shortcut>Ctrl K</kbd>
+  </button>
+  <a class="masthead__gh" href="https://github.com/Sl0oth/PaneLib" data-repo>GitHub</a>
+</header>
+
+<div class="shell">
+  <div class="backdrop" data-drawer-close hidden></div>
+  <div class="rail" id="site-drawer" aria-label="Documentation menu">
+    <div class="rail__head">
+      <span class="eyebrow">Field guide</span>
+      <button class="icon-btn" type="button" data-drawer-close>
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="m5 5 10 10M15 5 5 15"/></svg>
+        <span class="vh">Close menu</span>
+      </button>
+    </div>
+    <nav aria-label="Guides" id="site-rail-nav"></nav>
+  </div>
+
+  <main id="site-main" tabindex="-1">
+    <div id="site-home">
+      <section class="cover" aria-labelledby="site-home-title">
+        <div class="cover__text">
+          <p class="eyebrow">Native interfaces / Fabric</p>
+          <h1 id="site-home-title" tabindex="-1">Build a proper interface. Keep the game.</h1>
+          <p class="lede">PaneLib is a client-side Fabric library for building Minecraft screens and gameplay HUDs entirely in Java. It is native and retained: no Chromium, HTML, CSS parser or MCEF. A screen repaints only when something changes, and Minecraft still draws its own items, entities and world.</p>
+          <p class="actions">
+            <a class="btn btn--primary" href="#guide-getting-started">Get started</a>
+            <a class="btn" href="#guide-ui-basics">Browse the API</a>
+          </p>
+        </div>
+        <figure class="plate">
+          <span class="plate__tab">Plate 1 · Atlas console</span>
+          <div class="plate__frame"><img src="assets/atlas-console.png" width="1708" height="960" alt="The Atlas field console from the PaneLib demo, drawn by PaneLib over a live Minecraft world."></div>
+          <figcaption>Actual Minecraft client capture</figcaption>
+        </figure>
+      </section>
+
+      <dl class="specs" aria-label="Release targets">
+        <div><dt>Minecraft</dt><dd>26.2</dd></div>
+        <div><dt>Fabric Loader</dt><dd>0.19.3</dd></div>
+        <div><dt>Java</dt><dd>25</dd></div>
+        <div><dt>License</dt><dd>MIT</dd></div>
+        <div><dt>Artifact</dt><dd><code>dev.pane:panelib:<span data-version>0.9.8</span></code> via Maven Local</dd></div>
+      </dl>
+
+      <section class="band" aria-labelledby="site-h-render">
+        <p class="eyebrow"><span class="num">§01</span> Rendering model</p>
+        <h2 id="site-h-render">Paint once, then get out of the way</h2>
+        <ol class="steps">
+          <li><strong>Paint on change</strong><span>Your Java painter runs when state, hover, size or <code>invalidate()</code> changes. Finite animations stop scheduling frames when they end.</span></li>
+          <li><strong>Reuse the texture</strong><span>The result is uploaded to one reusable GPU texture and simply blitted while the screen is idle.</span></li>
+          <li><strong>Compose native layers</strong><span><code>ItemStack</code>s and entities render through Minecraft in a separate layer, and do not invalidate the retained surface.</span></li>
+        </ol>
+        <p class="note">This website is documentation only; nothing here runs inside the game.</p>
+      </section>
+
+      <section class="band band--split" aria-labelledby="site-h-first">
+        <div>
+          <p class="eyebrow"><span class="num">§02</span> Your first screen</p>
+          <h2 id="site-h-first">A document, a page, a screen</h2>
+          <p>Publish the release candidate to Maven Local, then build a <code>UiDocument</code> with one or more <code>UiPage</code> painters and open a <code>UiScreen</code>. A public Maven host has not been selected yet.</p>
+          <pre class="mini"><code>./gradlew :pane:publishToMavenLocal
+./gradlew runClient</code></pre>
+          <p><a href="#guide-getting-started">Read the full guide →</a> · <a href="#guide-installation">Gradle setup</a></p>
+        </div>
+        <div class="codeblock codeblock--dark">
+          <div class="codeblock__bar"><span>Java</span><button class="copy" type="button">Copy<span class="vh"> code</span></button></div>
+<pre tabindex="0"><code>var home = new UiPage("home", "Home", "H", 0xFF58A6FF, ui -> {
+    float x = ui.contentX() + 24;
+    float y = ui.contentY() + 24;
+
+    ui.canvas().textMedium("Hello, PaneLib", x, y, 24, ui.theme().text());
+    ui.button("save-button", "Save", "save",
+        x, y + 40, 88, 32,
+        UiContext.ButtonStyle.PRIMARY, UiContext.Shape.ROUNDED);
+});
+
+var document = UiDocument.builder("My mod")
+    .brand("My mod")
+    .theme(UiTheme.dark())
+    .page(home)
+    .build();
+
+var screen = new UiScreen(document, NativeOverlayRenderer.NONE, event -> {
+    if (event.type() == UiEventType.ACTION &amp;&amp; event.key().equals("save")) saveConfig();
+});
+
+Minecraft.getInstance().gui.setScreen(screen);</code></pre>
+        </div>
+      </section>
+
+      <section class="band band--split" aria-labelledby="site-h-hud">
+        <div>
+          <p class="eyebrow"><span class="num">§03</span> In the game</p>
+          <h2 id="site-h-hud">Input-free gameplay HUDs</h2>
+          <p><code>UiHud</code> reuses the same drawing, state and motion APIs for widgets drawn over gameplay. Equal values do not repaint; anchors use logical points; world changes release surfaces. The library installs no key or mouse listeners and never calls <code>setScreen</code>.</p>
+          <p><a href="#guide-huds-and-composable-motion">HUDs and composable motion →</a></p>
+          <details class="motion-details">
+            <summary>Show the motion studio capture</summary>
+            <div class="gif" data-gif="assets/atlas-motion.gif" data-width="960" data-height="540" data-on-open data-alt="Atlas motion studio: cards expanding, spring retargeting and staggered controls."></div>
+          </details>
+        </div>
+        <figure class="plate plate--small">
+          <div class="gif" data-gif="assets/hud.gif" data-width="840" data-height="480" data-alt="PaneLib live health and position HUD drawn over Minecraft gameplay."></div>
+          <noscript><img src="assets/hud.gif" alt="PaneLib live HUD over Minecraft gameplay."></noscript>
+          <figcaption>Live HUD, actual gameplay capture</figcaption>
+        </figure>
+      </section>
+
+      <section class="band band--split" aria-labelledby="site-h-input">
+        <figure class="plate plate--small">
+          <img src="assets/inputs.png" width="1708" height="960" alt="PaneLib text fields and textareas using a custom monospace input style." loading="lazy">
+          <figcaption>Styled inputs, actual client capture</figcaption>
+        </figure>
+        <div>
+          <p class="eyebrow"><span class="num">§04</span> Field notes</p>
+          <h2 id="site-h-input">What is not promised yet</h2>
+          <ul class="caveats">
+            <li>Public Maven hosting and final 1.0 compatibility guarantees</li>
+            <li>Windows and Linux GPU profiling</li>
+            <li>Minecraft narrator semantics and IME text composition</li>
+            <li>Automated visual regression checks</li>
+          </ul>
+          <p><a href="#guide-status">Full status page →</a></p>
+        </div>
+      </section>
+
+      <section class="band" aria-labelledby="site-h-contents">
+        <p class="eyebrow"><span class="num">§05</span> Contents</p>
+        <h2 id="site-h-contents">The field guide</h2>
+        <div class="contents" id="site-contents"></div>
+      </section>
+    </div>
+
+    <div id="site-doc" aria-label="Complete documentation"></div>
+  </main>
+</div>
+
+<footer class="footer">
+  <span>PaneLib <span data-version>0.9.8</span> release candidate</span>
+  <a href="https://github.com/Sl0oth/PaneLib/blob/main/LICENSE" data-repo-path="/blob/main/LICENSE">MIT License</a>
+  <a href="https://github.com/Sl0oth/PaneLib" data-repo>GitHub</a>
+  <a href="#guide-status">Status</a>
+</footer>
+
+<div class="search" id="site-search" role="dialog" aria-modal="true" aria-labelledby="site-search-label" hidden>
+  <div class="search__backdrop" data-search-close></div>
+  <div class="search__panel">
+    <div class="search__row">
+      <label id="site-search-label" for="site-search-input" class="vh">Search documentation</label>
+      <input id="site-search-input" type="search" placeholder="Search guides, e.g. UiHud" autocomplete="off" spellcheck="false" maxlength="100">
+      <button class="icon-btn" type="button" data-search-close><span aria-hidden="true">Esc</span><span class="vh">Close search</span></button>
+    </div>
+    <p class="search__status" id="site-search-status" aria-live="polite"></p>
+    <ul class="search__results" id="site-search-results"></ul>
+  </div>
+</div>
+
+<div class="vh" aria-live="polite" id="site-announcer"></div>
+</body>
+</html>
