@@ -1,4 +1,11 @@
 {
   "schemaVersion": 1,
-  "releases": []
+  "releases": [
+    {
+      "version": "0.9.9-beta.1",
+      "url": "https://github.com/Sl0oth/PaneLib/releases/download/v0.9.9-beta.1/panelib-0.9.9-beta.1-maven.zip",
+      "sha256": "c9e06601ba095657daf55a53a06be392a7c222f63d100ceafa43321eaeb42931",
+      "size": 5008348
+    }
+  ]
 }
