@@ -512,11 +512,12 @@ public final class UiCanvas {
         Font selected=font(size,style,family);
         float ascent=graphics.getFontMetrics(selected).getAscent();
         var result=new ArrayList<UiShapedText.Line>();
+        UiTextBoundary.Index boundaries=UiTextBoundary.index(value);
         int paragraphStart=0;
         while(paragraphStart<=value.length()) {
-            int newline=value.indexOf('\n',paragraphStart);
-            int end=newline<0?value.length():newline;
-            if(end==paragraphStart)result.add(new UiShapedText.Line(end,end,new UiShapedText(null,value,end,end,ascent)));
+            int end=paragraphStart;
+            while(end<value.length()&&value.charAt(end)!='\n'&&value.charAt(end)!='\r')end++;
+            if(end==paragraphStart)result.add(new UiShapedText.Line(end,end,new UiShapedText(null,value,end,end,ascent,boundaries)));
             else {
                 var attributed=new java.text.AttributedString(value.substring(paragraphStart,end));
                 attributed.addAttribute(java.awt.font.TextAttribute.FONT,selected);
@@ -526,18 +527,18 @@ public final class UiCanvas {
                     int start=paragraphStart+measurer.getPosition();
                     var layout=measurer.nextLayout(Math.max(.01F,width));
                     int next=paragraphStart+measurer.getPosition();
-                    // JDK LineBreakMeasurer can split a surrogate pair when even one glyph cannot fit.
-                    if(UiTextBoundary.floor(value,next)!=next) {
-                        next=UiTextBoundary.next(value,next);
+                    // Even a tiny viewport must consume one complete grapheme, never half an emoji/mark sequence.
+                    if(!boundaries.contains(next)) {
+                        next=boundaries.ceil(next);
                         measurer.setPosition(next-paragraphStart);
                         layout=new java.awt.font.TextLayout(value.substring(start,next),selected,graphics.getFontRenderContext());
                     }
                     // Reuse the layout that chose the line break; do not shape each line twice.
-                    result.add(new UiShapedText.Line(start,next,new UiShapedText(layout,value,start,next,ascent)));
+                    result.add(new UiShapedText.Line(start,next,new UiShapedText(layout,value,start,next,ascent,boundaries)));
                 }
             }
-            if(newline<0)break;
-            paragraphStart=newline+1;
+            if(end==value.length())break;
+            paragraphStart=boundaries.next(end);
         }
         return List.copyOf(result);
     }

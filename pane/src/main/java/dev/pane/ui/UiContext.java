@@ -1175,9 +1175,10 @@ public final class UiContext {
         String displayValue = masked ? "•".repeat(value.length()) : value;
         state.putIfAbsent(key, value);
         boolean focused = focused(id);
-        int cursor = focused && textInput != null ? UiTextBoundary.floor(value, textInput.cursor()) : value.length();
-        int selectionStart = focused && textInput != null ? UiTextBoundary.floor(value, textInput.selectionStart()) : cursor;
-        int selectionEnd = focused && textInput != null ? UiTextBoundary.floor(value, textInput.selectionEnd()) : cursor;
+        UiTextBoundary.Index boundaries = UiTextBoundary.index(value);
+        int cursor = focused && textInput != null ? boundaries.floor(textInput.cursor()) : value.length();
+        int selectionStart = focused && textInput != null ? boundaries.floor(textInput.selectionStart()) : cursor;
+        int selectionEnd = focused && textInput != null ? boundaries.floor(textInput.selectionEnd()) : cursor;
         paintInputSurface(paint, focused, x, y, width, height);
 
         float textHeight = canvas.textHeight(size, fontStyle, family);
@@ -1203,11 +1204,11 @@ public final class UiContext {
         internalHit(id, "input:" + key, x, y, width, height);
         float[] carets = new float[value.length() + 1];
         java.util.Arrays.fill(carets, Float.NaN);
-        // Masked display positions are indexed using the original value's valid codepoint boundaries.
+        // Masked display positions are indexed using the original value's grapheme boundaries.
         for (int i = 0; i <= value.length();) {
             carets[i] = textX - textOffset + shaped.x(i);
             if (i == value.length()) break;
-            i = UiTextBoundary.next(value, i);
+            i = boundaries.next(i);
         }
         float[] caretYs = new float[carets.length];
         java.util.Arrays.fill(caretYs, y + height / 2);
@@ -1243,11 +1244,12 @@ public final class UiContext {
         Object stored = state.get(key);
         if (stored == null || stored instanceof String && !value.equals(stored)) state.put(key, value);
         boolean focused = focused(id);
-        int cursor = focused && textInput != null ? UiTextBoundary.floor(value, textInput.cursor()) : value.length();
+        UiTextBoundary.Index boundaries = UiTextBoundary.index(value);
+        int cursor = focused && textInput != null ? boundaries.floor(textInput.cursor()) : value.length();
         int selectionStart = focused && textInput != null
-            ? UiTextBoundary.floor(value, textInput.selectionStart()) : cursor;
+            ? boundaries.floor(textInput.selectionStart()) : cursor;
         int selectionEnd = focused && textInput != null
-            ? UiTextBoundary.floor(value, textInput.selectionEnd()) : cursor;
+            ? boundaries.floor(textInput.selectionEnd()) : cursor;
         paintInputSurface(paint, focused, x, y, width, height);
 
         float textX = x + paddingX;
@@ -1269,7 +1271,7 @@ public final class UiContext {
                 caretYs[index] = baseline + textHeight / 2;
                 lineXs[index - line.start()] = caretXs[index];
                 if (index == line.end()) break;
-                index = UiTextBoundary.next(value, index);
+                index = boundaries.next(index);
             }
             visualLines.add(new UiTextLine(line.start(), line.end(), lineXs, baseline + textHeight / 2));
         }

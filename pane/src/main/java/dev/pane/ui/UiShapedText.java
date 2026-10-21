@@ -11,11 +11,14 @@ final class UiShapedText {
     final float ascent;
     private final float[] carets;
     UiShapedText(TextLayout layout,String source,int start,int end,float ascent) {
+        this(layout,source,start,end,ascent,UiTextBoundary.index(source));
+    }
+    UiShapedText(TextLayout layout,String source,int start,int end,float ascent,UiTextBoundary.Index boundaries) {
         this.layout=layout;this.glyphs=null;this.ascent=ascent;
         carets=new float[end-start+1];Arrays.fill(carets,Float.NaN);
         for(int i=0;i<carets.length;i++) {
             int at=start+i;
-            if(at>start&&at<end&&Character.isHighSurrogate(source.charAt(at-1))&&Character.isLowSurrogate(source.charAt(at)))continue;
+            if(!boundaries.contains(at))continue;
             carets[i]=layout==null?0:layout.getCaretInfo(TextHitInfo.leading(i))[0];
         }
     }

@@ -1765,8 +1765,9 @@ public class UiScreen extends Screen {
     private boolean handleTextKey(UiInputRegion input, KeyEvent event) {
         String value = editingValue(input);
         int length = value.length();
-        textCursor = UiTextBoundary.floor(value, textCursor);
-        textAnchor = UiTextBoundary.floor(value, textAnchor);
+        UiTextBoundary.Index boundaries = UiTextBoundary.index(value);
+        textCursor = boundaries.floor(textCursor);
+        textAnchor = boundaries.floor(textAnchor);
         int modifiers = event.modifiers();
         boolean shortcut = (modifiers & (GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_SUPER)) != 0
             && (modifiers & GLFW.GLFW_MOD_ALT) == 0;
@@ -1828,12 +1829,12 @@ public class UiScreen extends Screen {
         preferredCaretX = Float.NaN;
         if (event.key() == GLFW.GLFW_KEY_LEFT) {
             moveTextCursor(!extend && textCursor != textAnchor ? Math.min(textCursor, textAnchor)
-                : word ? UiTextBoundary.previousWord(value, textCursor) : UiTextBoundary.previous(value, textCursor), extend);
+                : word ? UiTextBoundary.previousWord(value, textCursor) : boundaries.previous(textCursor), extend);
             return true;
         }
         if (event.key() == GLFW.GLFW_KEY_RIGHT) {
             moveTextCursor(!extend && textCursor != textAnchor ? Math.max(textCursor, textAnchor)
-                : word ? UiTextBoundary.nextWord(value, textCursor) : UiTextBoundary.next(value, textCursor), extend);
+                : word ? UiTextBoundary.nextWord(value, textCursor) : boundaries.next(textCursor), extend);
             return true;
         }
         if (event.key() == GLFW.GLFW_KEY_HOME) {
@@ -1852,7 +1853,7 @@ public class UiScreen extends Screen {
             if (textCursor != textAnchor) replaceTextSelection(input, "");
             else if (textCursor > 0) {
                 UiTextHistory.Snapshot before = new UiTextHistory.Snapshot(value, textCursor, textAnchor);
-                textAnchor = word ? UiTextBoundary.previousWord(value, textCursor) : UiTextBoundary.previous(value, textCursor);
+                textAnchor = word ? UiTextBoundary.previousWord(value, textCursor) : boundaries.previous(textCursor);
                 replaceTextSelection(input, "", before);
             }
             return true;
@@ -1861,7 +1862,7 @@ public class UiScreen extends Screen {
             if (textCursor != textAnchor) replaceTextSelection(input, "");
             else if (textCursor < length) {
                 UiTextHistory.Snapshot before = new UiTextHistory.Snapshot(value, textCursor, textAnchor);
-                textAnchor = word ? UiTextBoundary.nextWord(value, textCursor) : UiTextBoundary.next(value, textCursor);
+                textAnchor = word ? UiTextBoundary.nextWord(value, textCursor) : boundaries.next(textCursor);
                 replaceTextSelection(input, "", before);
             }
             return true;
@@ -1900,14 +1901,17 @@ public class UiScreen extends Screen {
         revealEditorCaret(input.id());
         preferredCaretX = Float.NaN;
         String value = editingValue(input);
-        int start = Math.min(UiTextBoundary.floor(value, textCursor), UiTextBoundary.floor(value, textAnchor));
-        int end = Math.max(UiTextBoundary.floor(value, textCursor), UiTextBoundary.floor(value, textAnchor));
+        UiTextBoundary.Index boundaries = UiTextBoundary.index(value);
+        int start = Math.min(boundaries.floor(textCursor), boundaries.floor(textAnchor));
+        int end = Math.max(boundaries.floor(textCursor), boundaries.floor(textAnchor));
         String safe = input.multiline() ? cleanMultiline(replacement) : cleanSingleLine(replacement);
         int available = Math.max(0, input.maxLength() - (value.length() - (end - start)));
         if (safe.length() > available) safe = UiTextBoundary.truncate(safe, available);
         String next = value.substring(0, start) + safe + value.substring(end);
         textUpstream = false;
-        textCursor = start + safe.length();
+        // Insertion or deletion can join neighboring clusters (ZWJ, accents, regional indicators).
+        // Snap against the complete result, not the inserted substring or the old boundary map.
+        textCursor = UiTextBoundary.ceil(next, start + safe.length());
         textAnchor = textCursor;
         textHistories.computeIfAbsent(input.key(), ignored -> new UiTextHistory())
             .record(before, new UiTextHistory.Snapshot(next, textCursor, textAnchor));

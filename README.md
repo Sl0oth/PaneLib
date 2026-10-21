@@ -146,12 +146,13 @@ The old MCEF experiment is preserved under `dev.pane.mcef` for a possible option
 
 ## Release state
 
-Current local candidate: `dev.pane:panelib:0.9.9-beta.1`. This checkout reproduces the published beta;
+Current local candidate: `dev.pane:panelib:0.9.9-beta.2`. This is unreleased development source;
+the published `0.9.9-beta.1` artifacts remain unchanged. The development version gives new fixes their own identity;
 the coordinate is also checked by the local packager against root `gradle.properties`.
 
-The published 0.9.9-beta.1 gives post-submission fixes their own identity. Root `gradle.properties`
-drives its runtime, sources, Javadoc, starter descriptor, and Maven coordinates. The preserved
-submitted 0.9.8 snapshot is never overwritten with newer bytes.
+Root `gradle.properties` drives the runtime, sources, Javadoc, starter descriptor and Maven
+coordinates for the current source version. Published beta.1 and the preserved submitted 0.9.8
+snapshot are never overwritten with newer bytes.
 
 Prepare and verify local release artifacts with:
 

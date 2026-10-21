@@ -11,6 +11,10 @@ the nested runtime bytes, and passed actual Minecraft smoke checks on macOS ARM6
 [publication audit](audits/public-maven-publication-2026-10-21.md). This establishes the published
 beta's consumption path; the remaining adoption limits below still apply.
 
+The development source is now **unreleased 0.9.9-beta.2**, with [grapheme-safe editing](audits/grapheme-editing-2026-10-21.md).
+The published artifacts described above are unchanged. [Platform testing](platform-testing.md)
+separates hosted build/client checks from pending Windows desktop validation.
+
 ## Current public examples
 
 `./gradlew :pane-demo:runExamples` opens the curated shelf at the title screen:
@@ -42,8 +46,8 @@ not the current first-run experience.
   dialog typography. Custom styling preserves the built-in interaction and focus contracts.
 - Responsive layouts, document reference scaling, HUD placement policies, smooth scrolling,
   explicit end scrolling, follow-at-end behavior, and virtualized fixed-height lists.
-- Keyboard focus/navigation, clipboard editing, pointer caret/selection, Unicode codepoint-safe
-  editing, and bounded undo/redo. These do not imply complete narrator or IME support.
+- Keyboard focus/navigation, clipboard editing, pointer caret/selection, Unicode grapheme-safe
+  editing in unreleased beta.2 source (published beta.1 remains codepoint-safe), and bounded undo/redo. These do not imply complete narrator or IME support.
 - Native item/entity/player slots, world-free player appearance/framing, and single-line Minecraft
   font labels. Resource-pack font/language changes refresh native text layout.
 - Finite scalar/angle animations, sequences, bounded spring curves, and transformed drawing/button
