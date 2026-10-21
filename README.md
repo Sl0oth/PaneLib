@@ -4,9 +4,11 @@ PaneLib is a 100% client-side Fabric UI library for building desktop-quality Min
 
 It is native and retained-mode. It does not start Chromium, load HTML, parse CSS, or require MCEF. A screen is rasterized only when something changes, uploaded to one reusable GPU texture, and then blitted while idle. Minecraft items and entities render in a separate native layer.
 
-Current local candidate: `dev.pane:panelib:0.9.9-beta.1`, targeting Minecraft 26.2, Fabric Loader
-0.19.3, and Java 25. Root `gradle.properties` is the version authority. The submitted 0.9.8
-snapshot is preserved; this candidate is not a published update.
+Published beta: [`0.9.9-beta.1`](https://github.com/Sl0oth/PaneLib/releases/tag/v0.9.9-beta.1),
+for Minecraft 26.2, Fabric Loader 0.19.3+, Fabric API and Java 25. Developers can use
+`dev.pane:panelib:0.9.9-beta.1` from the anonymous Maven repository at
+`https://sl0oth.github.io/PaneLib/maven/`. See [installation](docs/installation.md) for the Gradle snippet.
+The submitted 0.9.8 snapshot is preserved. This GitHub beta does not update Modrinth.
 
 ## First screen in your own mod
 
@@ -144,7 +146,10 @@ The old MCEF experiment is preserved under `dev.pane.mcef` for a possible option
 
 ## Release state
 
-The current local candidate gives post-submission fixes their own identity. Root `gradle.properties`
+Current local candidate: `dev.pane:panelib:0.9.9-beta.1`. This checkout reproduces the published beta;
+the coordinate is also checked by the local packager against root `gradle.properties`.
+
+The published 0.9.9-beta.1 gives post-submission fixes their own identity. Root `gradle.properties`
 drives its runtime, sources, Javadoc, starter descriptor, and Maven coordinates. The preserved
 submitted 0.9.8 snapshot is never overwritten with newer bytes.
 

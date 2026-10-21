@@ -1,10 +1,19 @@
 # Public Maven hosting
 
-**Status: prepared locally, not published.** The planned anonymous repository URL is
-`https://sl0oth.github.io/PaneLib/maven/`, with coordinates `dev.pane:panelib:<exact-version>`.
-The checked-in `distribution/maven/releases.json` catalog is empty. A candidate catalog under
-`build/publication/` is for review only. Neither a local build nor this document establishes that
-a public Maven download works.
+**Status: published and verified on October 21, 2026.** The anonymous repository is
+`https://sl0oth.github.io/PaneLib/maven/`. Its first published coordinate is
+`dev.pane:panelib:0.9.9-beta.1`, for Minecraft 26.2 and Java 25.
+
+All 25 immutable version files were downloaded anonymously over verified HTTPS and matched the
+approved candidate. Independent file and public Maven consumers built successfully, the bundled
+JAR matched exactly, and both completed their Minecraft smoke checks on macOS ARM64. Dependency
+caches were reused; fresh endpoint downloads were checked separately. See the
+[publication audit](audits/public-maven-publication-2026-10-21.md) and
+[installation guide](installation.md).
+
+Download the matching starter, runtime, sources and API reference from the
+[GitHub beta release](https://github.com/Sl0oth/PaneLib/releases/tag/v0.9.9-beta.1).
+This publication does not update Modrinth.
 
 ## How hosting works
 
@@ -49,8 +58,8 @@ do not replace an asset or edit the hash of a published coordinate.
    were reused. Only then describe that version and endpoint as publicly verified.
 
 After the first version, repeat the candidate, asset and catalog gates; do not repeat the empty
-bootstrap or reset the catalog. Replace the planned-status text and add a concrete installation
-example only after the public gate passes. Select its version from the approved catalog, not from
+bootstrap or reset the catalog. Update the published-status text and installation
+example only after each new public gate passes. Select its version from the approved catalog, not from
 the current development version in `gradle.properties`.
 
 ## Deployment checks

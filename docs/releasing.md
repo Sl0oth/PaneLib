@@ -58,14 +58,15 @@ versions still need their own evidence; byte identity across all operating syste
 ## Publication is a separate step
 
 The release-candidate workflow runs these checks and retains artifacts; it has read-only
-repository permissions and does not create a release. Public Maven hosting is prepared for GitHub
-Pages at `https://sl0oth.github.io/PaneLib/maven/`, but is **not published yet**. The committed catalog
-is empty; a staged catalog under `build/publication/` is only a review artifact.
+repository permissions and does not create a release. Public Maven hosting is live on GitHub
+Pages at `https://sl0oth.github.io/PaneLib/maven/`. The committed catalog pins the verified
+`0.9.9-beta.1` release. Future staged catalogs under `build/publication/` remain review artifacts
+until their release and deployment gates pass.
 Before publication, check the actual destination's version history, choose an unused release
 identity, validate that exact candidate, and record its hashes and platform evidence. Never
 replace the preserved `release-snapshots/0.9.8-submitted` snapshot or overwrite a published version.
 
-Follow [public Maven hosting](public-maven.md) for the empty-catalog bootstrap, approved release-asset
+Follow [public Maven hosting](public-maven.md) for the completed one-time bootstrap and subsequent approved release-asset
 upload, append-only catalog change, Pages deployment and anonymous consumer verification. Upload the
 already verified candidate ZIP byte for byte. Do not rebuild an older release to deploy documentation
 or add a newer version. Keep publication separate from `prepareRelease` and consumer verification.

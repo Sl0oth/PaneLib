@@ -52,3 +52,10 @@ The offline suite exercises strict arguments, fresh profile isolation, artifact 
 classpath boundaries/space-containing paths, logging rewrites, platform JVM flags, failed-start
 cleanup, deadline enforcement and verdicts. Actual Windows/Linux client behavior still needs
 those platforms; these synthetic checks do not establish it.
+
+Ubuntu CI owns the virtual display with `xvfb-run`. The workflows install
+`external-display.init.gradle` in that job's Gradle init directory, so all nested starter builds
+also reuse that display. Pinned Loom 1.17.19 otherwise starts a second Xvfb process and fails to
+forward the configured output capture. The script disables only that duplicate launcher, requires
+`DISPLAY` before a client starts, and preserves completion markers, FAIL checks, timeouts and
+process-exit checks. It is not installed in a developer's Gradle home by this project.

@@ -4,6 +4,36 @@ PaneLib is a **client-side library**, separate from its example showcase. Instal
 adds no screen or key binding. Your mod supplies those. The target is Minecraft **26.2**, Fabric
 Loader **0.19.3 or newer**, **Java 25**, and **Fabric API**. Other versions/loaders are not claimed.
 
+## Public Maven dependency
+
+The published beta is `0.9.9-beta.1`. Add this repository and dependency to your Minecraft 26.2
+Fabric mod's `build.gradle`:
+
+```groovy
+repositories {
+    maven {
+        url = uri('https://sl0oth.github.io/PaneLib/maven/')
+        content { includeModule('dev.pane', 'panelib') }
+    }
+}
+dependencies {
+    implementation 'dev.pane:panelib:0.9.9-beta.1'
+}
+```
+
+No GitHub login or token is needed. Install the matching runtime with your mod, or deliberately
+bundle it with Loom `include` as described below. Fabric API remains a separate dependency.
+Get the complete starter ZIP and runtime from the
+[GitHub beta release](https://github.com/Sl0oth/PaneLib/releases/tag/v0.9.9-beta.1).
+For the extracted starter, Maven mode is:
+
+```sh
+./gradlew runClient -PpaneRepository=https://sl0oth.github.io/PaneLib/maven/
+```
+
+Its version descriptor selects the matching released version. The bundled file remains the
+starter's default when no repository is supplied.
+
 ## Fastest first screen
 
 Use the [independent starter](../examples/first-screen/README.md). In a source checkout:
@@ -23,9 +53,8 @@ For an unpacked starter ZIP, run `./gradlew runClient` inside `pane-first-screen
 at the title screen; no world is needed. On a fresh normal profile, complete Minecraft's first-start
 accessibility screen before the starter opens. `-PsmokeTest` uses its own disposable profile.
 
-Source and local candidate bundles are available for testing. A public binary download exists only
-when a release is actually published on [GitHub Releases](https://github.com/Sl0oth/PaneLib/releases)
-or the distribution platform. A prepared local bundle, tag, or draft is not a published release.
+Source and the published beta bundle are available for testing. Future local candidates are not
+published releases until their upload and public verification have completed.
 
 ## Local Maven repository dry run
 
@@ -51,16 +80,11 @@ The version still comes from `panelib-release.properties` or the source checkout
 local paths, `file:` URLs, or HTTPS URLs, restricts this repository to the `dev.pane:panelib` module,
 and validates the resolved runtime's id/environment/version/API before compilation.
 
-The planned public repository is `https://sl0oth.github.io/PaneLib/maven/`. It is **not published yet**;
-the checked-in release catalog is empty. Continue using the local repository or bundled starter.
-The ZIP verifies repository consumption locally; it does not prove public downloading.
-`-PpaneJar=/path/to/panelib.jar` remains available for a specific file, including renamed files,
-but cannot be combined with `-PpaneRepository`.
-
-After publication is verified, use the exact approved version from the repository's release catalog
-and its matching starter. A development version in root `gradle.properties` does not establish that
-the coordinate is available online. The public repository will allow anonymous reads with no GitHub
-login or token. Maintainer setup and publication gates are in [public Maven hosting](public-maven.md).
+The public repository above has been verified with the matching released starter. Use an exact
+version from the [published catalog](https://sl0oth.github.io/PaneLib/maven/catalog.json), not an
+unpublished development version. `-PpaneJar=/path/to/panelib.jar` remains available for a specific
+file, including renamed files, but cannot be combined with `-PpaneRepository`.
+Maintainer setup is documented in [public Maven hosting](public-maven.md).
 
 ## Add PaneLib to an existing mod
 
@@ -77,7 +101,7 @@ dependencies {
 ```
 
 For a Maven dependency, set `paneVersion` to the exact release version and `paneRepository` to your
-unpacked repository path (or a real hosted URL, once one exists) in your project's `gradle.properties`:
+unpacked repository path or `https://sl0oth.github.io/PaneLib/maven/` in your project's `gradle.properties`:
 
 ```groovy
 def paneVersion = providers.gradleProperty('paneVersion').get()

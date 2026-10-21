@@ -17,6 +17,10 @@ jobs:
           distribution: temurin
           java-version: "25"
       - uses: gradle/actions/setup-gradle@v4
+      - name: Keep fixture capture on the workflow-owned display
+        run: |
+          mkdir -p "$HOME/.gradle/init.d"
+          cp tools/fixtures/external-display.init.gradle "$HOME/.gradle/init.d/panelib-external-display.gradle"
       - name: Test and verify artifacts
         run: ./gradlew clean build :pane:verifyPaneArtifact --no-daemon
       - name: Compile the independent consumer against the runtime JAR

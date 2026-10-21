@@ -1,12 +1,11 @@
 # PaneLib grade improvement plan — October 21, 2026
 
-Status: phase 1 local packaging and independent-consumer gate implemented and verified on macOS.
-Public hosting and download verification remain open; phases 2–4 have not started in this pass.
-Hosting implementation and a real local HTTPS consumer check are now prepared; public deployment
-awaits approval. See [Maven hosting preparation](maven-hosting-2026-10-21.md).
-See [release packaging evidence](release-packaging-2026-10-21.md). The original planning pass changed
-no runtime or release identity; implementation now uses local candidate 0.9.9-beta.1 while preserving
-the submitted snapshot. Grades are qualitative audit judgments, not benchmarks.
+Status: phase 1 packaging, anonymous public Maven distribution and independent-consumer gates
+are complete for published beta `0.9.9-beta.1`. Both extracted consumers passed actual Minecraft
+checks on macOS. See [public publication evidence](public-maven-publication-2026-10-21.md),
+[hosting design](maven-hosting-2026-10-21.md) and [packaging evidence](release-packaging-2026-10-21.md).
+The submitted snapshot remains unchanged. Phases 2–4 remain separate work; the bounded Ubuntu CI
+follow-up does not complete the platform matrix. Grades are qualitative audit judgments, not benchmarks.
 Basis: current source, NEXT_SESSION.md and developer-adoption-2026-10-21.md.
 
 ## Working rules

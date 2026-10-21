@@ -1,0 +1,13 @@
+// CI owns the Xvfb display. Loom 1.17.19's nested Xvfb path does not forward
+// JavaExec's stdout/stderr capture, so use the existing display and normal JavaExec.
+// Loaded only by the Ubuntu workflow; never installed by the library or starter.
+allprojects {
+    tasks.matching { it.name == 'runClient' }.configureEach {
+        useXvfb.set(false)
+        doFirst {
+            if (!System.getenv('DISPLAY')) {
+                throw new GradleException('The external-display fixture requires DISPLAY; launch it with xvfb-run.')
+            }
+        }
+    }
+}

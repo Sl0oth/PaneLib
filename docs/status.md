@@ -1,16 +1,15 @@
 # PaneLib source status — October 21, 2026
 
-This page describes the current source checkout and local candidate, not a newly published release.
-Root `gradle.properties` supplies the candidate version. The preserved submitted `0.9.8` snapshot
-remains unchanged; post-submission fixes have a new version and matching artifacts. Use the matching
-runtime, starter descriptor, and checksums. A local Maven repository ZIP tests module consumption,
-not public hosting. Nothing here establishes Modrinth approval or publication.
+PaneLib `0.9.9-beta.1` is published on
+[GitHub Releases](https://github.com/Sl0oth/PaneLib/releases/tag/v0.9.9-beta.1) and the
+[anonymous Maven repository](public-maven.md). The preserved submitted `0.9.8` snapshot remains
+unchanged. This release does not update Modrinth or establish its approval status.
 
-The local release gate now checks immutable, repeatable packaging and both extracted file/Maven
-consumers in Minecraft. See the [release packaging audit](audits/release-packaging-2026-10-21.md)
-and [maintainer commands](releasing.md). Public hosting remains open.
-The [Maven hosting setup](public-maven.md) and local HTTPS checks are prepared; release upload,
-deployment and verification of the public endpoint are still pending.
+A clean source rebuild reproduced all nine release files byte for byte. Public endpoint downloads
+matched all 25 immutable version files. Independent file and public Maven consumers built, matched
+the nested runtime bytes, and passed actual Minecraft smoke checks on macOS ARM64. See the
+[publication audit](audits/public-maven-publication-2026-10-21.md). This establishes the published
+beta's consumption path; the remaining adoption limits below still apply.
 
 ## Current public examples
 
@@ -74,8 +73,7 @@ source.
 
 ## Limits to consider before adopting
 
-- A local Maven repository bundle is available for candidate testing; no public Maven host or
-  final 1.0 API compatibility guarantee is established.
+- The public Maven beta is available; a final 1.0 API compatibility guarantee is not established.
 - Minecraft narrator semantics and IME composition remain incomplete.
 - Native Minecraft text currently supports single-line labels, not editable or wrapped native-font
   paragraphs. There is no complete built-in vanilla widget theme.
