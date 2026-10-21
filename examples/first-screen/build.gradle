@@ -1,0 +1,166 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version '1.17.19'
+}
+version = '1.0.0'
+group = 'example.pane'
+base { archivesName = 'pane-first-screen' }
+
+// Only release metadata is shared with the checkout; the dependency is always a binary module.
+def descriptor = file('panelib-release.properties')
+def checkoutRoot = rootDir.toPath().resolve('../..').normalize().toFile()
+def checkoutProperties = new File(checkoutRoot, 'gradle.properties')
+def checkoutSettings = new File(checkoutRoot, 'settings.gradle')
+def inCheckout = !descriptor.isFile() && checkoutProperties.isFile() && checkoutSettings.isFile()
+    && checkoutSettings.text.contains("rootProject.name = 'panelib'")
+def authority = new Properties()
+if (descriptor.isFile()) descriptor.withInputStream { authority.load(it) }
+else if (inCheckout) checkoutProperties.withInputStream { authority.load(it) }
+def defaultVersion = authority.getProperty(descriptor.isFile() ? 'pane_version' : 'version')
+def paneVersion = providers.gradleProperty('paneVersion').getOrElse(defaultVersion ?: '').trim()
+if (!paneVersion || !(paneVersion ==~ /[0-9A-Za-z][0-9A-Za-z._-]*/)) {
+    throw new GradleException('Missing or invalid PaneLib version. Keep panelib-release.properties from the starter ZIP, ' +
+        'run inside the source checkout, or provide an exact -PpaneVersion=<version>.')
+}
+def repositoryMode = providers.gradleProperty('paneRepository').isPresent()
+if (repositoryMode && providers.gradleProperty('paneJar').isPresent()) {
+    throw new GradleException('Choose either -PpaneRepository or -PpaneJar, not both.')
+}
+def paneJar = repositoryMode ? null : file(providers.gradleProperty('paneJar').getOrElse(
+    inCheckout ? new File(checkoutRoot, "pane/build/libs/panelib-${paneVersion}.jar").absolutePath
+               : "libs/panelib-${paneVersion}.jar"))
+def validatePaneJar = { File selected ->
+    if (!selected.isFile()) throw new GradleException("Missing ${selected}. " +
+        'In the source checkout run ./gradlew :pane:build from the repository root first. ' +
+        'For a standalone starter keep its matching libs JAR, or pass -PpaneJar=/absolute/path/to/panelib.jar.')
+    new java.util.zip.ZipFile(selected).withCloseable { archive ->
+        def metadata = archive.getEntry('fabric.mod.json')
+        if (metadata == null) throw new GradleException("Not a Fabric runtime JAR: ${selected}")
+        def mod = archive.getInputStream(metadata).withCloseable { stream -> new groovy.json.JsonSlurper().parse(stream) }
+        if (mod.id != 'panelib' || mod.environment != 'client') {
+            throw new GradleException("Expected the client-side PaneLib runtime JAR: ${selected}")
+        }
+        if (archive.getEntry('dev/pane/ui/UiScreenEventHandler.class') == null) {
+            throw new GradleException("Selected PaneLib JAR is too old for this starter: ${selected}. " +
+                'It lacks the owner-aware screen API (UiScreenEventHandler). Build the current library with ' +
+                './gradlew :pane:build, then use the starter default or select that matching JAR with -PpaneJar.')
+        }
+        if (mod.version.toString() != paneVersion) {
+            throw new GradleException("PaneLib version mismatch: expected ${paneVersion}, found ${mod.version} in ${selected}. " +
+                'Use the matching release artifact, or intentionally select its exact version with -PpaneVersion.')
+        }
+    }
+}
+if (!repositoryMode) validatePaneJar(paneJar)
+def paneRepositoryUri = null
+if (repositoryMode) {
+    def address = providers.gradleProperty('paneRepository').get().trim()
+    if (!address) throw new GradleException('-PpaneRepository must be a local Maven repository directory or HTTPS URL.')
+    paneRepositoryUri = address.contains('://') || address.startsWith('file:') ? new URI(address) : file(address).toURI()
+    if (!(paneRepositoryUri.scheme in ['file', 'https'])) {
+        throw new GradleException('PaneLib repositories must use a local file directory or HTTPS.')
+    }
+}
+repositories {
+    exclusiveContent {
+        forRepository {
+            if (repositoryMode) {
+                maven { url = paneRepositoryUri }
+            } else {
+                ivy {
+                    url = paneJar.parentFile.toURI()
+                    patternLayout { artifact paneJar.name }
+                    metadataSources { artifact() }
+                }
+            }
+        }
+        filter { includeModule('dev.pane', 'panelib') }
+    }
+    mavenCentral()
+}
+configurations {
+    paneValidation { canBeConsumed = false; canBeResolved = true; transitive = false }
+}
+def paneCoordinate = "dev.pane:panelib:${paneVersion}"
+dependencies {
+    minecraft 'com.mojang:minecraft:26.2'
+    implementation 'net.fabricmc:fabric-loader:0.19.3'
+    implementation 'net.fabricmc.fabric-api:fabric-api:0.157.0+26.2'
+    implementation(paneCoordinate) { version { strictly(paneVersion) } }
+    paneValidation(paneCoordinate) { version { strictly(paneVersion) } }
+    // Optional jar-in-jar distribution. Do not also install a separate PaneLib when bundled.
+    if (project.hasProperty('bundlePane')) include(paneCoordinate) { version { strictly(paneVersion) } }
+}
+def verifyPaneDependency = tasks.register('verifyPaneDependency') {
+    group = 'verification'
+    description = 'Check the exact resolved PaneLib binary, metadata and required starter API.'
+    inputs.property('paneVersion', paneVersion)
+    inputs.files(configurations.paneValidation)
+    doLast {
+        def artifacts = configurations.paneValidation.resolvedConfiguration.resolvedArtifacts
+        if (artifacts.size() != 1) throw new GradleException('Expected exactly one PaneLib runtime artifact.')
+        def artifact = artifacts.first()
+        def module = artifact.moduleVersion.id
+        if (module.group != 'dev.pane' || module.name != 'panelib' || module.version != paneVersion) {
+            throw new GradleException("Unexpected PaneLib resolution: ${module}")
+        }
+        validatePaneJar(artifact.file)
+    }
+}
+tasks.withType(JavaCompile).configureEach { dependsOn(verifyPaneDependency) }
+tasks.named('processResources') {
+    dependsOn(verifyPaneDependency)
+    inputs.property('paneVersion', paneVersion)
+    filesMatching('fabric.mod.json') { expand(paneVersion: paneVersion) }
+}
+java { toolchain.languageVersion = JavaLanguageVersion.of(25) }
+tasks.withType(JavaCompile).configureEach { options.release = 25 }
+tasks.withType(JavaExec).configureEach {
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+}
+loom {
+    runs {
+        client { runDir project.hasProperty('smokeTest') ? 'run-example-smoke' : 'run-example' }
+    }
+}
+tasks.named('runClient') {
+    if (project.hasProperty('smokeTest')) {
+        systemProperty 'pane.example.smokeTest', 'true'
+        doFirst {
+            // Only the disposable automated run skips Minecraft's first-start onboarding.
+            def options = file('run-example-smoke/options.txt')
+            options.parentFile.mkdirs()
+            def lines = options.exists() ? options.readLines().findAll { !it.startsWith('onboardAccessibility:') } : []
+            options.text = (lines + 'onboardAccessibility:false').join('\n') + '\n'
+        }
+    }
+}
+tasks.named('jar') { from('LICENSE') }
+
+// A graceful Minecraft shutdown is not proof that the fixture passed.
+def fixtureMarkers = [smokeTest: '[ConsumerTest] complete PASS']
+def expectedMarkers = fixtureMarkers.findAll { key, marker -> project.hasProperty(key) }.values()
+if (!expectedMarkers.isEmpty()) {
+    tasks.named('runClient') {
+        timeout = java.time.Duration.ofMinutes(5)
+        def captured = new ByteArrayOutputStream()
+        def console = System.out
+        def tee = new OutputStream() {
+            @Override void write(int value) { captured.write(value); console.write(value) }
+            @Override void write(byte[] data, int offset, int length) {
+                captured.write(data, offset, length); console.write(data, offset, length)
+            }
+            @Override void flush() { console.flush() }
+        }
+        standardOutput = tee
+        errorOutput = tee
+        doFirst { captured.reset() }
+        doLast {
+            def output = captured.toString('UTF-8')
+            if (project.hasProperty('fixtureFailureProbe')) output += '\n[Fixture] injected FAIL'
+            if (output =~ /(?m)\[(ApiTest|PanePerf|DesignLab|StudioTest|ConsumerTest|AutoTest|Fixture)\][^\r\n]*FAIL/
+                    || expectedMarkers.any { !output.contains(it) }) {
+                throw new GradleException('Client fixture failed or did not finish. Inspect its PASS/FAIL output above.')
+            }
+        }
+    }
+}

@@ -1,5 +1,7 @@
 package dev.pane.demo;
 
+import dev.pane.ui.UiScrollSnapshot;
+
 import dev.pane.ui.*;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -72,7 +74,7 @@ final class DesignLabTest {
         if (ticks == 85) {
             check(screen.virtualCompositionActive(), "toast preserves atlas");
             check(screen.paintCount() == scrollBasePaints, "toast plus scrolling keeps page cached");
-            check(screen.numberValue("scroll:routes", 0) > 0, "scroll moved");
+            check(screen.scrollSnapshot("routes").map(UiScrollSnapshot::offset).orElse(0D) > 0, "scroll moved");
             report("scroll-with-toast");
             capture(client, "overlay");
             // Verify moving/recycled row targets after scrolling.
@@ -129,7 +131,7 @@ final class DesignLabTest {
                 screen.setValue("selected", 0);
                 screen.setValue("ready", false);
                 screen.setValue("details", true);
-                screen.setValue("scroll:routes", 0D);
+                screen.scrollTo("routes", 0D);
                 ticks = 0;
             }
         }

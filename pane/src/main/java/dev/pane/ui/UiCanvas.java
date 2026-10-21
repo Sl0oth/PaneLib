@@ -50,19 +50,14 @@ public final class UiCanvas {
     public static final String MONO = Font.MONOSPACED;
 
     private static final int FONT_CACHE_LIMIT = 512;
+    private static final java.util.concurrent.atomic.AtomicLong FONT_REVISION=new java.util.concurrent.atomic.AtomicLong();
+    private record TextLayoutKey(String value,Font font,java.awt.font.FontRenderContext context,float width,long revision) { }
     private static final Map<String, Font> FONTS = new ConcurrentHashMap<>();
     private static final Map<String, Font> REGISTERED_FONTS = new ConcurrentHashMap<>();
     private static final Map<String, BufferedImage> TEXTURES = new ConcurrentHashMap<>();
+    private static final java.util.concurrent.atomic.AtomicLong MINECRAFT_TEXTURE_REVISION = new java.util.concurrent.atomic.AtomicLong();
     private static final Map<Identifier, BufferedImage> MINECRAFT_TEXTURES = new ConcurrentHashMap<>();
     private static final int TEXTURE_CACHE_LIMIT = 64;
-
-    static {
-        // We only ever rasterise into a BufferedImage. Declaring headless keeps AWT from opening
-        // a display connection, which on macOS would otherwise add a Dock icon and steal focus.
-        if (System.getProperty("java.awt.headless") == null) {
-            System.setProperty("java.awt.headless", "true");
-        }
-    }
 
     private final Graphics2D graphics;
     private final BufferedImage target;
@@ -71,18 +66,23 @@ public final class UiCanvas {
      * Registers a TrueType or OpenType font under a stable family name. The font stays local to
      * Pane's rasterizer; it is not installed into the operating system. Passing that name to any
      * text method uses it on every platform, with {@link #SANS} as the safe fallback on failure.
+     * Register during client setup before constructing retained UI. When replacing a font on the
+     * client thread later, invalidate affected screens/HUDs; dialog measurement caches then refresh.
      */
     public static boolean registerFont(String family, InputStream source) {
         if (family == null || family.isBlank() || source == null) return false;
         try (InputStream input = source) {
             Font loaded = Font.createFont(Font.TRUETYPE_FONT, input);
             REGISTERED_FONTS.put(family, loaded);
-            FONTS.clear();
+            FONTS.clear();FONT_REVISION.incrementAndGet();
             return true;
         } catch (IOException | java.awt.FontFormatException ignored) {
             return false;
         }
     }
+
+    /** Internal retained text-layout dependency; consumers invalidate after changing registered fonts. */
+    static long fontRevision(){return FONT_REVISION.get();}
 
     /**
      * Optional CPU-only warmup for cold font initialization. Call on a worker during startup,
@@ -142,6 +142,20 @@ public final class UiCanvas {
         graphics.setStroke(new BasicStroke(stroke, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
         float half = stroke / 2F;
         graphics.draw(roundShape(x + half, y + half, width - stroke, height - stroke, Math.max(0, radius - half)));
+    }
+
+    /** Outline the visible portion using a logical clip already mapped into drawing coordinates. */
+    void clippedFocusRing(int color, float x, float y, float width, float height, float radius, Shape clip) {
+        if (width <= 0 || height <= 0) return;
+        var visible = new java.awt.geom.Area(roundShape(x + .6F, y + .6F,
+            Math.max(0, width - 1.2F), Math.max(0, height - 1.2F), Math.max(0, radius - .6F)));
+        var interior = new java.awt.geom.Area(clip);
+        // Reserve a unit inside the polygon, including rotated viewport edges.
+        interior.subtract(new java.awt.geom.Area(new BasicStroke(2F).createStrokedShape(clip)));
+        visible.intersect(interior);
+        graphics.setColor(awtColor(color));
+        graphics.setStroke(new BasicStroke(1.2F, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
+        graphics.draw(visible);
     }
 
     /** Dashed rounded outline, useful for focus guides, drop targets, and cut-paper treatments. */
@@ -273,6 +287,10 @@ public final class UiCanvas {
      * @return false when no readable backing surface or visible blur region is available
      */
     public boolean backdropBlur(float radius, float x, float y, float width, float height) {
+        return backdropBlur(radius, x, y, width, height, null);
+    }
+
+    boolean backdropBlur(float radius, float x, float y, float width, float height, UiBlurScratch blurScratch) {
         if (target == null || radius <= 0 || width <= 0 || height <= 0) return false;
         Rectangle pixels = graphics.getTransform().createTransformedShape(
             new Rectangle2D.Float(x, y, width, height)).getBounds();
@@ -285,20 +303,31 @@ public final class UiCanvas {
         Shape deviceClip = clip == null ? null : graphics.getTransform().createTransformedShape(clip);
         if (deviceClip != null && !deviceClip.intersects(left, top, pixelWidth, pixelHeight)) return false;
 
-        BufferedImage source = new BufferedImage(pixelWidth, pixelHeight, BufferedImage.TYPE_INT_ARGB);
-        Graphics2D copyGraphics = source.createGraphics();
-        copyGraphics.drawImage(target, 0, 0, pixelWidth, pixelHeight,
-            left, top, right, bottom, null);
-        copyGraphics.dispose();
-
         int maximumRadius = Math.max(1, (Math.min(pixelWidth, pixelHeight) - 1) / 2);
         int pixelRadius = Math.max(1, Math.min(Math.min(24, maximumRadius), Math.round(radius *
             (float) Math.max(Math.abs(graphics.getTransform().getScaleX()), Math.abs(graphics.getTransform().getScaleY())))));
+        if (deviceClip != null) {
+            Rectangle clipBounds = deviceClip.getBounds();
+            left = Math.max(left, clipBounds.x - pixelRadius);
+            top = Math.max(top, clipBounds.y - pixelRadius);
+            right = Math.min(right, clipBounds.x + clipBounds.width + pixelRadius);
+            bottom = Math.min(bottom, clipBounds.y + clipBounds.height + pixelRadius);
+            pixelWidth = right - left; pixelHeight = bottom - top;
+        }
+        UiBlurScratch scratch = blurScratch == null ? new UiBlurScratch() : blurScratch;
+        scratch.ensure(pixelWidth, pixelHeight);
+        BufferedImage source = scratch.source;
+        Graphics2D copyGraphics = source.createGraphics();
+        try {
+            copyGraphics.setComposite(AlphaComposite.Src);
+            copyGraphics.drawImage(target, 0, 0, pixelWidth, pixelHeight, left, top, right, bottom, null);
+        } finally { copyGraphics.dispose(); }
+
         int kernelSize = pixelRadius * 2 + 1;
         float[] weights = new float[kernelSize];
         java.util.Arrays.fill(weights, 1F / kernelSize);
-        BufferedImage horizontal = new BufferedImage(pixelWidth, pixelHeight, BufferedImage.TYPE_INT_ARGB);
-        BufferedImage blurred = new BufferedImage(pixelWidth, pixelHeight, BufferedImage.TYPE_INT_ARGB);
+        BufferedImage horizontal = scratch.horizontal;
+        BufferedImage blurred = scratch.source;
         new ConvolveOp(new Kernel(kernelSize, 1, weights), ConvolveOp.EDGE_NO_OP, null).filter(source, horizontal);
         new ConvolveOp(new Kernel(1, kernelSize, weights), ConvolveOp.EDGE_NO_OP, null).filter(horizontal, blurred);
 
@@ -457,6 +486,79 @@ public final class UiCanvas {
      */
     public float textWidth(String value, float size, int style, String family) {
         return graphics.getFontMetrics(font(size, style, family)).stringWidth(value == null ? "" : value);
+    }
+
+    UiShapedText shapeText(String value,float size,int style,String family,UiTextLayoutCache cache) {
+        if(cache==null)return shapeText(value,size,style,family);
+        return cache.get(new TextLayoutKey(value,font(size,style,family),graphics.getFontRenderContext(),-1,FONT_REVISION.get()),
+            value.length(),()->shapeText(value,size,style,family));
+    }
+    List<UiShapedText.Line> wrapShapedText(String value,float width,float size,int style,String family,UiTextLayoutCache cache) {
+        if(cache==null)return wrapShapedText(value,width,size,style,family);
+        return cache.get(new TextLayoutKey(value,font(size,style,family),graphics.getFontRenderContext(),width,FONT_REVISION.get()),
+            value.length(),()->wrapShapedText(value,width,size,style,family));
+    }
+
+    UiShapedText shapeText(String value,float size,int style,String family) {
+        Font selected=font(size,style,family);
+        float ascent=graphics.getFontMetrics(selected).getAscent();
+        UiShapedText simple=UiShapedText.simpleRun(value,0,value.length(),selected,graphics.getFontRenderContext(),ascent);
+        if(simple!=null)return simple;
+        var layout=value.isEmpty()?null:new java.awt.font.TextLayout(value,selected,graphics.getFontRenderContext());
+        return new UiShapedText(layout,value,0,value.length(),ascent);
+    }
+
+    List<UiShapedText.Line> wrapShapedText(String value,float width,float size,int style,String family) {
+        Font selected=font(size,style,family);
+        float ascent=graphics.getFontMetrics(selected).getAscent();
+        var result=new ArrayList<UiShapedText.Line>();
+        int paragraphStart=0;
+        while(paragraphStart<=value.length()) {
+            int newline=value.indexOf('\n',paragraphStart);
+            int end=newline<0?value.length():newline;
+            if(end==paragraphStart)result.add(new UiShapedText.Line(end,end,new UiShapedText(null,value,end,end,ascent)));
+            else {
+                var attributed=new java.text.AttributedString(value.substring(paragraphStart,end));
+                attributed.addAttribute(java.awt.font.TextAttribute.FONT,selected);
+                var measurer=new java.awt.font.LineBreakMeasurer(attributed.getIterator(),
+                    java.text.BreakIterator.getLineInstance(java.util.Locale.ROOT),graphics.getFontRenderContext());
+                while(measurer.getPosition()<end-paragraphStart) {
+                    int start=paragraphStart+measurer.getPosition();
+                    var layout=measurer.nextLayout(Math.max(.01F,width));
+                    int next=paragraphStart+measurer.getPosition();
+                    // JDK LineBreakMeasurer can split a surrogate pair when even one glyph cannot fit.
+                    if(UiTextBoundary.floor(value,next)!=next) {
+                        next=UiTextBoundary.next(value,next);
+                        measurer.setPosition(next-paragraphStart);
+                        layout=new java.awt.font.TextLayout(value.substring(start,next),selected,graphics.getFontRenderContext());
+                    }
+                    // Reuse the layout that chose the line break; do not shape each line twice.
+                    result.add(new UiShapedText.Line(start,next,new UiShapedText(layout,value,start,next,ascent)));
+                }
+            }
+            if(newline<0)break;
+            paragraphStart=newline+1;
+        }
+        return List.copyOf(result);
+    }
+
+    void shapedText(UiShapedText text,float x,float top,int color) {
+        graphics.setColor(awtColor(color));
+        if(text.glyphs!=null)graphics.drawGlyphVector(text.glyphs,x,top+text.ascent);
+        else if(text.layout!=null)text.layout.draw(graphics,x,top+text.ascent);
+    }
+
+    void shapedSelection(UiShapedText text,int from,int to,float x,float top,float height,int color) {
+        if((text.layout==null&&text.glyphs==null)||to<=from)return;
+        Graphics2D painter=(Graphics2D)graphics.create();
+        try {
+            painter.clip(new Rectangle2D.Float(x,top,Math.max(1,text.width()),height));
+            painter.translate(x,top+text.ascent);painter.setColor(awtColor(color));
+            if(text.glyphs!=null) {
+                var logical=text.glyphs.getLogicalBounds().getBounds2D();
+                painter.fill(new Rectangle2D.Float(text.x(from),(float)logical.getY(),Math.max(0,text.x(to)-text.x(from)),(float)logical.getHeight()));
+            } else painter.fill(text.layout.getLogicalHighlightShape(from,to));
+        } finally {painter.dispose();}
     }
 
     /** Height of the same font metrics used by text(), in layout units. */
@@ -787,6 +889,36 @@ public final class UiCanvas {
 
     // ---------------------------------------------------------------- Minecraft textures
 
+    /** Draw caller-owned pixels with explicit fit/filter and return the exact source-point mapping. */
+    public UiImagePlacement image(BufferedImage image,UiRect viewport,UiImageOptions options) {
+        java.util.Objects.requireNonNull(image,"image");
+        var placement=UiImagePlacement.fit(image.getWidth(),image.getHeight(),viewport,options);
+        var output=(Graphics2D)graphics.create();
+        try {
+            output.clip(new Rectangle2D.Float(viewport.x(),viewport.y(),viewport.width(),viewport.height()));
+            output.setRenderingHint(RenderingHints.KEY_INTERPOLATION,interpolation(options.sampling()));
+            var box=placement.imageBounds();
+            var transform=new AffineTransform();transform.translate(box.x(),box.y());
+            transform.scale(box.width()/image.getWidth(),box.height()/image.getHeight());
+            output.drawImage(image,transform,null);
+        } finally {output.dispose();}
+        return placement;
+    }
+
+    /** Resource/dynamic texture version of image; missing assets return empty using the existing cache. */
+    public java.util.Optional<UiImagePlacement> minecraftImage(Identifier texture,UiRect viewport,UiImageOptions options) {
+        var image=minecraftTextureImage(texture);
+        return image==null?java.util.Optional.empty():java.util.Optional.of(image(image,viewport,options));
+    }
+
+    private static Object interpolation(UiImageOptions.Sampling sampling) {
+        return switch(java.util.Objects.requireNonNull(sampling)) {
+            case NEAREST->RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR;
+            case BILINEAR->RenderingHints.VALUE_INTERPOLATION_BILINEAR;
+            case BICUBIC->RenderingHints.VALUE_INTERPOLATION_BICUBIC;
+        };
+    }
+
     /** Transforms drawing around a pivot. Interactive consumers should use UiContext.withTransform. */
     public void withTransform(UiTransform transform, float pivotX, float pivotY, Runnable painter) {
         AffineTransform previous = graphics.getTransform();
@@ -856,18 +988,38 @@ public final class UiCanvas {
      */
     public boolean minecraftTextureRegion(Identifier texture, int sourceX, int sourceY, int sourceWidth,
                                           int sourceHeight, float x, float y, float width, float height) {
+        return minecraftTextureRegion(texture,sourceX,sourceY,sourceWidth,sourceHeight,x,y,width,height,UiImageOptions.Sampling.NEAREST);
+    }
+
+    /** Exact source crop with explicit filtering; the existing overload remains nearest-neighbor. */
+    public boolean minecraftTextureRegion(Identifier texture, int sourceX, int sourceY, int sourceWidth,
+                                          int sourceHeight, float x, float y, float width, float height,UiImageOptions.Sampling sampling) {
         BufferedImage image = minecraftTextureImage(texture);
         if (image == null || sourceWidth <= 0 || sourceHeight <= 0 || width <= 0 || height <= 0) return false;
         int safeX = Math.max(0, Math.min(sourceX, image.getWidth() - 1));
         int safeY = Math.max(0, Math.min(sourceY, image.getHeight() - 1));
         int safeW = Math.max(1, Math.min(sourceWidth, image.getWidth() - safeX));
         int safeH = Math.max(1, Math.min(sourceHeight, image.getHeight() - safeY));
-        drawMinecraftImage(image, safeX, safeY, safeW, safeH, x, y, width, height);
+        drawMinecraftImage(image, safeX, safeY, safeW, safeH, x, y, width, height,sampling);
         return true;
     }
 
-    /** Drops decoded resource and skin pixels; call after a resource-pack reload if needed. */
-    public static void clearMinecraftTextureCache() { MINECRAFT_TEXTURES.clear(); }
+    /** Drops decoded resource/skin pixels and refreshes retained screens/HUDs on their next frame.
+     * Resource-pack reloads call this automatically. */
+    public static void clearMinecraftTextureCache() {
+        MINECRAFT_TEXTURES.clear();
+        MINECRAFT_TEXTURE_REVISION.incrementAndGet();
+    }
+
+    /** Call after updating a dynamic texture under the same identifier. Does not re-upload it. */
+    public static void invalidateMinecraftTexture(Identifier texture) {
+        if (texture == null) return;
+        MINECRAFT_TEXTURES.remove(texture);
+        MINECRAFT_TEXTURE_REVISION.incrementAndGet();
+    }
+
+    /** Include this revision in consumer-owned cached-layer keys when they contain Minecraft images. */
+    public static long minecraftTextureRevision() { return MINECRAFT_TEXTURE_REVISION.get(); }
 
     // ---------------------------------------------------------------- colour helpers
 
@@ -917,8 +1069,12 @@ public final class UiCanvas {
 
     private void drawMinecraftImage(BufferedImage image, int sourceX, int sourceY, int sourceWidth,
                                     int sourceHeight, float x, float y, float width, float height) {
+        drawMinecraftImage(image,sourceX,sourceY,sourceWidth,sourceHeight,x,y,width,height,UiImageOptions.Sampling.NEAREST);
+    }
+    private void drawMinecraftImage(BufferedImage image, int sourceX, int sourceY, int sourceWidth,
+                                    int sourceHeight, float x, float y, float width, float height,UiImageOptions.Sampling sampling) {
         Object old = graphics.getRenderingHint(RenderingHints.KEY_INTERPOLATION);
-        graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_NEAREST_NEIGHBOR);
+        graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, interpolation(sampling));
         try {
             graphics.drawImage(image, Math.round(x), Math.round(y), Math.round(x + width), Math.round(y + height),
                 sourceX, sourceY, sourceX + sourceWidth, sourceY + sourceHeight, null);

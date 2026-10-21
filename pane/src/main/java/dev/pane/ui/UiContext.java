@@ -12,6 +12,11 @@ public final class UiContext {
     public enum ButtonStyle { PRIMARY, SECONDARY, GHOST, DANGER }
     public enum Shape { SQUARE, ROUNDED, SOFT, PILL }
 
+    private static final UiButtonStyle DEFAULT_BUTTON_STYLE = UiButtonStyle.builder().build();
+
+    private UiInteractionState interactions = new UiInteractionState();
+    private UiRect focusClip;
+    private java.awt.Shape affineFocusClip;
     private final UiCanvas canvas;
     private final UiTheme theme;
     private final int width;
@@ -98,12 +103,17 @@ public final class UiContext {
         this.virtualLists = virtualLists;
     }
 
+    UiContext withInteractions(UiInteractionState shared) { interactions = shared; return this; }
+    private UiContext inherit(UiContext child) {
+        child.interactions = interactions; child.focusClip = focusClip; child.affineFocusClip = affineFocusClip; return child;
+    }
+
     /** Same drawing surface and state, re-aimed at a different content rectangle. */
     UiContext withContent(UiRect newContent) {
-        return new UiContext(canvas, theme, width, height, accent, newContent, hoveredId, pressedId,
+        return inherit(new UiContext(canvas, theme, width, height, accent, newContent, hoveredId, pressedId,
             motion, interactionMotion, animating, paintCount, state, hitRegions, nativeBounds, nativeOverlayLayers, animationBounds, scrollRegions,
             inputRegions, textInput, tooltips, menus, dialogs, animationClock, nativeScale,
-            offsetX, offsetY, inputClip, virtualLists);
+            offsetX, offsetY, inputClip, virtualLists));
     }
 
     public UiCanvas canvas() { return canvas; }
@@ -145,19 +155,33 @@ public final class UiContext {
      * Smoothly approaches {@code target} and schedules repaints only until the transition ends.
      * Reuse a stable id on every paint. The first value is adopted immediately; later target
      * changes animate from the value currently on screen.
+     * State is retained while the id is painted or belongs to a retained virtual row.
      */
     public float animate(String id, float target, int durationMillis, UiEasing easing) {
         return animationClock == null ? target : animationClock.value(id, target, durationMillis, easing);
     }
 
-    /** Initial entrance plus delayed/staggered start. Later interruptions retarget without delay. */
+    /**
+     * Smooth shortest-path angular motion (degrees), normalized to [0, 360). Suitable for a
+     * scrolling compass: 359 to 1 crosses north instead of spinning backward through 358 degrees.
+     * Uses the same finite motion clock and reduced-motion policy as animate.
+     */
+    public float animateAngle(String id, float targetDegrees, int durationMillis, UiEasing easing) {
+        if (!Float.isFinite(targetDegrees)) throw new IllegalArgumentException("Angle must be finite");
+        return animationClock == null ? ((targetDegrees % 360) + 360) % 360
+            : animationClock.angle(id, targetDegrees, durationMillis, easing);
+    }
+
+    /** Initial entrance plus delayed/staggered start. Later interruptions retarget without delay.
+     * An id removed from the page or an evicted virtual row starts a fresh entrance when reintroduced. */
     public float animateFrom(String id, float initial, float target, int durationMillis, int delayMillis,
                              UiEasing easing, UiRect repaintBounds) {
         registerAnimationBounds(id, repaintBounds);
         return animationClock == null ? target : animationClock.value(id, initial, target, durationMillis, delayMillis, easing);
     }
 
-    /** Plays sequential scalar keyframes; change revision to replay, continuing from the sampled value. */
+    /** Plays sequential scalar keyframes; change revision to replay, continuing from the sampled value.
+     * State belongs to painted controls/retained rows; reintroducing an evicted id starts fresh even at the same revision. */
     public float sequence(String id, long revision, UiTimeline timeline, UiRect repaintBounds) {
         if (timeline == null) throw new IllegalArgumentException("Timeline is required");
         registerAnimationBounds(id, repaintBounds);
@@ -183,6 +207,14 @@ public final class UiContext {
         UiContext child = new UiContext(canvas, theme, width, height, accent, content, hoveredId, pressedId,
             motion, interactionMotion, animating, paintCount, state, hits, natives, covers, bounds, scrolls,
             inputs, tips, textInput, nextMenus, nextDialogs, animationClock, nativeScale, null);
+        java.awt.Shape ringClip = focusRingClip();
+        if (ringClip != null) {
+            try {
+                child.affineFocusClip = transform.matrix(pivotX, pivotY).createInverse().createTransformedShape(ringClip);
+            } catch (java.awt.geom.NoninvertibleTransformException exception) {
+                throw new IllegalArgumentException("Focus transform must be invertible", exception);
+            }
+        }
         canvas.withTransform(transform, pivotX, pivotY, () -> painter.accept(child));
         if (!inputs.isEmpty() || !scrolls.isEmpty() || !natives.isEmpty() || !covers.isEmpty()
                 || hits.stream().anyMatch(hit -> hit.action().startsWith(INTERNAL_ACTION_PREFIX + "slider:")))
@@ -195,6 +227,9 @@ public final class UiContext {
             shape = matrix.createTransformedShape(shape);
             var rect = shape.getBounds2D();
             UiRect box = new UiRect((float) rect.getX(), (float) rect.getY(), (float) rect.getWidth(), (float) rect.getHeight());
+            UiRect keyboardBox = focusClip == null ? box : intersect(box, focusClip);
+            if (keyboardBox.width() > 0 && keyboardBox.height() > 0)
+                interactions.register(new UiHitRegion(hit.id(), hit.action(), keyboardBox.x(), keyboardBox.y(), keyboardBox.width(), keyboardBox.height()));
             if (inputClip != null) box = intersect(box, inputClip);
             if (box.width() > 0 && box.height() > 0) hitRegions.add(new UiHitRegion(hit.id(), hit.action(),
                 box.x(), box.y(), box.width(), box.height(), box.x(), box.width(), shape));
@@ -207,8 +242,9 @@ public final class UiContext {
         for (UiMenu menu : nextMenus) {
             UiRect anchor = transformedRect(matrix, menu.anchor());
             if (inputClip != null) anchor = intersect(anchor, inputClip);
-            if (anchor.width() > 0 && anchor.height() > 0) menus.add(new UiMenu(menu.id(), anchor, menu.items()));
+            if (anchor.width() > 0 && anchor.height() > 0) menus.add(new UiMenu(menu.id(), anchor, menu.items(), menu.selectedItemId(), menu.style()));
         }
+        interactions.buttons.putAll(child.interactions.buttons);
         dialogs.addAll(nextDialogs);
         // Bounds supplied inside the group are transformed back to document coordinates.
         for (var entry : bounds.entrySet()) animationBounds.put(entry.getKey(), transformedRect(matrix, entry.getValue()));
@@ -252,22 +288,27 @@ public final class UiContext {
      */
     public void withTranslation(float x, float y, Consumer<UiContext> painter) {
         if (painter == null) return;
-        UiContext translated = new UiContext(canvas, theme, width, height, accent, content,
+        UiContext translated = inherit(new UiContext(canvas, theme, width, height, accent, content,
             hoveredId, pressedId, motion, interactionMotion, animating, paintCount, state, hitRegions,
             nativeBounds, nativeOverlayLayers, animationBounds, scrollRegions, inputRegions, textInput, tooltips, menus, dialogs,
-            animationClock, nativeScale, offsetX + x, offsetY + y, inputClip, virtualLists);
+            animationClock, nativeScale, offsetX + x, offsetY + y, inputClip, virtualLists));
         canvas.withTranslation(x, y, () -> painter.accept(translated));
     }
 
     /** True group fade with shared input/layout state. A fully transparent group has no hit targets. */
     public void withLayer(UiLayer layer, float opacity, UiRect bounds, Consumer<UiContext> painter) {
         if (painter == null) return;
-        canvas.withLayer(layer, opacity, bounds, group -> painter.accept(new UiContext(group, theme,
-            width, height, accent, content, hoveredId, pressedId, motion, interactionMotion, animating,
-            paintCount, state, hitRegions, nativeBounds, nativeOverlayLayers, animationBounds,
-            scrollRegions, inputRegions, textInput, tooltips, menus, dialogs, animationClock,
-            nativeScale, offsetX, offsetY, intersect(inputClip, bounds.translate(offsetX, offsetY)), null)));
+        canvas.withLayer(layer, opacity, bounds, group -> {
+            UiContext child = inherit(new UiContext(group, theme, width, height, accent, content,
+                hoveredId, pressedId, motion, interactionMotion, animating, paintCount, state, hitRegions,
+                nativeBounds, nativeOverlayLayers, animationBounds, scrollRegions, inputRegions, textInput,
+                tooltips, menus, dialogs, animationClock, nativeScale, offsetX, offsetY,
+                intersect(inputClip, bounds.translate(offsetX, offsetY)), null));
+            child.focusClip = intersect(focusClip, bounds.translate(offsetX, offsetY));
+            painter.accept(child);
+        });
     }
+
     public Object value(String key) { return state.get(key); }
 
     public boolean booleanValue(String key, boolean fallback) {
@@ -296,6 +337,7 @@ public final class UiContext {
      */
     public void setValue(String key, Object value) { state.put(key, value); }
 
+    /** Registers a consumer control. Built-in popup/toast ID namespaces are reserved. */
     public void hit(String id, String action, float x, float y, float width, float height) {
         addHit(id, action, x, y, width, height, x, width);
     }
@@ -315,7 +357,7 @@ public final class UiContext {
      */
     public void selectable(String id, String key, String value,
                            float x, float y, float width, float height) {
-        internalHit(id, "select:" + key + "=" + value, x, y, width, height);
+        internalHit(id, "select:" + UiValueKey.encode(key) + "=" + value, x, y, width, height);
     }
 
     void hitTracked(String id, String action, float x, float y, float width, float height,
@@ -378,19 +420,28 @@ public final class UiContext {
      * scroll range exactly matches the rectangles the painter reserved.
      */
     public void scroll(String id, UiRect viewport, float contentHeight, Consumer<UiContext> painter) {
+        scroll(id, viewport, contentHeight, UiScrollFollow.NONE, painter);
+    }
+
+    /** Optional end following, resolved against this paint's extent before drawing or registering hits. */
+    public void scroll(String id, UiRect viewport, float contentHeight, UiScrollFollow follow, Consumer<UiContext> painter) {
+        java.util.Objects.requireNonNull(follow, "follow");
         if (id == null || id.isBlank() || viewport == null || painter == null) return;
         float maxOffset = Math.max(0, contentHeight - viewport.height());
-        float offset = (float) Math.max(0, Math.min(maxOffset, numberValue(scrollKey(id), 0)));
-        state.put(scrollKey(id), (double) offset);
-        scrollRegions.add(new UiScrollRegion(id, viewport, contentHeight));
+        float offset = (float) interactions.scrollEnds.resolve(id, interactions.offsets.getOrDefault(id, 0D), maxOffset, follow);
+        interactions.offsets.put(id, (double) offset);
+        UiRect actualViewport = viewport.translate(offsetX, offsetY);
+        UiRect visibleViewport = intersect(inputClip, actualViewport);
+        scrollRegions.add(new UiScrollRegion(id, actualViewport, contentHeight, visibleViewport));
 
-        UiContext scrolled = new UiContext(canvas, theme, width, height, accent,
+        UiContext scrolled = inherit(new UiContext(canvas, theme, width, height, accent,
             new UiRect(viewport.x(), viewport.y(), viewport.width(), contentHeight), hoveredId, pressedId,
             motion, interactionMotion, animating, paintCount, state, hitRegions, nativeBounds, nativeOverlayLayers, animationBounds, scrollRegions,
             inputRegions, textInput, tooltips, menus, dialogs, animationClock, nativeScale,
-            offsetX, offsetY - offset, intersect(inputClip, viewport), virtualLists);
+            offsetX, offsetY - offset, visibleViewport, virtualLists));
         canvas.withClip(viewport.x(), viewport.y(), viewport.width(), viewport.height(), () ->
-            canvas.withTranslation(0, -offset, () -> painter.accept(scrolled)));
+            canvas.withTranslation(0, -offset, () -> interactions.inScroll(
+                new UiScrollRegion(id, actualViewport, contentHeight, visibleViewport), () -> painter.accept(scrolled))));
 
         if (maxOffset > 0) drawScrollBar(viewport, contentHeight, offset);
     }
@@ -402,31 +453,40 @@ public final class UiContext {
      */
     public void virtualList(String id, UiRect viewport, int itemCount, float rowHeight, float gap,
                             BiConsumer<UiContext, UiVirtualItem> painter) {
-        if (id == null || id.isBlank() || viewport == null || painter == null || itemCount <= 0) return;
+        virtualList(id, viewport, itemCount, rowHeight, gap, UiScrollFollow.NONE, painter);
+    }
+
+    /** Virtual-list equivalent of scroll's end-follow policy; empty lists register a zero extent. */
+    public void virtualList(String id, UiRect viewport, int itemCount, float rowHeight, float gap,
+                            UiScrollFollow follow, BiConsumer<UiContext, UiVirtualItem> painter) {
+        java.util.Objects.requireNonNull(follow, "follow");
+        if (id == null || id.isBlank() || viewport == null || painter == null || itemCount < 0) return;
         rowHeight = Math.max(1, rowHeight);
         gap = Math.max(0, gap);
         float stride = rowHeight + gap;
         float contentHeight = itemCount * rowHeight + Math.max(0, itemCount - 1) * gap;
         float maxOffset = Math.max(0, contentHeight - viewport.height());
-        float offset = (float) Math.max(0, Math.min(maxOffset, numberValue(scrollKey(id), 0)));
-        state.put(scrollKey(id), (double) offset);
+        float offset = (float) interactions.scrollEnds.resolve(id, interactions.offsets.getOrDefault(id, 0D), maxOffset, follow);
+        interactions.offsets.put(id, (double) offset);
         UiRect actualViewport = viewport.translate(offsetX, offsetY);
-        scrollRegions.add(new UiScrollRegion(id, actualViewport, contentHeight));
+        scrollRegions.add(new UiScrollRegion(id, actualViewport, contentHeight, intersect(inputClip, actualViewport)));
+
+        if (itemCount == 0) return;
 
         if (virtualLists != null) {
             virtualLists.add(new UiVirtualListRequest(id, viewport, itemCount, rowHeight, gap,
                 contentHeight, theme, width, height, accent, content, state, nativeScale,
-                offsetX, offsetY, painter));
+                offsetX, offsetY, painter, interactions.offsets).withEditors(interactions));
             return;
         }
 
         int first = Math.max(0, (int) Math.floor(offset / stride) - 1);
         int last = Math.min(itemCount, (int) Math.ceil((offset + viewport.height()) / stride) + 1);
-        UiContext scrolled = new UiContext(canvas, theme, width, height, accent,
+        UiContext scrolled = inherit(new UiContext(canvas, theme, width, height, accent,
             new UiRect(viewport.x(), viewport.y(), viewport.width(), contentHeight), hoveredId, pressedId,
             motion, interactionMotion, animating, paintCount, state, hitRegions, nativeBounds, nativeOverlayLayers, animationBounds, scrollRegions,
             inputRegions, textInput, tooltips, menus, dialogs, animationClock, nativeScale,
-            offsetX, offsetY - offset, intersect(inputClip, viewport), null);
+            offsetX, offsetY - offset, intersect(inputClip, actualViewport), null));
         float finalRowHeight = rowHeight;
         canvas.withClip(viewport.x(), viewport.y(), viewport.width(), viewport.height(), () ->
             canvas.withTranslation(0, -offset, () -> {
@@ -440,13 +500,58 @@ public final class UiContext {
         if (maxOffset > 0) drawScrollBar(viewport, contentHeight, offset);
     }
 
+    /** Logical clip only: a transient dirty-paint clip must never become a focus outline. */
+    private java.awt.Shape focusRingClip() {
+        java.awt.geom.Area clip = affineFocusClip == null ? null : new java.awt.geom.Area(affineFocusClip);
+        if (inputClip != null) {
+            var rectangle = new java.awt.geom.Area(new java.awt.geom.Rectangle2D.Float(
+                inputClip.x(), inputClip.y(), inputClip.width(), inputClip.height()));
+            if (clip == null) clip = rectangle; else clip.intersect(rectangle);
+        }
+        return clip == null ? null : java.awt.geom.AffineTransform.getTranslateInstance(-offsetX, -offsetY)
+            .createTransformedShape(clip);
+    }
+
+    /** Keep the outside focus stroke visible even at a scroll's hard content boundary. */
+    private void drawFocusRing(int color, float x, float y, float width, float height, float radius) {
+        if (affineFocusClip != null) {
+            canvas.clippedFocusRing(color, x, y, width, height, radius, focusRingClip());
+            return;
+        }
+        if (inputClip != null) {
+            // Clip coordinates are screen-local; drawing coordinates include the context translation.
+            float left = Math.max(x, inputClip.x() - offsetX + 1);
+            float top = Math.max(y, inputClip.y() - offsetY + 1);
+            float right = Math.min(x + width, inputClip.right() - offsetX - 1);
+            float bottom = Math.min(y + height, inputClip.bottom() - offsetY - 1);
+            x = left; y = top; width = right - left; height = bottom - top;
+        }
+        if (width > 0 && height > 0) canvas.strokeRoundRect(color, 1.2F, x, y, width, height,
+            Math.min(radius, Math.min(width, height) / 2));
+    }
+
     private void addHit(String id, String action, float x, float y, float width, float height,
                         float trackX, float trackWidth) {
+        requireConsumerInteractionId(id);
         UiRect bounds = new UiRect(x + offsetX, y + offsetY, width, height);
+        UiRect keyboardBounds = focusClip == null ? bounds : intersect(bounds, focusClip);
+        if (keyboardBounds.width() > 0 && keyboardBounds.height() > 0) {
+            interactions.register(new UiHitRegion(id, action, keyboardBounds.x(), keyboardBounds.y(),
+                keyboardBounds.width(), keyboardBounds.height(), trackX + offsetX, trackWidth));
+        }
         if (inputClip != null) bounds = intersect(bounds, inputClip);
         if (bounds.width() <= 0 || bounds.height() <= 0) return;
         hitRegions.add(new UiHitRegion(id, action, bounds.x(), bounds.y(), bounds.width(), bounds.height(),
             trackX + offsetX, trackWidth));
+    }
+
+    private static void requireConsumerInteractionId(String id) {
+        if (id != null && (id.startsWith("menu:") && id.indexOf(':', 5) >= 0 || id.startsWith("menu-body:")
+                || id.startsWith("toast-dismiss:") || id.equals("dialog-confirm")
+                || id.equals("dialog-cancel") || id.equals("dialog-body") || id.equals("dialog-backdrop"))) {
+            throw new IllegalArgumentException("Control ID '" + id
+                + "' is reserved for PaneLib popup/toast interactions; choose an application-specific ID");
+        }
     }
 
     private static UiRect controlRepaintBounds(float x, float y, float width, float height, float padding) {
@@ -472,14 +577,26 @@ public final class UiContext {
 
     private void addInput(String id, String key, float x, float y, float width, float height,
                           int maxLength, boolean multiline, float[] caretXs, float[] caretYs) {
+        addInput(id, key, x, y, width, height, maxLength, multiline, caretXs, caretYs, List.of());
+    }
+
+    private void addInput(String id, String key, float x, float y, float width, float height,
+                          int maxLength, boolean multiline, float[] caretXs, float[] caretYs, List<UiTextLine> lines) {
+        addInput(id, key, x, y, width, height, maxLength, multiline, caretXs, caretYs, lines, false);
+    }
+
+    private void addInput(String id, String key, float x, float y, float width, float height,
+                          int maxLength, boolean multiline, float[] caretXs, float[] caretYs, List<UiTextLine> lines, boolean masked) {
         UiRect bounds = new UiRect(x + offsetX, y + offsetY, width, height);
-        if (inputClip != null) bounds = intersect(bounds, inputClip);
-        if (bounds.width() <= 0 || bounds.height() <= 0) return;
         float[] movedXs = caretXs == null ? null : caretXs.clone();
         float[] movedYs = caretYs == null ? null : caretYs.clone();
         if (movedXs != null) for (int i = 0; i < movedXs.length; i++) movedXs[i] += offsetX;
         if (movedYs != null) for (int i = 0; i < movedYs.length; i++) movedYs[i] += offsetY;
-        inputRegions.add(new UiInputRegion(id, key, bounds, maxLength, multiline, movedXs, movedYs));
+        var movedLines = lines.stream().map(line -> line.translate(offsetX, offsetY)).toList();
+        interactions.inputs.put(id, new UiInputRegion(id, key, bounds, maxLength, multiline, movedXs, movedYs, movedLines, masked));
+        if (inputClip != null) bounds = intersect(bounds, inputClip);
+        if (bounds.width() > 0 && bounds.height() > 0)
+            inputRegions.add(new UiInputRegion(id, key, bounds, maxLength, multiline, movedXs, movedYs, movedLines, masked));
     }
 
     private void drawScrollBar(UiRect viewport, float contentHeight, float offset) {
@@ -493,7 +610,6 @@ public final class UiContext {
         canvas.roundRect(UiCanvas.fade(theme.mutedText(), .65F), viewport.right() - 4, thumbY, 2, thumbHeight, 1);
     }
 
-    private static String scrollKey(String id) { return "scroll:" + id; }
 
     private static UiRect intersect(UiRect first, UiRect second) {
         if (first == null) return second;
@@ -548,7 +664,7 @@ public final class UiContext {
         if (pressAmount > 0) fill = UiCanvas.mix(fill, 0xFF000000, .12F * pressAmount);
         canvas.roundRect(fill, x, y, width, height, radius);
         canvas.strokeRoundRect(border, .8F, x, y, width, height, radius);
-        if (focused(id)) canvas.strokeRoundRect(accent, 1.2F, x - 2, y - 2, width + 4, height + 4, radius + 2);
+        if (focused(id)) drawFocusRing(accent, x - 2, y - 2, width + 4, height + 4, radius + 2);
         int textColor = style == ButtonStyle.PRIMARY ? theme.accentText()
             : style == ButtonStyle.DANGER ? 0xFFFFB9BD : theme.text();
         canvas.centeredText(label, x + width / 2, y + height / 2, 9, textColor, Font.BOLD, theme.fontFamily());
@@ -564,12 +680,18 @@ public final class UiContext {
     /** A completely restylable button with an explicit enabled state. */
     public void button(String id, String label, String action, float x, float y, float width, float height,
                        UiButtonStyle style, boolean enabled) {
-        UiButtonStyle paint = style == null ? UiButtonStyle.builder().build() : style;
+        paintStyledButton(id, label, x, y, width, height, style, enabled, false);
+        if (enabled) hit(id, action, x, y, width, height);
+    }
+
+    private void paintStyledButton(String id, String label, float x, float y, float width, float height,
+                                   UiButtonStyle style, boolean enabled, boolean selector) {
+        UiButtonStyle paint = style == null ? DEFAULT_BUTTON_STYLE : style;
         float shadowPadding = paint.shadowSpread() == null ? 4 : Math.max(4, paint.shadowSpread() + 4);
         UiRect repaintBounds = controlRepaintBounds(x, y, width, height, shadowPadding);
         float hover = animate("custom-button:" + id + ":hover", enabled && hovered(id), 120, UiEasing.PAPER, repaintBounds);
         float down = animate("custom-button:" + id + ":press", enabled && pressed(id), 90, UiEasing.PAPER, repaintBounds);
-        int base = paint.background() == null ? accent : paint.background();
+        int base = paint.background() == null ? (selector ? theme.raisedSurface() : accent) : paint.background();
         int fill = hover > 0
             ? UiCanvas.mix(base, paint.hoverBackground() == null ? UiCanvas.lighten(base, .08F) : paint.hoverBackground(), hover)
             : base;
@@ -577,12 +699,12 @@ public final class UiContext {
             paint.pressedBackground() == null ? UiCanvas.darken(base, .14F) : paint.pressedBackground(), down);
         final int resolvedFill = fill;
         int border = paint.border() == null ? theme.border() : paint.border();
-        int text = paint.text() == null ? theme.accentText() : paint.text();
+        int text = paint.text() == null ? (selector ? theme.text() : theme.accentText()) : paint.text();
         int focus = paint.focus() == null ? accent : paint.focus();
         float radius = paint.radius() == null ? theme.smallRadius() : paint.radius();
         float borderWidth = paint.borderWidth() == null ? .8F : paint.borderWidth();
         float textSize = paint.textSize() == null ? 9 : paint.textSize();
-        int fontStyle = paint.fontStyle() == null ? Font.BOLD : paint.fontStyle();
+        int fontStyle = paint.fontStyle() == null ? (selector ? Font.PLAIN : Font.BOLD) : paint.fontStyle();
         String family = paint.fontFamily() == null ? theme.fontFamily() : paint.fontFamily();
         if (paint.shadow() != null && paint.shadowSpread() != null && paint.shadowSpread() > 0 && down < .5F) {
             canvas.shadow(paint.shadow(), paint.shadowSpread(),
@@ -592,11 +714,23 @@ public final class UiContext {
         canvas.withOpacity(enabled ? 1 : .42F, () -> {
             canvas.roundRect(resolvedFill, x, y, width, height, radius);
             if (borderWidth > 0) canvas.strokeRoundRect(border, borderWidth, x, y, width, height, radius);
-            canvas.centeredText(label, x + width / 2, y + height / 2, textSize, text, fontStyle, family);
-            if (enabled && focused(id)) canvas.strokeRoundRect(focus, 1.2F,
+            if (selector) {
+                float padding = Math.min(10, Math.max(0, width / 2));
+                float arrowWidth = Math.min(8, Math.max(0, width - padding * 2));
+                float arrowX = x + width - padding - arrowWidth;
+                float labelWidth = Math.max(0, arrowX - x - padding - 6);
+                String display = canvas.ellipsize(label, labelWidth, textSize, fontStyle, family);
+                canvas.withClip(x + padding, y, labelWidth, Math.max(0, height), () ->
+                    canvas.text(display, x + padding, y + (height - canvas.textHeight(textSize, fontStyle, family)) / 2,
+                        textSize, text, fontStyle, family));
+                float arrowY = y + height / 2 - 2;
+                canvas.polygon(text, arrowX, arrowY, arrowX + arrowWidth, arrowY, arrowX + arrowWidth / 2, arrowY + 5);
+            } else {
+                canvas.centeredText(label, x + width / 2, y + height / 2, textSize, text, fontStyle, family);
+            }
+            if (enabled && focused(id)) drawFocusRing(focus,
                 x - 2, y - 2, width + 4, height + 4, radius + 2);
         });
-        if (enabled) hit(id, action, x, y, width, height);
     }
 
     /** Compact code-drawn icon button with the same input and focus behavior as a text button. */
@@ -625,7 +759,7 @@ public final class UiContext {
         canvas.roundRect(fill, x, y, size, size, radius);
         if (style != ButtonStyle.GHOST) canvas.strokeRoundRect(theme.border(), .8F, x, y, size, size, radius);
         if (icon != null) icon.draw(canvas, iconColor, x + size * .25F, y + size * .25F, size * .5F, 1.6F);
-        if (focused(id)) canvas.strokeRoundRect(accent, 1.2F, x - 2, y - 2, size + 4, size + 4, radius + 2);
+        if (focused(id)) drawFocusRing(accent, x - 2, y - 2, size + 4, size + 4, radius + 2);
         hit(id, action, x, y, size, size);
     }
 
@@ -638,7 +772,7 @@ public final class UiContext {
             controlRepaintBounds(x, y, 31, 18, 4));
         canvas.roundRect(UiCanvas.mix(0xFF343941, accent, enabledMotion), x, y, 31, 18, 9);
         canvas.circle(0xFFF0F3F7, x + 9 + 13 * enabledMotion, y + 9, 6.5F);
-        if (focused(id)) canvas.strokeRoundRect(accent, 1.2F, x - 2, y - 2, 35, 22, 11);
+        if (focused(id)) drawFocusRing(accent, x - 2, y - 2, 35, 22, 11);
         internalHit(id, "toggle:" + key, x, y, 31, 18);
     }
 
@@ -672,7 +806,7 @@ public final class UiContext {
             });
         }
         canvas.text(label, x + 24, y + 3, 9, theme.text(), Font.PLAIN, theme.fontFamily());
-        if (focused(id)) canvas.strokeRoundRect(accent, 1.2F, x - 2, y - 1, width + 4, 20, 6);
+        if (focused(id)) drawFocusRing(accent, x - 2, y - 1, width + 4, 20, 6);
         internalHit(id, "toggle:" + key, x, y - 1, Math.max(size, width), 20);
         return checked;
     }
@@ -689,7 +823,7 @@ public final class UiContext {
         canvas.strokeCircle(selected ? accent : theme.border(), 1.1F, cx, cy, 7.4F);
         if (amount > .02F) canvas.circle(accent, cx, cy, 4.5F * amount);
         canvas.text(label, x + 22, y + 3, 9, theme.text(), Font.PLAIN, theme.fontFamily());
-        if (focused(id)) canvas.strokeRoundRect(accent, 1.2F, x - 2, y - 1, width + 4, 20, 10);
+        if (focused(id)) drawFocusRing(accent, x - 2, y - 1, width + 4, 20, 10);
         selectable(id, key, value, x, y - 1, Math.max(16, width), 20);
         return selected;
     }
@@ -752,17 +886,17 @@ public final class UiContext {
     }
 
     public void slider(String id, String key, float x, float y, float width, double fallback) {
-        float value = (float) Math.max(0, Math.min(1, numberValue(key, fallback)));
-        paintSlider(id, key, x, y, width, value, 0, 1);
+        slider(id, key, x, y, width, 0, 1, fallback);
     }
 
     /** Slider storing a value in an arbitrary numeric range. */
     public double slider(String id, String key, float x, float y, float width,
                          double minimum, double maximum, double fallback) {
-        if (!Double.isFinite(minimum) || !Double.isFinite(maximum) || maximum <= minimum) {
+        if (!Double.isFinite(minimum) || !Double.isFinite(maximum) || !Double.isFinite(maximum - minimum) || maximum <= minimum) {
             throw new IllegalArgumentException("maximum must be greater than minimum");
         }
-        double stored = Math.max(minimum, Math.min(maximum, numberValue(key, fallback)));
+        double current = numberValue(key, fallback);
+        double stored = Double.isFinite(current) ? Math.max(minimum, Math.min(maximum, current)) : minimum;
         state.putIfAbsent(key, stored);
         float normalized = (float) ((stored - minimum) / (maximum - minimum));
         paintSlider(id, key, x, y, width, normalized, minimum, maximum);
@@ -771,11 +905,11 @@ public final class UiContext {
 
     private void paintSlider(String id, String key, float x, float y, float width, float value,
                              double minimum, double maximum) {
-        canvas.roundRect(0xFF343941, x, y + 6, width, 4, 2);
+        canvas.roundRect(theme.raisedSurface(), x, y + 6, width, 4, 2);
         canvas.roundRect(accent, x, y + 6, width * value, 4, 2);
-        canvas.circle(0xFFF2F4F7, x + width * value, y + 8, 6.5F);
+        canvas.circle(theme.text(), x + width * value, y + 8, 6.5F);
         canvas.circle(accent, x + width * value, y + 8, 4.5F);
-        if (focused(id)) canvas.strokeRoundRect(accent, 1.2F, x - 3, y - 3, width + 6, 22, 11);
+        if (focused(id)) drawFocusRing(accent, x - 3, y - 3, width + 6, 22, 11);
         // The grab area is padded, but the value must still map to the visible track.
         hitTracked(id, internalAction("slider:" + key + ":" + minimum + ":" + maximum),
             x - 8, y - 2, width + 16, 20, x, width);
@@ -787,7 +921,7 @@ public final class UiContext {
         return textField(id, key, placeholder, x, y, width, 30, fallback, 256);
     }
 
-    /** Single-line text field with the default height and an explicit maximum length. */
+    /** Single-line text field with the default height and an explicit user-insertion length limit. */
     public String textField(String id, String key, String placeholder, float x, float y, float width,
                             String fallback, int maxLength) {
         return textField(id, key, placeholder, x, y, width, 30, fallback, maxLength);
@@ -799,11 +933,55 @@ public final class UiContext {
      */
     public void menuButton(String id, String label, float x, float y, float width, float height,
                            ButtonStyle style, Shape shape, List<UiMenuItem> items) {
+        menuButton(id, label, x, y, width, height, style, shape, items, UiMenuStyle.defaults());
+    }
+
+    /** Menu trigger with an independently styled popup. */
+    public void menuButton(String id, String label, float x, float y, float width, float height,
+                           ButtonStyle style, Shape shape, List<UiMenuItem> items, UiMenuStyle menuStyle) {
+        java.util.Objects.requireNonNull(menuStyle, "menuStyle");
         if (id == null || id.isBlank() || items == null || items.isEmpty()) return;
         button(id, label, internalAction("menu:" + id), x, y, width, height, style, shape);
+        registerMenu(id, x, y, width, height, items, null, menuStyle);
+    }
+
+    /** Styled menu trigger; popup rows have their own independent style. */
+    public void menuButton(String id, String label, float x, float y, float width, float height,
+                           UiButtonStyle triggerStyle, List<UiMenuItem> items, UiMenuStyle menuStyle) {
+        menuButton(id, label, x, y, width, height, triggerStyle, true, items, menuStyle);
+    }
+
+    /** Styled menu trigger with normal focus, semantic label and disabled handling. */
+    public void menuButton(String id, String label, float x, float y, float width, float height,
+                           UiButtonStyle triggerStyle, boolean enabled, List<UiMenuItem> items, UiMenuStyle menuStyle) {
+        java.util.Objects.requireNonNull(menuStyle, "menuStyle");
+        boolean available = enabled && items != null && !items.isEmpty();
+        recordButtonState(id, label, available);
+        button(id, label, internalAction("menu:" + id), x, y, width, height, triggerStyle, available);
+        if (available) {
+            tooltip(id, label);
+            registerMenu(id, x, y, width, height, items, null, menuStyle);
+        }
+    }
+
+    /**
+     * Custom menu trigger using the same painter/state, automatic focus ring and disabled opacity
+     * as paintedButton. The painter draws only the trigger; PaneLib owns popup input and placement.
+     */
+    public void paintedMenuButton(String id, String label, float x, float y, float width, float height,
+                                  float radius, boolean enabled, List<UiMenuItem> items, UiMenuStyle menuStyle,
+                                  BiConsumer<UiCanvas, UiButtonState> painter) {
+        java.util.Objects.requireNonNull(menuStyle, "menuStyle");
+        boolean available = enabled && items != null && !items.isEmpty();
+        paintedButton(id, label, internalAction("menu:" + id), x, y, width, height, radius, available, painter);
+        if (available) registerMenu(id, x, y, width, height, items, null, menuStyle);
+    }
+
+    private void registerMenu(String id, float x, float y, float width, float height,
+                              List<UiMenuItem> items, String selectedItemId, UiMenuStyle menuStyle) {
         UiRect anchor = new UiRect(x + offsetX, y + offsetY, width, height);
         if (inputClip != null) anchor = intersect(anchor, inputClip);
-        if (anchor.width() > 0 && anchor.height() > 0) menus.add(new UiMenu(id, anchor, items));
+        if (anchor.width() > 0 && anchor.height() > 0) menus.add(new UiMenu(id, anchor, items, selectedItemId, menuStyle));
     }
 
     /**
@@ -812,31 +990,74 @@ public final class UiContext {
      */
     public String dropdown(String id, String key, float x, float y, float width, float height,
                            String fallback, List<UiSelectOption> options) {
-        if (id == null || id.isBlank() || key == null || key.isBlank() || options == null || options.isEmpty()) {
+        return dropdown(id, key, x, y, width, height, fallback, options, UiMenuStyle.defaults());
+    }
+
+    /** Single-value selector with independently styled popup rows. */
+    public String dropdown(String id, String key, float x, float y, float width, float height,
+                           String fallback, List<UiSelectOption> options, UiMenuStyle menuStyle) {
+        return dropdown(id, key, x, y, width, height, fallback, options, DEFAULT_BUTTON_STYLE, true, menuStyle);
+    }
+
+    /** Styled selected-value trigger. Unset colors/font inherit the selector's theme defaults. */
+    public String dropdown(String id, String key, float x, float y, float width, float height,
+                           String fallback, List<UiSelectOption> options, UiButtonStyle triggerStyle, UiMenuStyle menuStyle) {
+        return dropdown(id, key, x, y, width, height, fallback, options, triggerStyle, true, menuStyle);
+    }
+
+    /** Styled selector with an explicit enabled state; labels fit before the arrow and are clipped. */
+    public String dropdown(String id, String key, float x, float y, float width, float height,
+                           String fallback, List<UiSelectOption> options, UiButtonStyle triggerStyle,
+                           boolean enabled, UiMenuStyle menuStyle) {
+        java.util.Objects.requireNonNull(menuStyle, "menuStyle");
+        if (id == null || id.isBlank() || key == null || key.isBlank() || options == null || options.isEmpty())
             return fallback == null ? "" : fallback;
+        Selection selection = selection(key, fallback, options);
+        recordButtonState(id, selection.label().isBlank() ? id : selection.label(), enabled);
+        paintStyledButton(id, selection.label(), x, y, width, height, triggerStyle, enabled, true);
+        if (enabled) {
+            internalHit(id, "menu:" + id, x, y, width, height);
+            tooltip(id, selection.label());
+            registerMenu(id, x, y, width, height, selection.items(), selection.itemId(), menuStyle);
         }
+        return selection.value();
+    }
+
+    /**
+     * Custom selected-value trigger. The painter state's label is the current option's display
+     * label (or unmatched value); binding, focus, disabled opacity and popup navigation stay native.
+     */
+    public String paintedDropdown(String id, String key, float x, float y, float width, float height,
+                                  String fallback, List<UiSelectOption> options, float radius, boolean enabled,
+                                  UiMenuStyle menuStyle, BiConsumer<UiCanvas, UiButtonState> painter) {
+        java.util.Objects.requireNonNull(menuStyle, "menuStyle");
+        java.util.Objects.requireNonNull(painter, "painter");
+        if (id == null || id.isBlank() || key == null || key.isBlank() || options == null || options.isEmpty())
+            return fallback == null ? "" : fallback;
+        Selection selection = selection(key, fallback, options);
+        paintedButton(id, selection.label().isBlank() ? id : selection.label(), internalAction("menu:" + id),
+            x, y, width, height, radius, enabled, painter);
+        if (enabled) registerMenu(id, x, y, width, height, selection.items(), selection.itemId(), menuStyle);
+        return selection.value();
+    }
+
+    private record Selection(String value, String label, String itemId, List<UiMenuItem> items) { }
+
+    private Selection selection(String key, String fallback, List<UiSelectOption> options) {
         String selected = stringValue(key, fallback == null ? options.getFirst().value() : fallback);
         state.putIfAbsent(key, selected);
         String label = selected;
+        String selectedItemId = null;
         List<UiMenuItem> items = new java.util.ArrayList<>(options.size());
         for (int i = 0; i < options.size(); i++) {
             UiSelectOption option = options.get(i);
-            if (option.value().equals(selected)) label = option.label();
-            items.add(new UiMenuItem("option-" + i, option.label(), internalAction("dropdown:" + key + "=" + option.value())));
+            if (selectedItemId == null && option.value().equals(selected)) {
+                label = option.label();
+                selectedItemId = "option-" + i;
+            }
+            items.add(new UiMenuItem("option-" + i, option.label(), internalAction("dropdown:" + UiValueKey.encode(key) + "=" + option.value())));
         }
-        boolean focused = focused(id);
-        float radius = Math.min(theme.smallRadius(), height / 2);
-        canvas.roundRect(theme.raisedSurface(), x, y, width, height, radius);
-        canvas.strokeRoundRect(focused ? accent : theme.border(), focused ? 1.2F : .8F, x, y, width, height, radius);
-        if (focused) canvas.strokeRoundRect(accent, 1.2F, x - 2, y - 2, width + 4, height + 4, radius + 2);
-        canvas.text(label, x + 10, y + (height - 10) / 2, 9, theme.text(), Font.PLAIN);
-        float arrowX = x + width - 14, arrowY = y + height / 2 - 2;
-        canvas.polygon(theme.mutedText(), arrowX, arrowY, arrowX + 8, arrowY, arrowX + 4, arrowY + 5);
-        internalHit(id, "menu:" + id, x, y, width, height);
-        UiRect anchor = new UiRect(x + offsetX, y + offsetY, width, height);
-        if (inputClip != null) anchor = intersect(anchor, inputClip);
-        if (anchor.width() > 0 && anchor.height() > 0) menus.add(new UiMenu(id, anchor, items));
-        return selected;
+        return new Selection(selected, label, selectedItemId, items);
     }
 
     /** Paints a button that opens a native modal confirmation dialog. */
@@ -845,6 +1066,33 @@ public final class UiContext {
         if (id == null || id.isBlank() || dialog == null) return;
         button(id, label, internalAction("dialog:" + id), x, y, width, height, style, shape);
         dialogs.add(new UiDialogRequest(id, dialog));
+    }
+
+    /** Styled confirmation trigger; dialog appearance remains independently configured on the dialog. */
+    public void dialogButton(String id, String label, float x, float y, float width, float height,
+                             UiButtonStyle triggerStyle, UiDialog dialog) {
+        dialogButton(id, label, x, y, width, height, triggerStyle, true, dialog);
+    }
+
+    /** Styled confirmation trigger with an explicit enabled state. */
+    public void dialogButton(String id, String label, float x, float y, float width, float height,
+                             UiButtonStyle triggerStyle, boolean enabled, UiDialog dialog) {
+        java.util.Objects.requireNonNull(dialog, "dialog");
+        recordButtonState(id, label, enabled);
+        button(id, label, internalAction("dialog:" + id), x, y, width, height, triggerStyle, enabled);
+        if (enabled) {
+            tooltip(id, label);
+            dialogs.add(new UiDialogRequest(id, dialog));
+        }
+    }
+
+    /** Custom confirmation trigger with standard button state, focus ring and disabled opacity. */
+    public void paintedDialogButton(String id, String label, float x, float y, float width, float height,
+                                    float radius, boolean enabled, UiDialog dialog,
+                                    BiConsumer<UiCanvas, UiButtonState> painter) {
+        java.util.Objects.requireNonNull(dialog, "dialog");
+        paintedButton(id, label, internalAction("dialog:" + id), x, y, width, height, radius, enabled, painter);
+        if (enabled) dialogs.add(new UiDialogRequest(id, dialog));
     }
 
     /** A native, keyboard-editable single-line text field with an explicit height and limit. */
@@ -859,13 +1107,13 @@ public final class UiContext {
         return paintTextField(id, key, placeholder, x, y, width, 30, fallback, 256, true, UiInputStyle.defaults());
     }
 
-    /** Password field with the default height and an explicit maximum length. */
+    /** Password field with the default height and an explicit user-insertion length limit. */
     public String passwordField(String id, String key, String placeholder, float x, float y, float width,
                                 String fallback, int maxLength) {
         return paintTextField(id, key, placeholder, x, y, width, 30, fallback, maxLength, true, UiInputStyle.defaults());
     }
 
-    /** Password field with an explicit height and maximum stored length. */
+    /** Password field with an explicit height and user-insertion length limit. */
     public String passwordField(String id, String key, String placeholder, float x, float y, float width,
                                 float height, String fallback, int maxLength) {
         return paintTextField(id, key, placeholder, x, y, width, height, fallback, maxLength, true, UiInputStyle.defaults());
@@ -882,9 +1130,42 @@ public final class UiContext {
         return paintTextField(id, key, placeholder, x, y, width, height, fallback, maxLength, true, style);
     }
 
+    private void paintInputSurface(UiInputAppearance paint, boolean focused,
+                                   float x, float y, float width, float height) {
+        float radius = Math.min(UiInputAppearance.metric(paint.radius(), theme.smallRadius()), Math.max(0, height / 2));
+        canvas.roundRect(UiInputAppearance.color(paint.background(), theme.raisedSurface()), x, y, width, height, radius);
+        float stroke = focused ? UiInputAppearance.metric(paint.focusWidth(), 1.2F) : UiInputAppearance.metric(paint.borderWidth(), .8F);
+        if (stroke > 0) canvas.strokeRoundRect(focused ? UiInputAppearance.color(paint.focus(), accent)
+            : UiInputAppearance.color(paint.border(), theme.border()), stroke, x, y, width, height, radius);
+    }
+
+    /** Custom painting with normal pointer/keyboard activation, focus ring and disabled handling.
+     * The label is exposed as semantic metadata and a tooltip; automatic narrator output is not implemented. */
+    public void paintedButton(String id, String label, String action, float x, float y, float width, float height,
+                              float radius, boolean enabled, java.util.function.BiConsumer<UiCanvas, UiButtonState> painter) {
+        java.util.Objects.requireNonNull(painter, "painter");
+        if (!Float.isFinite(radius) || radius < 0) throw new IllegalArgumentException("Invalid button radius");
+        var state = recordButtonState(id, label, enabled);
+        canvas.withOpacity(enabled ? 1 : .42F, () -> painter.accept(canvas, state));
+        if (state.focused()) drawFocusRing(accent, x - 2, y - 2, width + 4, height + 4, radius + 2);
+        if (enabled) {
+            hit(id, action, x, y, width, height);
+            tooltip(id, label);
+        }
+    }
+
+    private UiButtonState recordButtonState(String id, String label, boolean enabled) {
+        requireConsumerInteractionId(id);
+        if (label == null || label.isBlank()) throw new IllegalArgumentException("A button needs a descriptive label");
+        var state = new UiButtonState(label, enabled, enabled && hovered(id), enabled && pressed(id), enabled && focused(id));
+        interactions.buttons.put(id, state);
+        return state;
+    }
+
     private String paintTextField(String id, String key, String placeholder, float x, float y, float width,
                                   float height, String fallback, int maxLength, boolean masked, UiInputStyle style) {
         java.util.Objects.requireNonNull(style);
+        UiInputAppearance paint = style.appearance();
         String family = style.fontFamily() == null ? theme.fontFamily() : style.fontFamily();
         float size = style.fontSize(); int fontStyle = style.fontStyle();
         float paddingX = Math.min(style.paddingX(), Math.max(0, width / 2));
@@ -897,46 +1178,40 @@ public final class UiContext {
         int cursor = focused && textInput != null ? UiTextBoundary.floor(value, textInput.cursor()) : value.length();
         int selectionStart = focused && textInput != null ? UiTextBoundary.floor(value, textInput.selectionStart()) : cursor;
         int selectionEnd = focused && textInput != null ? UiTextBoundary.floor(value, textInput.selectionEnd()) : cursor;
-        float radius = Math.min(theme.smallRadius(), height / 2);
-        canvas.roundRect(theme.raisedSurface(), x, y, width, height, radius);
-        canvas.strokeRoundRect(focused ? accent : theme.border(), focused ? 1.2F : .8F, x, y, width, height, radius);
+        paintInputSurface(paint, focused, x, y, width, height);
 
         float textHeight = canvas.textHeight(size, fontStyle, family);
         float textX = x + paddingX, textY = y + (height - textHeight) / 2;
         float innerWidth = Math.max(0, width - paddingX * 2);
-        float cursorX = canvas.textWidth(displayValue.substring(0, cursor), size, fontStyle, family);
+        UiShapedText shaped=canvas.shapeText(displayValue,size,fontStyle,family,focused?interactions.textLayouts:null);
+        float cursorX = shaped.x(cursor);
         float textOffset = Math.max(0, cursorX - innerWidth + 3);
         canvas.withClip(textX, y + paddingY, innerWidth, Math.max(0, height - paddingY * 2), () -> {
             if (!value.isEmpty()) {
                 if (selectionEnd > selectionStart) {
-                    float selectionX = canvas.textWidth(displayValue.substring(0, selectionStart), size,
-                        fontStyle, family);
-                    float selectionWidth = canvas.textWidth(displayValue.substring(selectionStart, selectionEnd), size,
-                        fontStyle, family);
-                    canvas.fill(UiCanvas.fade(accent, .45F), textX + selectionX - textOffset, textY,
-                        selectionWidth, textHeight);
+                    canvas.shapedSelection(shaped,selectionStart,selectionEnd,textX-textOffset,textY,textHeight,UiInputAppearance.color(paint.selection(), UiCanvas.fade(accent,.45F)));
                 }
-                canvas.text(displayValue, textX - textOffset, textY, size, theme.text(), fontStyle, family);
+                canvas.shapedText(shaped,textX-textOffset,textY,UiInputAppearance.color(paint.text(), theme.text()));
             } else if (!focused && placeholder != null && !placeholder.isEmpty()) {
-                canvas.text(placeholder, textX, textY, size, theme.mutedText(), fontStyle, family);
+                canvas.shapedText(canvas.shapeText(placeholder,size,fontStyle,family),textX,textY,UiInputAppearance.color(paint.placeholder(), theme.mutedText()));
             }
             if (focused) {
                 float caretX = textX + cursorX - textOffset;
-                canvas.line(accent, 1, caretX, textY, caretX, textY + textHeight);
+                canvas.line(UiInputAppearance.color(paint.caret(), accent), 1, caretX, textY, caretX, textY + textHeight);
             }
         });
         internalHit(id, "input:" + key, x, y, width, height);
         float[] carets = new float[value.length() + 1];
         java.util.Arrays.fill(carets, Float.NaN);
+        // Masked display positions are indexed using the original value's valid codepoint boundaries.
         for (int i = 0; i <= value.length();) {
-            carets[i] = textX - textOffset + canvas.textWidth(displayValue.substring(0, i), size, fontStyle,
-                family);
+            carets[i] = textX - textOffset + shaped.x(i);
             if (i == value.length()) break;
             i = UiTextBoundary.next(value, i);
         }
         float[] caretYs = new float[carets.length];
         java.util.Arrays.fill(caretYs, y + height / 2);
-        addInput(id, key, x, y, width, height, maxLength, false, carets, caretYs);
+        addInput(id, key, x, y, width, height, maxLength, false, carets, caretYs, List.of(), masked);
         return value;
     }
 
@@ -946,116 +1221,95 @@ public final class UiContext {
         return textArea(id, key, placeholder, x, y, width, height, fallback, 4096);
     }
 
-    /** Native multiline editor with an explicit maximum stored length. */
+    /** Native multiline editor with an explicit user-insertion limit (UTF-16 units).
+     * Existing programmatic/fallback values are not truncated. */
     public String textArea(String id, String key, String placeholder, float x, float y, float width,
                            float height, String fallback, int maxLength) {
         return textArea(id, key, placeholder, x, y, width, height, fallback, maxLength, UiInputStyle.defaults());
     }
 
-    /** Multiline input with matching configurable text geometry and caret-following vertical scroll. */
+    /** Multiline input with retained wheel browsing and caret reveal on editing/navigation. */
     public String textArea(String id, String key, String placeholder, float x, float y, float width,
                            float height, String fallback, int maxLength, UiInputStyle style) {
         java.util.Objects.requireNonNull(style);
+        UiInputAppearance paint = style.appearance();
         String family = style.fontFamily() == null ? theme.fontFamily() : style.fontFamily();
         float size = style.fontSize(); int fontStyle = style.fontStyle();
         float paddingX = Math.min(style.paddingX(), Math.max(0, width / 2));
         float paddingY = Math.min(style.paddingY(), Math.max(0, height / 2));
         float textHeight = canvas.textHeight(size, fontStyle, family);
-        String value = stringValue(key, fallback == null ? "" : fallback)
-            .replace("\r\n", "\n").replace('\r', '\n');
-        state.putIfAbsent(key, value);
+        String value = UiTextBoundary.normalizeLines(stringValue(key, fallback == null ? "" : fallback));
+        // Normalize text, but a painter must never silently replace consumer state of another type.
+        Object stored = state.get(key);
+        if (stored == null || stored instanceof String && !value.equals(stored)) state.put(key, value);
         boolean focused = focused(id);
         int cursor = focused && textInput != null ? UiTextBoundary.floor(value, textInput.cursor()) : value.length();
         int selectionStart = focused && textInput != null
             ? UiTextBoundary.floor(value, textInput.selectionStart()) : cursor;
         int selectionEnd = focused && textInput != null
             ? UiTextBoundary.floor(value, textInput.selectionEnd()) : cursor;
-        float radius = Math.min(theme.smallRadius(), Math.max(0, height / 2));
-        canvas.roundRect(theme.raisedSurface(), x, y, width, height, radius);
-        canvas.strokeRoundRect(focused ? accent : theme.border(), focused ? 1.2F : .8F,
-            x, y, width, height, radius);
+        paintInputSurface(paint, focused, x, y, width, height);
 
         float textX = x + paddingX;
         float firstBaseline = y + paddingY;
         float innerWidth = Math.max(0, width - paddingX * 2);
         float lineHeight = Math.max(textHeight, style.lineHeight());
-        float[] advances = new float[value.length()];
-        for (int index = 0; index < value.length();) {
-            int next = UiTextBoundary.next(value, index);
-            if (value.charAt(index) != '\n') advances[index] = canvas.textWidth(value.substring(index, next), size, fontStyle, family);
-            index = next;
-        }
-        List<TextLine> lines = wrapInput(value, innerWidth, advances);
+        List<UiShapedText.Line> lines = canvas.wrapShapedText(value,innerWidth,size,fontStyle,family,focused?interactions.textLayouts:null);
+        List<UiTextLine> visualLines = new java.util.ArrayList<>();
         float[] caretXs = new float[value.length() + 1];
         float[] caretYs = new float[value.length() + 1];
         java.util.Arrays.fill(caretXs, Float.NaN);
         for (int lineIndex = 0; lineIndex < lines.size(); lineIndex++) {
-            TextLine line = lines.get(lineIndex);
+            UiShapedText.Line line = lines.get(lineIndex);
             float baseline = firstBaseline + lineIndex * lineHeight;
+            float[] lineXs = new float[line.end() - line.start() + 1];
+            java.util.Arrays.fill(lineXs, Float.NaN);
             for (int index = line.start(); index <= line.end();) {
-                caretXs[index] = textX + canvas.textWidth(value.substring(line.start(), index), size, fontStyle, family);
+                caretXs[index] = textX + Math.min(innerWidth, line.text().x(index-line.start()));
                 caretYs[index] = baseline + textHeight / 2;
+                lineXs[index - line.start()] = caretXs[index];
                 if (index == line.end()) break;
                 index = UiTextBoundary.next(value, index);
+            }
+            visualLines.add(new UiTextLine(line.start(), line.end(), lineXs, baseline + textHeight / 2));
+        }
+        if (focused && textInput != null && textInput.upstream()) {
+            for (UiTextLine line : visualLines) if (cursor == line.end()) {
+                caretXs[cursor] = line.x(cursor); caretYs[cursor] = line.y(); break;
             }
         }
 
         float innerHeight = Math.max(0, height - paddingY * 2);
-        float offset = focused ? Math.max(0, caretYs[cursor] + textHeight / 2 - (y + paddingY + innerHeight)) : 0;
+        UiEditorViewport editor=interactions.editors.computeIfAbsent(id,ignored->new UiEditorViewport());
+        editor.viewport=new UiRect(textX+offsetX,firstBaseline+offsetY,innerWidth,innerHeight);
+        float offset=editor.layout(value,cursor,textInput!=null&&textInput.upstream(),focused,innerWidth,innerHeight,
+            (lines.size()-1)*lineHeight+textHeight,caretYs[cursor]-textHeight/2-firstBaseline,textHeight,lineHeight);
         for (int i = 0; i < caretYs.length; i++) caretYs[i] -= offset;
         canvas.withClip(textX, y + paddingY, innerWidth, innerHeight, () -> {
             if (value.isEmpty() && !focused && placeholder != null && !placeholder.isEmpty()) {
-                canvas.text(placeholder, textX, firstBaseline, size, theme.mutedText(), fontStyle,
-                    family);
+                canvas.shapedText(canvas.shapeText(placeholder,size,fontStyle,family),textX,firstBaseline,UiInputAppearance.color(paint.placeholder(), theme.mutedText()));
             }
             for (int lineIndex = 0; lineIndex < lines.size(); lineIndex++) {
-                TextLine line = lines.get(lineIndex);
+                UiShapedText.Line line = lines.get(lineIndex);
                 float baseline = firstBaseline + lineIndex * lineHeight - offset;
                 int selectedFrom = Math.max(selectionStart, line.start());
                 int selectedTo = Math.min(selectionEnd, line.end());
                 if (selectedTo > selectedFrom) {
-                    float selectionX = caretXs[selectedFrom];
-                    float selectionWidth = caretXs[selectedTo] - selectionX;
-                    canvas.fill(UiCanvas.fade(accent, .45F), selectionX, baseline,
-                        Math.max(1, selectionWidth), textHeight);
+                    canvas.shapedSelection(line.text(),selectedFrom-line.start(),selectedTo-line.start(),textX,baseline,textHeight,UiInputAppearance.color(paint.selection(), UiCanvas.fade(accent,.45F)));
                 }
-                if (!line.text().isEmpty()) canvas.text(line.text(), textX, baseline, size, theme.text(),
-                    fontStyle, family);
+                if(line.start()==line.end() && selectionStart<=line.start() && selectionEnd>line.end())
+                    canvas.fill(UiInputAppearance.color(paint.selection(), UiCanvas.fade(accent,.45F)),textX,baseline,1,textHeight);
+                if(baseline+textHeight>=y+paddingY&&baseline<y+height-paddingY)
+                    canvas.shapedText(line.text(),textX,baseline,UiInputAppearance.color(paint.text(), theme.text()));
             }
-            if (focused) canvas.line(accent, 1, caretXs[cursor], caretYs[cursor] - textHeight / 2,
+            if (focused) canvas.line(UiInputAppearance.color(paint.caret(), accent), 1, caretXs[cursor], caretYs[cursor] - textHeight / 2,
                 caretXs[cursor], caretYs[cursor] + textHeight / 2);
         });
         internalHit(id, "input:" + key, x, y, width, height);
-        addInput(id, key, x, y, width, height, maxLength, true, caretXs, caretYs);
+        addInput(id, key, x, y, width, height, maxLength, true, caretXs, caretYs,
+            visualLines.stream().map(line -> line.translate(0, -offset)).toList());
         return value;
     }
-
-    private List<TextLine> wrapInput(String value, float width, float[] advances) {
-        List<TextLine> lines = new java.util.ArrayList<>();
-        int start = 0;
-        float lineWidth = 0;
-        for (int index = 0; index < value.length();) {
-            if (value.charAt(index) == '\n') {
-                lines.add(new TextLine(start, index, value.substring(start, index)));
-                start = ++index;
-                lineWidth = 0;
-                continue;
-            }
-            int next = UiTextBoundary.next(value, index);
-            if (index > start && lineWidth + advances[index] > width) {
-                lines.add(new TextLine(start, index, value.substring(start, index)));
-                start = index;
-                lineWidth = 0;
-            } else {
-                lineWidth += advances[index];
-                index = next;
-            }
-        }
-        lines.add(new TextLine(start, value.length(), value.substring(start)));
-        return lines;
-    }
-
-    private record TextLine(int start, int end, String text) {}
 
     /** Makes a custom-painted region switch to another page without reserving an action name. */
     public void pageLink(String id, String pageId, float x, float y, float width, float height) {
@@ -1090,7 +1344,7 @@ public final class UiContext {
         fill = UiCanvas.mix(fill, 0xFF000000, .12F * pressAmount);
         canvas.roundRect(fill, x, y, width, height, radius);
         canvas.strokeRoundRect(border, .8F, x, y, width, height, radius);
-        if (focused(id)) canvas.strokeRoundRect(accent, 1.2F, x - 2, y - 2, width + 4, height + 4, radius + 2);
+        if (focused(id)) drawFocusRing(accent, x - 2, y - 2, width + 4, height + 4, radius + 2);
         int textColor = style == ButtonStyle.PRIMARY ? theme.accentText()
             : style == ButtonStyle.DANGER ? 0xFFFFB9BD : theme.text();
         canvas.centeredText(label, x + width / 2, y + height / 2, 9, textColor, Font.BOLD, theme.fontFamily());
@@ -1117,6 +1371,7 @@ public final class UiContext {
      * hoverable but remains non-clickable and is not added to keyboard focus traversal.
      */
     public void tooltip(String id, String text, float x, float y, float width, float height) {
+        requireConsumerInteractionId(id);
         if (id == null || id.isBlank() || text == null || text.isBlank() || width <= 0 || height <= 0) return;
         UiRect anchor = new UiRect(x + offsetX, y + offsetY, width, height);
         if (inputClip != null) anchor = intersect(anchor, inputClip);

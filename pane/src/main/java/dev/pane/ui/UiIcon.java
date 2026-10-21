@@ -1,9 +1,10 @@
 package dev.pane.ui;
 
 /** Small code-drawn icon set. Consumers can still draw any custom icon with {@link UiPath}. */
-public enum UiIcon {
+public enum UiIcon implements UiSymbol {
     CHECK, CLOSE, PLUS, MINUS, SEARCH, CHEVRON_DOWN, ARROW_RIGHT, MENU,
-    HOME, INFO, WARNING, PLAY, PAUSE, MORE, COPY, BOOKMARK, COLUMNS, TRASH;
+    HOME, INFO, WARNING, PLAY, PAUSE, MORE, COPY, BOOKMARK, COLUMNS, TRASH,
+    BOX, CHECKED_BOX, STAR, MAIL, INBOX, ARCHIVE, CHEVRON_LEFT, CHEVRON_RIGHT, SEND, TAG, CLOCK, HELP, SETTINGS, REFRESH, FILE, PEN, APPS, MORE_VERTICAL, TUNE, PEOPLE, STAR_FILLED;
 
     /** Draws this icon inside the supplied square. */
     public void draw(UiCanvas canvas, int color, float x, float y, float size, float stroke) {
@@ -15,6 +16,7 @@ public enum UiIcon {
 
     private void draw24(UiCanvas g, int color, float s) {
         switch (this) {
+            case BOX, CHECKED_BOX, STAR, MAIL, INBOX, ARCHIVE, CHEVRON_LEFT, CHEVRON_RIGHT, SEND, TAG, CLOCK, HELP, SETTINGS, REFRESH, FILE, PEN, APPS, MORE_VERTICAL, TUNE, PEOPLE, STAR_FILLED -> g.withScale(1.2F, 1.2F, 0, 0, () -> draw20(g, color, s / 1.2F));
             case CHECK -> g.path().moveTo(4, 12).lineTo(9, 17).lineTo(20, 6).stroke(color, s);
             case CLOSE -> {
                 g.line(color, s, 5, 5, 19, 19);
@@ -79,6 +81,25 @@ public enum UiIcon {
                 g.line(color, s, 11, 11, 11, 17);
                 g.line(color, s, 14, 11, 14, 17);
             }
+        }
+    }
+
+    private void draw20(UiCanvas g, int c, float s) {
+        float x = 0, y = 0;
+        switch(this){
+            case BOX,CHECKED_BOX->{g.strokeRoundRect(c,s,x+3,y+3,14,14,2);if(this == CHECKED_BOX){g.line(c,s,x+5,y+10,x+9,y+14);g.line(c,s,x+9,y+14,x+15,y+6);}}
+            case STAR,STAR_FILLED->{float[] p=new float[20];for(int i=0;i<10;i++){double a=-Math.PI/2+i*Math.PI/5;float r=i%2==0?9:4;p[i*2]=x+10+(float)Math.cos(a)*r;p[i*2+1]=y+10+(float)Math.sin(a)*r;}if(this == STAR_FILLED)g.polygon(c,p);else for(int i=0;i<10;i++)g.line(c,s,p[i*2],p[i*2+1],p[(i*2+2)%20],p[(i*2+3)%20]);}
+            case MAIL,INBOX,ARCHIVE->{g.strokeRoundRect(c,s,x+2,y+4,16,13,2);if(this == MAIL){g.line(c,s,x+2,y+5,x+10,y+11);g.line(c,s,x+10,y+11,x+18,y+5);}else {g.line(c,s,x+2,y+11,x+7,y+11);g.line(c,s,x+7,y+11,x+9,y+14);g.line(c,s,x+9,y+14,x+12,y+14);g.line(c,s,x+12,y+14,x+14,y+11);g.line(c,s,x+14,y+11,x+18,y+11);}}
+            case CHEVRON_LEFT,CHEVRON_RIGHT->{float a=this == CHEVRON_LEFT?1:-1;g.line(c,s,x+10+a*3,y+4,x+10-a*3,y+10);g.line(c,s,x+10-a*3,y+10,x+10+a*3,y+16);}
+            case SEND->{g.line(c,s,x+2,y+2,x+19,y+10);g.line(c,s,x+19,y+10,x+2,y+18);g.line(c,s,x+2,y+18,x+5,y+10);g.line(c,s,x+5,y+10,x+2,y+2);g.line(c,s,x+5,y+10,x+15,y+10);}
+            case TAG->{g.line(c,s,x+2,y+4,x+12,y+4);g.line(c,s,x+12,y+4,x+19,y+10);g.line(c,s,x+19,y+10,x+12,y+16);g.line(c,s,x+12,y+16,x+2,y+16);g.line(c,s,x+2,y+16,x+2,y+4);g.circle(c,x+6,y+10,1.5F);}
+            case CLOCK,HELP,SETTINGS,REFRESH->{g.strokeRoundRect(c,s,x+2,y+2,16,16,8);if(this == CLOCK){g.line(c,s,x+10,y+5,x+10,y+10);g.line(c,s,x+10,y+10,x+14,y+12);}else if(this == HELP)g.text("?",x+6,y+2,14,c,java.awt.Font.BOLD);else if(this == REFRESH)g.polygon(c,x+13,y,x+20,y+2,x+17,y+8);else {g.strokeRoundRect(c,s,x+7,y+7,6,6,3);for(int i=0;i<8;i++){double a=i*Math.PI/4;g.line(c,s,x+10+(float)Math.cos(a)*8,y+10+(float)Math.sin(a)*8,x+10+(float)Math.cos(a)*11,y+10+(float)Math.sin(a)*11);}}}
+            case FILE->{g.strokeRoundRect(c,s,x+4,y+2,12,16,1);g.line(c,s,x+7,y+8,x+13,y+8);g.line(c,s,x+7,y+12,x+13,y+12);}
+            case PEN->{g.line(c,s * 1.8F,x+4,y+15,x+15,y+4);g.polygon(c,x+2,y+18,x+4,y+12,x+8,y+16);g.line(c,s,x+13,y+2,x+18,y+7);}
+            case APPS->{for(int a=0;a<3;a++)for(int b=0;b<3;b++)g.circle(c,x+3+a*6,y+3+b*6,1.6F);}
+            case MORE_VERTICAL->{for(int i=0;i<3;i++)g.circle(c,x+10,y+4+i*6,1.5F);}
+            case TUNE->{for(int i=0;i<3;i++){g.line(c,s,x+1,y+4+i*6,x+19,y+4+i*6);g.strokeRoundRect(c,s,x+(i==1?4:10),y+1+i*6,6,6,3);}}
+            case PEOPLE->{g.circle(c,x+7,y+5,3.5F);g.circle(c,x+15,y+6,3);g.roundRect(c,x+1,y+11,12,7,5);g.roundRect(c,x+12,y+12,7,6,4);}
         }
     }
 }

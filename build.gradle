@@ -27,13 +27,47 @@ subprojects {
         it.options.release = 25
     }
 
+    tasks.withType(JavaExec).configureEach {
+        javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(25) }
+    }
+
     java {
+        toolchain.languageVersion = JavaLanguageVersion.of(25)
         withSourcesJar()
         sourceCompatibility = JavaVersion.VERSION_25
         targetCompatibility = JavaVersion.VERSION_25
     }
 
+    tasks.withType(AbstractArchiveTask).configureEach {
+        preserveFileTimestamps = false
+        reproducibleFileOrder = true
+    }
+
     tasks.withType(Javadoc).configureEach {
         options.addStringOption('Xdoclint:none', '-quiet')
+        options.addBooleanOption('notimestamp', true)
     }
+}
+
+
+// Local candidate preparation only. These tasks never contact a publishing service.
+def releasePython = providers.gradleProperty('pythonExecutable').getOrElse(
+    System.getProperty('os.name').startsWith('Windows') ? 'python' : 'python3')
+tasks.register('verifyReleaseTooling', Exec) {
+    group = 'verification'
+    description = 'Run isolated packaging regression tests without publishing.'
+    commandLine releasePython, '-m', 'unittest', 'discover', '-s', 'scripts/tests', '-v'
+}
+tasks.register('prepareRelease', Exec) {
+    group = 'distribution'
+    description = 'Build and verify an immutable local candidate with matching starter and Maven repository.'
+    dependsOn 'verifyReleaseTooling', ':pane:build', ':pane:publishMavenJavaPublicationToLocalBuildRepository'
+    commandLine releasePython, 'scripts/prepare_release.py'
+}
+tasks.register('verifyRelease', Exec) {
+    group = 'verification'
+    description = 'Verify the existing candidate archives, metadata and checksum inventory.'
+    // Preserve standalone verification; order after preparation only when both are requested.
+    mustRunAfter 'prepareRelease'
+    commandLine releasePython, 'scripts/prepare_release.py', '--verify', "build/release/${version}"
 }

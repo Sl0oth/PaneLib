@@ -60,12 +60,21 @@ public class UiScreen extends Screen {
     private static final String DIALOG_CANCEL_PREFIX = "dialog-cancel:";
     private static final String TOAST_DISMISS_PREFIX = "toast-dismiss:";
 
+    private long minecraftTextureRevision = UiCanvas.minecraftTextureRevision();
     private final UiDocument document;
     private final NativeOverlayRenderer nativeOverlay;
     private final UiEventListener eventListener;
     private final UiScreenOptions options;
     private final Map<String, Object> state = new HashMap<>();
     private final Map<String, UiAnimationClock.State> animations = new HashMap<>();
+    private Set<String> rootAnimationIds=Set.of();
+    /** Retained animation states for the current page and cached virtual rows; client-thread diagnostic. */
+    public int animationStateCount(){return animations.size();}
+    private void pruneAnimations() {
+        var retained=new HashSet<>(rootAnimationIds);
+        for(var layer:virtualLayers.values())for(var row:layer.rows.values())retained.addAll(row.animationIds);
+        animations.keySet().retainAll(retained);
+    }
     private Map<String, UiRect> customAnimationBounds = Map.of();
     private Set<String> activeCustomAnimationIds = Set.of();
     private final Map<String, NativeBounds> nativeBounds = new LinkedHashMap<>();
@@ -73,6 +82,8 @@ public class UiScreen extends Screen {
     private final Map<String, UiRect> nativeOverlayLayers = new LinkedHashMap<>();
     private final Map<String, UiRect> nativeOverlayLayersView = Collections.unmodifiableMap(nativeOverlayLayers);
     private final Map<String, UiRect> toastBounds = new HashMap<>();
+    private final UiInteractionState interactions = new UiInteractionState();
+    private double scrollOffset(String id) { return interactions.offsets.getOrDefault(id, 0D); }
     private List<UiHitRegion> hitRegions = List.of();
     private List<UiScrollRegion> scrollRegions = List.of();
     private List<UiInputRegion> inputRegions = List.of();
@@ -80,6 +91,48 @@ public class UiScreen extends Screen {
     private List<UiMenu> menus = List.of();
     private List<UiDialogRequest> dialogs = List.of();
     private final List<ActiveToast> toasts = new ArrayList<>();
+
+    private final UiBlurScratch dialogBlurScratch = new UiBlurScratch();
+    /** Temporary blur image allocations; separate from GPU texture allocations. */
+    public long dialogBlurAllocations() { return dialogBlurScratch.allocations; }
+    public long dialogBlurRetainedPixels() { return dialogBlurScratch.retainedPixels(); }
+    private DynamicTexture popupSurface;
+    private BufferedImage popupImage;
+    private int[] popupPixels;
+    private UiRect popupLayoutBounds;
+    private int popupBackdrop;
+    private long popupUploadPixels;
+    private boolean popupDirty;
+    private PopupPaintState popupPaintState;
+    private UiDialogLayout dialogLayout;
+    private DialogLayoutKey dialogLayoutKey;
+    private float dialogOffset;
+    private boolean dialogHitsStale;
+    private record DialogLayoutKey(UiDialogRequest request,int width,int height,float quality,long fontRevision) { }
+    private long dialogLayoutCount;
+    /** Dialog text measurements since this screen was created; scrolling/focus do not rewrap copy. */
+    public long dialogLayoutCount(){return dialogLayoutCount;}
+    /** Current built-in dialog copy viewport, if a dialog is laid out. */
+    public Optional<UiScrollSnapshot> dialogScrollSnapshot() {
+        return openDialogId==null||dialogLayout==null?Optional.empty():Optional.of(new UiScrollSnapshot(openDialogId,
+            dialogLayout.content(),dialogLayout.contentHeight(),dialogOffset,dialogOffset));
+    }
+
+    private List<UiHitRegion> popupHits = List.of();
+    private record PopupPaintState(UiMenu menu, UiDialogRequest dialog, UiRect bounds, float offset, float dialogOffset,
+                                   String hovered, String focused, String pressed, float quality) { }
+    private String popupVisualId(String id) {
+        return id != null && (menuItem(id) != null || openDialogId != null && (id.equals("dialog-confirm") || id.equals("dialog-cancel"))) ? id : null;
+    }
+    private boolean popupTarget(String id) {
+        if (id == null) return false;
+        return openDialogId != null && (id.equals("dialog-confirm") || id.equals("dialog-cancel") || id.equals("dialog-body") || id.equals("dialog-backdrop"))
+            || openMenuId != null && (id.startsWith("menu:" + openMenuId + ":") || id.equals(menuBodyId()));
+    }
+    /** Pixels uploaded by cropped menu/dialog surfaces since this screen opened. */
+    public long popupUploadPixels() { return popupUploadPixels; }
+    /** Current cropped popup backing area; zero after cleanup. */
+    public long popupRetainedPixels() { return popupImage == null ? 0 : (long) popupImage.getWidth() * popupImage.getHeight(); }
 
     private DynamicTexture toastSurface;
     private BufferedImage toastImage;
@@ -124,6 +177,14 @@ public class UiScreen extends Screen {
     };
 
     private String openMenuId;
+    private UiMenu activeMenu;
+    private UiPopupLayout menuLayout;
+    private float menuOffset;
+    private boolean revealMenuFocus;
+    private boolean menuHitsStale;
+    private boolean menuNavigationFromHover;
+    private String menuBodyId() { return "menu-body:" + openMenuId; }
+    private float preferredCaretX = Float.NaN;
     private boolean menuOpenedWithPointer;
     private String openDialogId;
     private String visibleTooltipId;
@@ -131,7 +192,9 @@ public class UiScreen extends Screen {
     private UiHitRegion draggingSlider;
     private UiInputRegion draggingTextInput;
     private int textCursor;
+    private boolean textUpstream;
     private int textAnchor;
+    private boolean layoutHitsStale;
     private boolean dirty = true;
     private UiRect partialDirtyRegion;
     private boolean hoverDirty = true;
@@ -145,6 +208,7 @@ public class UiScreen extends Screen {
     private long interactionStart;
     private long interactionEnd;
     private UiRect interactionRepaintBounds;
+    private boolean interactionPaintsBase;
     private boolean opened;
     private long lastPaint;
     private int paintCount;
@@ -174,6 +238,7 @@ public class UiScreen extends Screen {
     private long lastVirtualRowPaintNanos;
     private int lastVirtualRowNonTransparentPixels;
     private long lastVirtualAnimationPaint;
+    private long lastCustomVirtualAnimationPaint;
     private final long createdAtNanos;
     private long firstPaintNanos = -1;
     private long frameCount;
@@ -188,6 +253,8 @@ public class UiScreen extends Screen {
     private long lastNativeOverlayNanos;
     private int lastNativeItemCount;
     private int lastNativeEntityCount;
+    private int lastNativeTextCount;
+    private final NativeTextRenderer nativeText = new NativeTextRenderer();
     private long lastDiagnosticsSampleNanos;
     private float motionScaleOverride = Float.NaN;
 
@@ -204,7 +271,7 @@ public class UiScreen extends Screen {
         motionScaleOverride = Math.max(0, Math.min(2, value));
         if (motionScaleOverride == 0) {
             transitionEnd = interactionEnd = 0;
-            scrollMotions.forEach((id, motion) -> state.put("scroll:" + id, motion.target()));
+            scrollMotions.forEach((id, motion) -> interactions.offsets.put(id, motion.target()));
             scrollMotions.clear();
             markAnimatedVirtualRowsDirty();
             animatedVirtualRows.clear();
@@ -223,10 +290,16 @@ public class UiScreen extends Screen {
 
     public UiScreen(UiDocument document, NativeOverlayRenderer nativeOverlay,
                     UiEventListener eventListener, UiScreenOptions options) {
+        this(document, nativeOverlay, eventListener, options, null);
+    }
+
+    private UiScreen(UiDocument document, NativeOverlayRenderer nativeOverlay,
+                     UiEventListener eventListener, UiScreenOptions options, UiScreenEventHandler handler) {
         super(Component.literal(document.title()));
         this.document = Objects.requireNonNull(document, "document");
         this.nativeOverlay = nativeOverlay == null ? NativeOverlayRenderer.NONE : nativeOverlay;
-        this.eventListener = eventListener == null ? UiEventListener.NONE : eventListener;
+        this.eventListener = handler == null ? (eventListener == null ? UiEventListener.NONE : eventListener)
+            : (kind, key, value) -> handler.onEvent(this, new UiEvent(UiEventType.fromWire(kind), key, value));
         this.options = options == null ? UiScreenOptions.defaults() : options;
         createdAtNanos = System.nanoTime();
         pageId = document.initialPageId();
@@ -245,10 +318,30 @@ public class UiScreen extends Screen {
             : (kind, key, value) -> eventHandler.onEvent(new UiEvent(UiEventType.fromWire(kind), key, value)), options);
     }
 
+    /** Creates a screen whose typed callback receives its owner. Existing constructors remain supported. */
+    public static UiScreen create(UiDocument document, NativeOverlayRenderer overlay,
+                                  UiScreenEventHandler handler, UiScreenOptions options) {
+        return new UiScreen(document, overlay, UiEventListener.NONE, options, handler);
+    }
+
+    /** Creates an owner-aware screen with default lifecycle options. */
+    public static UiScreen create(UiDocument document, NativeOverlayRenderer overlay, UiScreenEventHandler handler) {
+        return create(document, overlay, handler, UiScreenOptions.defaults());
+    }
+
     public UiDocument document() { return document; }
     public UiScreenOptions options() { return options; }
     public Optional<Screen> parentScreen() { return Optional.ofNullable(options.parent()); }
     public String pageId() { return pageId; }
+    /** Semantic metadata from the last custom-button paint; does not itself speak narration. */
+    public Optional<UiButtonState> buttonState(String id) {
+        if (interactions.buttons.containsKey(id)) return Optional.of(interactions.buttons.get(id));
+        if (virtualCompositeActive) for (var layer : virtualLayers.values()) for (var row : layer.rows.values()) {
+            if (row.buttons.containsKey(id)) return Optional.of(row.buttons.get(id));
+        }
+        return Optional.empty();
+    }
+
     /** The id of the control that will receive keyboard input, if any. */
     public Optional<String> focusedId() { return Optional.ofNullable(focusedId); }
 
@@ -292,10 +385,11 @@ public class UiScreen extends Screen {
     public Optional<String> focusScopeId() { return focusScopes.isEmpty() ? Optional.empty() : Optional.of(focusScopes.peekLast().id()); }
     private boolean focusAllowed(String id) {
         if (id == null) return false;
-        if (openDialogId != null) return id.equals("dialog-cancel") || id.equals("dialog-confirm") || id.equals("dialog-backdrop");
+        if (openDialogId != null) return id.equals("dialog-cancel") || id.equals("dialog-confirm") || id.equals("dialog-backdrop") || id.equals("dialog-body");
+        if (openMenuId != null && !id.equals(openMenuId) && !id.equals(menuBodyId()) && !id.startsWith("menu:" + openMenuId + ":")) return false;
         if (focusScopes.isEmpty()) return true;
         if (openMenuId != null && focusScopes.peekLast().controls().contains(openMenuId)
-                && id.startsWith("menu:" + openMenuId + ":")) return true;
+                && (id.startsWith("menu:" + openMenuId + ":") || id.equals(menuBodyId()))) return true;
         return focusScopes.peekLast().controls().contains(id);
     }
     private void resolvePendingFocus() {
@@ -313,13 +407,70 @@ public class UiScreen extends Screen {
 
     /** Public last-paint diagnostics, all bounds/offsets in layout units. */
     public Optional<UiRect> scrollViewport(String id) { return scrollSnapshot(id).map(UiScrollSnapshot::viewport); }
+    /** Last painted unclipped inner textarea viewport and independent vertical browsing offset, in layout units.
+     * Read on the client thread, like regionBounds. */
+    public Optional<UiScrollSnapshot> editorScrollSnapshot(String id) {
+        UiEditorViewport editor=interactions.editors.get(id);
+        if(editor==null||editor.viewport==null)return Optional.empty();
+        UiRect viewport=editor.viewport;
+        VirtualRowKey key=virtualRow(id);
+        if(key!=null)viewport=viewport.translate(0,-(float)virtualLayers.get(key.listId()).offset());
+        return Optional.of(new UiScrollSnapshot(id,viewport,viewport.height()+editor.maximum,editor.offset,editor.offset));
+    }
+    private void revealEditorCaret(String id) {
+        UiEditorViewport editor=interactions.editors.get(id);
+        if(editor!=null){editor.pointerPlacement=false;editor.reveal=true;}
+    }
+    private void pruneEditorViewports() {
+        var registered=new HashSet<>(interactions.inputs.keySet());
+        if(focusedId!=null)registered.add(focusedId);
+        for(var layer:virtualLayers.values())for(var row:layer.rows.values())
+            for(var input:row.inputs)registered.add(input.id());
+        interactions.editors.keySet().retainAll(registered);
+        if(focusedId==null||!registered.contains(focusedId))interactions.textLayouts.clear();
+    }
     public Optional<UiScrollSnapshot> scrollSnapshot(String id) {
         UiScrollRegion region = scrollRegion(id);
         if (region == null) return Optional.empty();
-        double offset = numberValue("scroll:" + id, 0);
+        double offset = scrollOffset(id);
         UiScrollPhysics.Motion motion = scrollMotions.get(id);
         return Optional.of(new UiScrollSnapshot(id, region.viewport(), region.contentHeight(), offset, motion == null ? offset : motion.target()));
     }
+    /**
+     * Sets an internal scroll offset in layout units without emitting a consumer VALUE event.
+     * Clamps to the current extent; before the first paint, the request is clamped when its viewport registers.
+     * Safe from worker threads. Scroll ids retain their offsets across pages on this screen.
+     */
+    public void scrollTo(String id, double offset) {
+        if (id == null || id.isBlank() || !Double.isFinite(offset)) throw new IllegalArgumentException("Finite offset and nonblank id required");
+        Minecraft client = Minecraft.getInstance();
+        if (client != null && !client.isSameThread()) { client.execute(() -> scrollTo(id, offset)); return; }
+        UiScrollRegion region = scrollRegion(id);
+        double next = Math.max(0, offset);
+        if (region != null) next = Math.min(next, region.maxOffset());
+        interactions.scrollEnds.navigate(id, next);
+        interactions.offsets.put(id, next);
+        scrollMotions.remove(id);
+        requestFullRepaint();
+    }
+
+    /**
+     * Request the end of a viewport using its next registered content height, not its old extent.
+     * Works before first paint and immediately after appending. Resolves before content/hits draw;
+     * no consumer tick, timer or second paint is needed. An absent viewport leaves the request
+     * pending without scheduling more frames. Explicit navigation, page changes or removal cancel
+     * it. Use stable, content-specific IDs and UiScrollFollow.WHEN_AT_END for continuing follow.
+     * Safe from worker threads, like scrollTo.
+     */
+    public void scrollToEnd(String id) {
+        if (id == null || id.isBlank()) throw new IllegalArgumentException("Nonblank scroll id required");
+        Minecraft client = Minecraft.getInstance();
+        if (client != null && !client.isSameThread()) { client.execute(() -> scrollToEnd(id)); return; }
+        interactions.scrollEnds.request(id);
+        scrollMotions.remove(id);
+        requestFullRepaint();
+    }
+
     public UiRasterQuality rasterQuality() {
         return new UiRasterQuality(surfaceLayoutWidth, surfaceLayoutHeight, surfaceWidth, surfaceHeight,
             (float)(dpiScale() * uiScale()), surfaceQualityScale);
@@ -409,11 +560,11 @@ public class UiScreen extends Screen {
         }
         next = Math.max(0, Math.min(layer.request.maxOffset(), next));
         scrollMotions.remove(listId);
-        state.put("scroll:" + listId, next);
+        interactions.scrollEnds.navigate(listId, next);
+        interactions.offsets.put(listId, next);
         layer.currentOffset = next;
         long now = System.nanoTime();
-        ensureVirtualRows(layer, now,
-            new UiAnimationClock(animations, now, motionScale()));
+        ensureVirtualRows(layer, now);
         refreshVirtualInteractions();
         updateHover(mouseX * layoutScale, mouseY * layoutScale, true);
         return true;
@@ -449,20 +600,34 @@ public class UiScreen extends Screen {
         return state.get(key) instanceof String text ? text : fallback;
     }
 
+    /**
+     * Updates state on the client thread. Equal immutable scalar values avoid a repaint.
+     * Mutable objects still notify the painter even when the same instance is supplied.
+     */
     public void setValue(String key, Object value) {
         Minecraft client = Minecraft.getInstance();
         if (client != null && !client.isSameThread()) {
             client.execute(() -> setValue(key, value));
             return;
         }
-        Object previous = state.put(key, value);
-        if (!Objects.equals(previous, value)) textHistories.remove(key);
+        Object stored = value instanceof String text && isMultilineKey(key) ? UiTextBoundary.normalizeLines(text) : value;
+        boolean present = state.containsKey(key);
+        Object previous = state.put(key, stored);
+        boolean equal = Objects.equals(previous, stored);
+        if (!equal) textHistories.remove(key);
+        if (present && equal && stableStateScalar(stored)) return;
         markDirty();
+    }
+
+    private static boolean stableStateScalar(Object value) {
+        return value == null || value instanceof String || value instanceof Boolean || value instanceof Character
+            || value instanceof Byte || value instanceof Short || value instanceof Integer || value instanceof Long
+            || value instanceof Float || value instanceof Double;
     }
 
     /**
      * Shows a short, non-blocking acknowledgement. Supplying the same id replaces an older toast
-     * with that id; at most four can be visible at once.
+     * with that id; the document toast settings control the visible limit (1–8).
      */
     public void toast(UiToast toast) {
         if (toast == null) return;
@@ -516,6 +681,35 @@ public class UiScreen extends Screen {
     /** Layout-space bounds of a visible toast, useful for development diagnostics. */
     public Optional<UiRect> toastBounds(String id) { return Optional.ofNullable(toastBounds.get(id)); }
 
+    private String currentMenuSelection(UiMenu menu) {
+        // Reopening can happen in the same event batch as a selection, before a page repaint.
+        for (UiMenuItem item : menu.items()) {
+            String action = internalBody(item.action());
+            if (!action.startsWith(DROPDOWN_ITEM_PREFIX)) continue;
+            String body = action.substring(DROPDOWN_ITEM_PREFIX.length());
+            int split = body.indexOf('=');
+            if (split < 0) continue;
+            String key = UiValueKey.decode(body.substring(0, split));
+            if (Objects.equals(stringValue(key, ""), body.substring(split + 1))) return item.id();
+        }
+        return menu.selectedItemId();
+    }
+
+    private UiMenuItem menuItem(String id) {
+        if (id == null || openMenuId == null || activeMenu == null) return null;
+        for (UiMenuItem item : activeMenu.items()) if (id.equals("menu:" + openMenuId + ":" + item.id())) return item;
+        return null;
+    }
+
+    private Optional<UiHitRegion> keyboardRegion(String id) {
+        UiMenuItem item = menuItem(id);
+        if (item != null) return Optional.of(new UiHitRegion(id,
+            UiContext.internalAction(MENU_ITEM_PREFIX + item.action()), 0, 0, 0, 0));
+        var visible = region(id);
+        var target = interactions.targets.get(id);
+        return visible.isPresent() ? visible : target == null ? Optional.empty() : Optional.of(target.hit());
+    }
+
     private Optional<UiHitRegion> region(String id) {
         if (id == null) return Optional.empty();
         for (UiHitRegion candidate : toastHitRegions) if (candidate.id().equals(id)) return Optional.of(candidate);
@@ -530,7 +724,11 @@ public class UiScreen extends Screen {
 
     public void showPage(String id) {
         if (id == null || id.equals(pageId) || document.page(id) == null) return;
+        interactions.scrollEnds.cancelPending();
         pageId = id;
+        interactionEnd = 0;
+        interactionPaintsBase = false;
+        interactionRepaintBounds = null;
         focusScopes.clear(); pendingFocus = null; dialogRestore = null; textHistories.clear();
         hoveredId = null;
         pressedId = null;
@@ -538,21 +736,27 @@ public class UiScreen extends Screen {
         draggingSlider = null;
         draggingTextInput = null;
         nativeBounds.clear();
+        nativeText.clear(); lastNativeTextCount = 0;
         nativeOverlayLayers.clear();
         hitRegions = List.of();
+        interactions.textLayouts.clear();
+        interactions.editors.clear();
+        interactions.beginPaint();
         scrollRegions = List.of();
         inputRegions = List.of();
         tooltips = List.of();
         menus = List.of();
         dialogs = List.of();
         animations.clear();
+        rootAnimationIds=Set.of();
         customAnimationBounds = Map.of();
         activeCustomAnimationIds = Set.of();
         scrollMotions.clear();
         closeVirtualLayers();
         customAnimationsActive = false;
-        openMenuId = null;
+        openMenuId = null; activeMenu = null; menuLayout = null; menuOffset = 0;
         openDialogId = null;
+        dialogLayout=null;dialogLayoutKey=null;dialogOffset=0;dialogHitsStale=false;
         menuOpenedWithPointer = false;
         visibleTooltipId = null;
         tooltipRevealAt = 0;
@@ -646,12 +850,31 @@ public class UiScreen extends Screen {
     @Override
     public void resize(int width, int height) {
         boolean changed = this.width != width || this.height != height;
+        String previousFocus=focusedId;
+        int previousCursor=textCursor, previousAnchor=textAnchor;
+        boolean previousUpstream=textUpstream;
+        float previousPreferredX=preferredCaretX;
+        FocusRestore previousPendingFocus=pendingFocus;
         super.resize(width, height);
+        pendingFocus=previousPendingFocus;
+        // Screen.resize clears focus through our public clearFocus override.
+        if(previousFocus!=null) {
+            focusedId=previousFocus;
+            textCursor=previousCursor;textAnchor=previousAnchor;textUpstream=previousUpstream;
+            preferredCaretX=previousPreferredX;
+        }
         Screen parent = options.parent();
         if (parent != null && parent != this && (parent.width != width || parent.height != height)) {
             parent.resize(width, height);
         }
         if (changed) {
+            layoutHitsStale=true;
+            draggingSlider=null;draggingTextInput=null;pressedId=null;
+            if (openDialogId != null) dialogHitsStale = true;
+            if (openMenuId != null) {
+                hitRegions = hitRegions.stream().filter(hit -> !hit.id().startsWith("menu:" + openMenuId + ":")).toList();
+                revealMenuFocus = true; menuHitsStale = true; menuNavigationFromHover = false; hoveredId = null;
+            }
             closeSurface();
             markDirty();
         }
@@ -692,10 +915,17 @@ public class UiScreen extends Screen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float tickDelta) {
         frameCount++;
+        long revision = UiCanvas.minecraftTextureRevision();
+        if (minecraftTextureRevision != revision) {
+            minecraftTextureRevision = revision;
+            markDirty();
+            popupDirty = toastSurfaceDirty = tooltipSurfaceDirty = true;
+        }
         synchronizeViewport(graphics);
         this.mouseX = mouseX;
         this.mouseY = mouseY;
         long now = System.nanoTime();
+        dialogBlurScratch.releaseIfIdle(now);
         if (transitionEnd > 0) {
             if (now < transitionEnd) {
                 if (now - lastPaint >= FRAME_NANOS) requestFullRepaint();
@@ -711,25 +941,27 @@ public class UiScreen extends Screen {
                         markAnimatedVirtualRowsDirty();
                         lastVirtualAnimationPaint = now;
                     }
-                } else if (now - lastPaint >= FRAME_NANOS) requestInteractionRepaint();
+                }
+                if (interactionPaintsBase && now - lastPaint >= FRAME_NANOS) requestInteractionRepaint();
             } else {
                 interactionEnd = 0;
                 if (!animatedVirtualRows.isEmpty()) {
                     markAnimatedVirtualRowsDirty();
                     animatedVirtualRows.clear();
-                } else {
-                    requestInteractionRepaint();
-                    interactionRepaintBounds = null;
                 }
+                if(interactionPaintsBase) {
+                    requestInteractionRepaint();
+                }
+                interactionRepaintBounds = null;interactionPaintsBase=false;
             }
         }
         if (customAnimationsActive && now - lastPaint >= FRAME_NANOS) requestCustomAnimationRepaint();
-        if (virtualCompositeActive && now - lastVirtualAnimationPaint >= FRAME_NANOS) {
+        if (virtualCompositeActive && now - lastCustomVirtualAnimationPaint >= FRAME_NANOS) {
             boolean any = false;
             for (VirtualListLayer layer : virtualLayers.values()) for (VirtualRowSurface row : layer.rows.values()) {
                 if (row.customAnimating) { row.dirty = true; any = true; }
             }
-            if (any) lastVirtualAnimationPaint = now;
+            if (any) lastCustomVirtualAnimationPaint = now;
         }
         if (tooltipRevealAt > 0 && now >= tooltipRevealAt) {
             tooltipRevealAt = 0;
@@ -761,16 +993,19 @@ public class UiScreen extends Screen {
             graphics.nextStratum();
             long nativeStarted = System.nanoTime();
             NativeOverlayContext nativeContext = new NativeOverlayContext(
-                graphics, pageId, combinedNativeBounds(), guiScale(), mouseX, mouseY
+                graphics, pageId, combinedNativeBounds(), guiScale(), mouseX, mouseY,
+                openMenuId != null || openDialogId != null || !focusScopes.isEmpty(), nativeText
             );
             nativeOverlay.render(nativeContext);
             lastNativeOverlayNanos = System.nanoTime() - nativeStarted;
             lastNativeItemCount = nativeContext.renderedItemCount();
             lastNativeEntityCount = nativeContext.renderedEntityCount();
+            lastNativeTextCount = nativeContext.renderedTextCount();
         } else {
             lastNativeOverlayNanos = 0;
             lastNativeItemCount = 0;
             lastNativeEntityCount = 0;
+            lastNativeTextCount = 0;
         }
         if (!virtualNativeOverlayLayers.isEmpty()) {
             graphics.nextStratum();
@@ -780,11 +1015,17 @@ public class UiScreen extends Screen {
             graphics.nextStratum();
             renderNativeOverlayLayers(graphics);
         }
+        renderPopupOverlay(graphics);
         renderToastOverlay(graphics, now);
         renderTooltipOverlay(graphics);
         lastCompositeNanos = System.nanoTime() - compositeStarted;
         publishDiagnostics(now);
     }
+
+    /** Native text submissions in the latest rendered frame, not glyph count. */
+    public int nativeTextCount() { return lastNativeTextCount; }
+    /** Cumulative native line measurements; stable labels reuse cached layout. */
+    public long nativeTextLayoutCount() { return nativeText.layouts(); }
 
     /** Latest render counters and timings without enabling listener callbacks. Dirty-request counters require profiling. */
     public UiPerformanceSnapshot performanceSnapshot() {
@@ -868,6 +1109,8 @@ public class UiScreen extends Screen {
 
     @Override
     public void mouseMoved(double mouseX, double mouseY) {
+        if (openMenuId != null && !menuHitsStale && (this.mouseX != (int)mouseX || this.mouseY != (int)mouseY))
+            menuNavigationFromHover = true;
         this.mouseX = (int) mouseX;
         this.mouseY = (int) mouseY;
         float scale = eventLayoutScale();
@@ -876,11 +1119,18 @@ public class UiScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if(layoutHitsStale)return true;
+        if(openDialogId!=null&&dialogHitsStale)return true;
+        if (openMenuId != null && menuHitsStale) return true;
         float scale = eventLayoutScale();
         float layoutX = (float) (event.x() * scale);
         float layoutY = (float) (event.y() * scale);
         UiHitRegion region = regionAt(layoutX, layoutY);
-        if (openDialogId == null && focusScopes.isEmpty() && options.clickHandler().mouseClicked(this,
+        if(openMenuId==null&&region!=null) {
+            UiEditorViewport editor=interactions.editors.get(region.id());
+            if(editor!=null&&editor.stale)return true;
+        }
+        if (openDialogId == null && openMenuId == null && focusScopes.isEmpty() && options.clickHandler().mouseClicked(this,
             new UiClickEvent(region == null ? null : region.id(), event, doubleClick, layoutX, layoutY))) {
             return true;
         }
@@ -893,14 +1143,30 @@ public class UiScreen extends Screen {
             }
             return false;
         }
+        if ((region.id().equals("dialog-body") && openDialogId != null)
+                || (openMenuId != null && region.id().equals(menuBodyId()))) return true;
         if (openMenuId != null && !isMenuRegion(region)) closeMenu(false);
+        boolean extendSelection = Objects.equals(focusedId, region.id())
+            && (event.modifiers() & GLFW.GLFW_MOD_SHIFT) != 0;
+        int previousAnchor = textAnchor;
         focus(region.id());
         UiInputRegion clickedInput = inputRegion(region.id());
         if (clickedInput != null) {
-            int caret = clickedInput.caretAt((float) (event.x() * scale),
-                (float) (event.y() * scale));
-            textAnchor = doubleClick ? 0 : caret;
-            textCursor = doubleClick ? stringValue(clickedInput.key(), "").length() : caret;
+            UiEditorViewport editor=interactions.editors.get(clickedInput.id());
+            if(editor!=null)editor.pointerPlacement=true;
+            preferredCaretX = Float.NaN;
+            var position = clickedInput.caretPositionAt((float) (event.x() * scale), (float) (event.y() * scale));
+            String value = editingValue(clickedInput);
+            int caret = UiTextBoundary.floor(value, position.index());
+            textUpstream = !doubleClick && position.upstream();
+            if (doubleClick) {
+                var selection = clickedInput.masked() ? new UiTextBoundary.Selection(0,value.length())
+                    : UiTextBoundary.wordAt(value,caret);
+                textAnchor = selection.start(); textCursor = selection.end();
+            } else {
+                textAnchor = extendSelection ? UiTextBoundary.floor(value,previousAnchor) : caret;
+                textCursor = caret;
+            }
             draggingTextInput = clickedInput;
             requestFullRepaint();
         }
@@ -909,12 +1175,16 @@ public class UiScreen extends Screen {
             draggingSlider = region;
             updateSlider(region, event.x() * scale);
         }
-        startInteraction(100);
+        if(popupTarget(region.id()))popupDirty=true;
+        else startInteraction(100);
         return true;
     }
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
+        if(layoutHitsStale){pressedId=null;draggingSlider=null;draggingTextInput=null;return true;}
+        if(openDialogId!=null&&dialogHitsStale){pressedId=null;draggingSlider=null;draggingTextInput=null;return true;}
+        if (openMenuId != null && menuHitsStale) { pressedId = null; draggingSlider = null; draggingTextInput = null; return true; }
         if (event.button() != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
         boolean wasInteracting = pressedId != null || draggingSlider != null || draggingTextInput != null;
         String releasedId = pressedId;
@@ -931,16 +1201,26 @@ public class UiScreen extends Screen {
 
     @Override
     public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
+        if(layoutHitsStale)return true;
         this.mouseX = (int) event.x();
         this.mouseY = (int) event.y();
         float scale = eventLayoutScale();
         if (draggingSlider != null) {
-            updateSlider(draggingSlider, event.x() * scale);
+            if (event.button() != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
+            reconcileSliderDrag();
+            if (draggingSlider != null) updateSlider(draggingSlider, event.x() * scale);
             return true;
         }
         if (draggingTextInput != null) {
-            textCursor = draggingTextInput.caretAt((float) (event.x() * scale),
-                (float) (event.y() * scale));
+            UiEditorViewport editor=interactions.editors.get(draggingTextInput.id());
+            if(editor!=null&&editor.stale)return true;
+            UiInputRegion current=inputRegion(draggingTextInput.id());
+            if(current==null){draggingTextInput=null;return true;}
+            draggingTextInput=current;
+            if(editor!=null)editor.pointerPlacement=true;
+            preferredCaretX = Float.NaN;
+            var position = draggingTextInput.caretPositionAt((float) (event.x() * scale), (float) (event.y() * scale));
+            textCursor = position.index(); textUpstream = position.upstream();
             requestFullRepaint();
             return true;
         }
@@ -949,21 +1229,51 @@ public class UiScreen extends Screen {
 
     @Override
     public boolean mouseScrolled(double mouseX, double mouseY, double horizontal, double vertical) {
+        if(layoutHitsStale)return true;
         float scale = eventLayoutScale();
-        if (openDialogId != null) return true;
+        if (openDialogId != null) {
+            if(dialogLayout!=null && dialogLayout.frame().contains((float)(mouseX*scale),(float)(mouseY*scale)))
+                scrollDialog(dialogOffset-(float)vertical*dialogLayout.scrollStep(dialogOffset)*3);
+            return true;
+        }
+        if (openMenuId != null) {
+            if (menuLayout != null && menuLayout.frame().contains((float)(mouseX * scale), (float)(mouseY * scale)) && vertical != 0) {
+                float nextOffset = menuLayout.clamp(menuOffset - (float)vertical * menuLayout.rowHeight() * 3);
+                if (nextOffset == menuOffset) return true;
+                menuOffset = nextOffset;
+                revealMenuFocus = false; menuHitsStale = true;
+                // Old painted rows must not accept a click while their new positions await repaint.
+                hitRegions = hitRegions.stream().filter(hit -> !hit.id().startsWith("menu:" + openMenuId + ":")).toList();
+                hoveredId = null; hoverDirty = true;
+                popupDirty = true;
+            }
+            return true;
+        }
+        UiHitRegion hit=regionAt(mouseX*scale,mouseY*scale);
+        UiInputRegion input=hit==null?null:inputRegion(hit.id());
+        UiEditorViewport editor=input==null?null:interactions.editors.get(input.id());
+        if(editor!=null && input.multiline() && editor.maximum>0 && vertical!=0) {
+            if(editor.scroll(vertical)) {
+                VirtualRowKey key=virtualRow(input.id());
+                if(key!=null)invalidateVirtualItem(key.listId(),key.index());
+                else requestPartialRepaint(input.bounds());
+            }
+            return true;
+        }
         UiScrollRegion region = scrollAt(mouseX * scale, mouseY * scale);
         if (region == null || region.maxOffset() <= 0 || vertical == 0) return !focusScopes.isEmpty();
-        String key = "scroll:" + region.id();
+        String key = region.id();
         long now = System.nanoTime();
-        double displayed = numberValue(key, 0);
+        double displayed = scrollOffset(key);
         UiScrollPhysics.Motion active = scrollMotions.get(region.id());
         double previousTarget = active == null ? displayed : active.target();
         UiScrollSettings settings = document.scrollSettings();
         double next = Math.max(0, Math.min(region.maxOffset(), previousTarget - vertical * settings.step()));
         if (next == previousTarget) return false;
+        interactions.scrollEnds.navigate(key, next);
         long duration = scaledDuration(settings.smoothingMillis());
         if (duration <= 0) {
-            state.put(key, next);
+            interactions.offsets.put(key, next);
             scrollMotions.remove(region.id());
         } else {
             scrollMotions.put(region.id(), UiScrollPhysics.retarget(active, next, now, duration));
@@ -986,7 +1296,6 @@ public class UiScreen extends Screen {
             if (duration <= 0) updateHover(mouseX * scale, mouseY * scale, true);
         }
         hoverDirty = true;
-        eventListener.onEvent("value", key, Double.toString(next));
         return true;
     }
 
@@ -1003,24 +1312,38 @@ public class UiScreen extends Screen {
         if (event.key() == GLFW.GLFW_KEY_ESCAPE && !focusScopes.isEmpty()) {
             focusScopes.peekLast().onEscape().run(); return true;
         }
+        if (openDialogId != null && dialogLayout != null) {
+            float line=dialogLayout.scrollStep(dialogOffset);
+            float page=Math.max(1,dialogLayout.content().height()-line);
+            switch(event.key()) {
+                case GLFW.GLFW_KEY_DOWN -> { scrollDialog(dialogOffset+line); return true; }
+                case GLFW.GLFW_KEY_UP -> { scrollDialog(dialogOffset-line); return true; }
+                case GLFW.GLFW_KEY_PAGE_DOWN -> { scrollDialog(dialogOffset+page); return true; }
+                case GLFW.GLFW_KEY_PAGE_UP -> { scrollDialog(dialogOffset-page); return true; }
+                case GLFW.GLFW_KEY_HOME -> { scrollDialog(0); return true; }
+                case GLFW.GLFW_KEY_END -> { scrollDialog(dialogLayout.maxOffset()); return true; }
+            }
+        }
+        if (handleMenuKey(event)) return true;
         UiInputRegion input = inputRegion(focusedId);
         if (input != null && handleTextKey(input, event)) return true;
-        if (focusScopes.isEmpty() && openDialogId == null && options.keyHandler().keyPressed(this, event)) return true;
+        if (focusScopes.isEmpty() && openDialogId == null && openMenuId == null && options.keyHandler().keyPressed(this, event)) return true;
+        if (input == null && handleSliderKey(event)) return true;
         if (event.key() == GLFW.GLFW_KEY_TAB) return moveFocus((event.modifiers() & GLFW.GLFW_MOD_SHIFT) != 0);
         if (focusedId != null && (event.key() == GLFW.GLFW_KEY_ENTER || event.key() == GLFW.GLFW_KEY_KP_ENTER
             || event.key() == GLFW.GLFW_KEY_SPACE)) {
-            region(focusedId).ifPresent(region -> runAction(region.action(), false));
+            keyboardRegion(focusedId).ifPresent(region -> runAction(region.action(), false));
             startInteraction(100, focusedId);
             return true;
         }
-        if (input == null && focusScopes.isEmpty() && openDialogId == null && document.pageShortcuts() && event.modifiers() == 0) {
+        if (input == null && focusScopes.isEmpty() && openDialogId == null && openMenuId == null && document.pageShortcuts() && event.modifiers() == 0) {
             int index = event.key() - GLFW.GLFW_KEY_1;
             if (index >= 0 && index <= 8 && index < document.pages().size()) {
                 showPage(document.pages().get(index).id());
                 return true;
             }
         }
-        if (!focusScopes.isEmpty() || openDialogId != null) return true;
+        if (!focusScopes.isEmpty() || openDialogId != null || openMenuId != null) return true;
         return super.keyPressed(event);
     }
 
@@ -1044,17 +1367,20 @@ public class UiScreen extends Screen {
         if (action.startsWith(DIALOG_PREFIX)) {
             dialogRestore = new FocusRestore(focusedId, textCursor, textAnchor);
             openDialogId = action.substring(DIALOG_PREFIX.length());
+            dialogOffset=0;dialogLayout=null;dialogLayoutKey=null;dialogHitsStale=true;
             focus(null); pendingFocus = new FocusRestore("dialog-cancel", -1, -1);
             requestFullRepaint();
             return;
         }
         if (action.startsWith(DIALOG_CONFIRM_PREFIX)) {
+            if (openDialogId == null) return;
             String eventAction = action.substring(DIALOG_CONFIRM_PREFIX.length());
             closeDialog(false);
             eventListener.onEvent("action", eventAction, "");
             return;
         }
         if (action.startsWith(DIALOG_CANCEL_PREFIX)) {
+            if (openDialogId == null) return;
             String eventAction = action.substring(DIALOG_CANCEL_PREFIX.length());
             closeDialog(false);
             eventListener.onEvent("action", eventAction, "");
@@ -1069,7 +1395,13 @@ public class UiScreen extends Screen {
             if (menuId.equals(openMenuId)) {
                 closeMenu(fromPointer);
             } else {
+                closeMenu(false);
                 openMenuId = menuId;
+                activeMenu = java.util.stream.Stream.concat(menus.stream(), virtualMenus.stream())
+                    .filter(menu -> menu.id().equals(menuId)).reduce((first, last) -> last).orElse(null);
+                menuOffset = 0; menuLayout = null; revealMenuFocus = true; menuHitsStale = true; menuNavigationFromHover = false;
+                if (activeMenu != null && currentMenuSelection(activeMenu) != null)
+                    focusedId = "menu:" + menuId + ":" + currentMenuSelection(activeMenu);
                 menuOpenedWithPointer = fromPointer;
                 requestFullRepaint();
             }
@@ -1082,12 +1414,12 @@ public class UiScreen extends Screen {
                 && internalBody(itemAction).startsWith(DROPDOWN_ITEM_PREFIX)) {
                 String body = internalBody(itemAction).substring(DROPDOWN_ITEM_PREFIX.length());
                 int split = body.indexOf('=');
-                if (split > 0) {
-                    String key = body.substring(0, split);
+                if (split >= 0) {
+                    String key = UiValueKey.decode(body.substring(0, split));
                     String value = body.substring(split + 1);
-                    state.put(key, value);
+                    Object previous = state.put(key, value);
                     requestFullRepaint();
-                    eventListener.onEvent("value", key, value);
+                    if (!Objects.equals(previous, value)) eventListener.onEvent("value", key, value);
                 }
                 return;
             }
@@ -1101,8 +1433,8 @@ public class UiScreen extends Screen {
         if (action.startsWith("select:")) {
             String body = action.substring("select:".length());
             int split = body.indexOf('=');
-            if (split > 0) {
-                String key = body.substring(0, split);
+            if (split >= 0) {
+                String key = UiValueKey.decode(body.substring(0, split));
                 String value = body.substring(split + 1);
                 state.put(key, value);
                 requestFullRepaint();
@@ -1120,19 +1452,61 @@ public class UiScreen extends Screen {
         }
     }
 
+    private record SliderRange(String key, double minimum, double maximum) {
+        static SliderRange from(UiHitRegion region) {
+            String descriptor = internalBody(region.action()).substring("slider:".length());
+            int end = descriptor.lastIndexOf(':');
+            int start = end < 0 ? -1 : descriptor.lastIndexOf(':', end - 1);
+            return new SliderRange(start < 0 ? descriptor : descriptor.substring(0, start),
+                start < 0 ? 0 : Double.parseDouble(descriptor.substring(start + 1, end)),
+                end < 0 ? 1 : Double.parseDouble(descriptor.substring(end + 1)));
+        }
+    }
+
+    private boolean handleSliderKey(KeyEvent event) {
+        UiHitRegion target = keyboardRegion(focusedId).orElse(null);
+        if (target == null || !target.action().startsWith(UiContext.INTERNAL_ACTION_PREFIX + "slider:")) return false;
+        // Modified application shortcuts must not silently edit a numeric value.
+        if ((event.modifiers() & (GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_ALT | GLFW.GLFW_MOD_SUPER)) != 0) return false;
+        SliderRange range = SliderRange.from(target);
+        Object stored = state.get(range.key());
+        double current = stored instanceof Number n && Double.isFinite(n.doubleValue())
+            ? Math.clamp(n.doubleValue(), range.minimum(), range.maximum()) : range.minimum();
+        double step = (range.maximum() - range.minimum()) / 100;
+        double next;
+        switch (event.key()) {
+            case GLFW.GLFW_KEY_LEFT, GLFW.GLFW_KEY_DOWN -> next = current - step;
+            case GLFW.GLFW_KEY_RIGHT, GLFW.GLFW_KEY_UP -> next = current + step;
+            case GLFW.GLFW_KEY_PAGE_DOWN -> next = current - step * 10;
+            case GLFW.GLFW_KEY_PAGE_UP -> next = current + step * 10;
+            case GLFW.GLFW_KEY_HOME -> next = range.minimum();
+            case GLFW.GLFW_KEY_END -> next = range.maximum();
+            default -> { return false; }
+        }
+        setSliderValue(range, Math.clamp(next, range.minimum(), range.maximum()));
+        return true;
+    }
+
+    /** A pointer capture belongs to a currently painted control, not a stale rectangle. */
+    private void reconcileSliderDrag() {
+        if (draggingSlider == null) return;
+        UiHitRegion current = region(draggingSlider.id()).orElse(null);
+        if (current == null || !Objects.equals(pressedId, current.id()) || !focusAllowed(current.id())
+                || !current.action().equals(draggingSlider.action())) {
+            if (Objects.equals(pressedId, draggingSlider.id())) pressedId = null;
+            draggingSlider = null;
+        } else draggingSlider = current;
+    }
+
     private void updateSlider(UiHitRegion region, double mouseX) {
-        String descriptor = internalBody(region.action()).substring("slider:".length());
-        int maximumSeparator = descriptor.lastIndexOf(':');
-        int minimumSeparator = maximumSeparator < 0 ? -1 : descriptor.lastIndexOf(':', maximumSeparator - 1);
-        String key = minimumSeparator < 0 ? descriptor : descriptor.substring(0, minimumSeparator);
-        double minimum = minimumSeparator < 0 ? 0
-            : Double.parseDouble(descriptor.substring(minimumSeparator + 1, maximumSeparator));
-        double maximum = maximumSeparator < 0 ? 1
-            : Double.parseDouble(descriptor.substring(maximumSeparator + 1));
-        double value = minimum + region.fractionAt(mouseX) * (maximum - minimum);
-        Object previous = state.put(key, value);
+        SliderRange range = SliderRange.from(region);
+        setSliderValue(range, range.minimum() + region.fractionAt(mouseX) * (range.maximum() - range.minimum()));
+    }
+
+    private void setSliderValue(SliderRange range, double value) {
+        Object previous = state.put(range.key(), value);
         if (previous instanceof Number number && number.doubleValue() == value) return;
-        eventListener.onEvent("value", key, Double.toString(value));
+        eventListener.onEvent("value", range.key(), Double.toString(value));
         requestFullRepaint();
     }
 
@@ -1155,6 +1529,9 @@ public class UiScreen extends Screen {
             if (previousInteraction != null || nextInteraction != null) {
                 startInteraction(120, previousInteraction, nextInteraction);
             }
+        } else if ((previous == null || popupTarget(previous)) && (next == null || popupTarget(next))
+                && (popupTarget(previous) || popupTarget(next))) {
+            popupDirty = true;
         } else if (!requestVirtualRows(previous, next)) {
             requestPartialRepaint(interactionBounds(previous, next));
         }
@@ -1198,21 +1575,29 @@ public class UiScreen extends Screen {
 
     private void closeMenu(boolean clearFocus) {
         if (openMenuId == null) return;
-        openMenuId = null;
+        String trigger = openMenuId;
+        hitRegions = hitRegions.stream().filter(hit -> !hit.id().startsWith("menu:" + trigger + ":") && !hit.id().equals(menuBodyId())).toList();
+        openMenuId = null; activeMenu = null; menuLayout = null; menuOffset = 0; revealMenuFocus = false; menuHitsStale = false;
         menuOpenedWithPointer = false;
         if (clearFocus) focusedId = null;
+        else focus(trigger);
         requestFullRepaint();
         hoverDirty = true;
     }
 
     private void closeDialog(boolean cancelled) {
         if (openDialogId == null) return;
+        dialogBlurScratch.clear();
+        dialogLayout=null;dialogLayoutKey=null;dialogOffset=0;dialogHitsStale=false;
         UiDialogRequest request = null;
         for (UiDialogRequest candidate : dialogs) if (openDialogId.equals(candidate.id())) request = candidate;
         if (request == null) for (UiDialogRequest candidate : virtualDialogs) {
             if (openDialogId.equals(candidate.id())) request = candidate;
         }
         openDialogId = null;
+        dialogLayout=null;dialogLayoutKey=null;dialogOffset=0;dialogHitsStale=false;
+        hitRegions = hitRegions.stream().filter(hit -> !java.util.Set.of("dialog-backdrop", "dialog-body", "dialog-cancel", "dialog-confirm").contains(hit.id())).toList();
+        pressedId = null;
         focus(null); pendingFocus = dialogRestore; dialogRestore = null; resolvePendingFocus();
         requestFullRepaint();
         hoverDirty = true;
@@ -1249,11 +1634,11 @@ public class UiScreen extends Screen {
     private String tooltipAt(double x, double y) {
         for (int i = virtualTooltips.size() - 1; i >= 0; i--) {
             UiTooltip tooltip = virtualTooltips.get(i);
-            if (tooltip.contains(x, y)) return tooltip.id();
+            if (focusAllowed(tooltip.id()) && tooltip.contains(x, y)) return tooltip.id();
         }
         for (int i = tooltips.size() - 1; i >= 0; i--) {
             UiTooltip tooltip = tooltips.get(i);
-            if (tooltip.contains(x, y)) return tooltip.id();
+            if (focusAllowed(tooltip.id()) && tooltip.contains(x, y)) return tooltip.id();
         }
         return null;
     }
@@ -1265,15 +1650,26 @@ public class UiScreen extends Screen {
         return false;
     }
 
-    /** Focuses a currently painted, scope-eligible control. Returns false for unknown/blocked ids. */
+    /** Focuses a registered, scope-eligible control, revealing it through ordinary scroll ancestors. */
     public boolean focus(String id) {
-        if (id != null && (!focusAllowed(id) || region(id).isEmpty() || id.equals("dialog-backdrop"))) return false;
+        if (id != null && (!focusAllowed(id) || (region(id).isEmpty() && !interactions.targets.containsKey(id) && menuItem(id) == null)
+                || id.equals("dialog-backdrop") || id.equals("dialog-body") || (openMenuId != null && id.equals(menuBodyId())))) return false;
+        var revealed = interactions.reveal(id);
+        if (!revealed.isEmpty()) {
+            revealed.forEach(scrollMotions::remove);
+            requestFullRepaint();
+        }
+        if (menuItem(id) != null) { revealMenuFocus = true; popupDirty = true; }
         pendingFocus = null;
         if (Objects.equals(focusedId, id)) return true;
         String previous = focusedId;
         focusedId = id;
+        preferredCaretX = Float.NaN;
         UiInputRegion input = inputRegion(id);
-        String value = input == null ? "" : stringValue(input.key(), "");
+        revealEditorCaret(id);
+        if(input==null)interactions.textLayouts.clear();
+        String value = input == null ? "" : editingValue(input);
+        textUpstream = false;
         textCursor = value.length();
         textAnchor = textCursor;
         if (id != null && id.startsWith(TOAST_DISMISS_PREFIX)) {
@@ -1281,16 +1677,19 @@ public class UiScreen extends Screen {
             if (previous != null && !previous.startsWith(TOAST_DISMISS_PREFIX)) {
                 if (!requestVirtualRows(previous)) requestPartialRepaint(interactionBounds(previous));
             }
-        } else if (!requestVirtualRows(id)) requestFullRepaint();
+        } else if (popupTarget(id) && popupTarget(previous)) popupDirty = true;
+        else if (!requestVirtualRows(id)) requestFullRepaint();
         return true;
     }
 
     private boolean moveFocus(boolean reverse) {
         List<UiHitRegion> focusable = new ArrayList<>(hitRegions.size() + virtualHitRegions.size());
-        focusable.addAll(hitRegions);
+        for (var target : interactions.targets.values()) focusable.add(target.hit());
+        for (var hit : hitRegions) if (!interactions.targets.containsKey(hit.id())) focusable.add(hit);
         if (openDialogId == null && openMenuId == null) focusable.addAll(toastHitRegions);
         focusable.addAll(virtualHitRegions);
-        focusable.removeIf(hit -> !focusAllowed(hit.id()) || hit.id().equals("dialog-backdrop"));
+        focusable.removeIf(hit -> !focusAllowed(hit.id()) || hit.id().equals("dialog-backdrop") || hit.id().equals("dialog-body")
+            || (openMenuId != null && !hit.id().startsWith("menu:" + openMenuId + ":")));
         if (focusable.isEmpty()) return !focusScopes.isEmpty() || openDialogId != null;
         int current = -1;
         for (int i = 0; i < focusable.size(); i++) {
@@ -1313,16 +1712,68 @@ public class UiScreen extends Screen {
         for (UiInputRegion input : virtualInputRegions) {
             if (input.id().equals(id)) return input;
         }
-        return null;
+        return interactions.inputs.get(id);
+    }
+
+    private boolean handleMenuKey(KeyEvent event) {
+        if (openMenuId == null || openDialogId != null) return false;
+        int key = event.key();
+        if (key != GLFW.GLFW_KEY_UP && key != GLFW.GLFW_KEY_DOWN && key != GLFW.GLFW_KEY_TAB
+                && key != GLFW.GLFW_KEY_HOME && key != GLFW.GLFW_KEY_END
+                && key != GLFW.GLFW_KEY_PAGE_UP && key != GLFW.GLFW_KEY_PAGE_DOWN) return false;
+        if ((event.modifiers() & (GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_ALT | GLFW.GLFW_MOD_SUPER)) != 0) return false;
+        if (activeMenu == null || activeMenu.items().isEmpty()) return true;
+        var items = activeMenu.items();
+        int current = -1;
+        for (int i = 0; i < items.size(); i++) {
+            String id = "menu:" + openMenuId + ":" + items.get(i).id();
+            if (id.equals(focusedId)) current = i;
+        }
+        if (menuNavigationFromHover && hoveredId != null) {
+            for (int i = 0; i < items.size(); i++)
+                if (("menu:" + openMenuId + ":" + items.get(i).id()).equals(hoveredId)) current = i;
+        }
+        boolean reverse = key == GLFW.GLFW_KEY_UP || key == GLFW.GLFW_KEY_PAGE_UP || (key == GLFW.GLFW_KEY_TAB && (event.modifiers() & GLFW.GLFW_MOD_SHIFT) != 0);
+        boolean page = key == GLFW.GLFW_KEY_PAGE_UP || key == GLFW.GLFW_KEY_PAGE_DOWN;
+        int step = page && menuLayout != null ? Math.max(1, (int)(menuLayout.viewport().height() / menuLayout.rowHeight())) : 1;
+        int next = key == GLFW.GLFW_KEY_HOME ? 0 : key == GLFW.GLFW_KEY_END ? items.size() - 1
+            : current < 0 ? (reverse ? items.size() - 1 : 0)
+            : page ? Math.clamp(current + (reverse ? -step : step), 0, items.size() - 1)
+            : Math.floorMod(current + (reverse ? -1 : 1), items.size());
+        menuOpenedWithPointer = false; menuNavigationFromHover = false;
+        focus("menu:" + openMenuId + ":" + items.get(next).id());
+        return true;
+    }
+
+    private boolean isMultilineKey(String key) {
+        for (UiInputRegion input : interactions.inputs.values()) if (input.multiline() && input.key().equals(key)) return true;
+        for (UiInputRegion input : inputRegions) if (input.multiline() && input.key().equals(key)) return true;
+        for (UiInputRegion input : virtualInputRegions) if (input.multiline() && input.key().equals(key)) return true;
+        return false;
+    }
+
+    private String editingValue(UiInputRegion input) {
+        String value = stringValue(input.key(), "");
+        if (input.multiline()) {
+            String normalized = UiTextBoundary.normalizeLines(value);
+            if (!normalized.equals(value)) state.put(input.key(), normalized);
+            return normalized;
+        }
+        return value;
     }
 
     private boolean handleTextKey(UiInputRegion input, KeyEvent event) {
-        String value = stringValue(input.key(), "");
+        String value = editingValue(input);
         int length = value.length();
         textCursor = UiTextBoundary.floor(value, textCursor);
         textAnchor = UiTextBoundary.floor(value, textAnchor);
         int modifiers = event.modifiers();
-        boolean shortcut = (modifiers & (GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_SUPER)) != 0;
+        boolean shortcut = (modifiers & (GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_SUPER)) != 0
+            && (modifiers & GLFW.GLFW_MOD_ALT) == 0;
+        boolean word = (modifiers & GLFW.GLFW_MOD_CONTROL) != 0
+            && (modifiers & (GLFW.GLFW_MOD_ALT | GLFW.GLFW_MOD_SUPER)) == 0
+            || System.getProperty("os.name", "").startsWith("Mac") && (modifiers & GLFW.GLFW_MOD_ALT) != 0
+            && (modifiers & (GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_SUPER)) == 0;
         boolean extend = (modifiers & GLFW.GLFW_MOD_SHIFT) != 0;
         if (shortcut && (event.key() == GLFW.GLFW_KEY_Z || event.key() == GLFW.GLFW_KEY_Y)) {
             UiTextHistory history = textHistories.get(input.key());
@@ -1330,25 +1781,29 @@ public class UiScreen extends Screen {
                 UiTextHistory.Snapshot current = new UiTextHistory.Snapshot(value, textCursor, textAnchor);
                 var restored = event.key() == GLFW.GLFW_KEY_Y || extend ? history.redo(current) : history.undo(current);
                 restored.ifPresent(edit -> {
-                    state.put(input.key(), edit.value()); textCursor = edit.cursor(); textAnchor = edit.anchor();
+                    revealEditorCaret(input.id());
+                    state.put(input.key(), edit.value()); textUpstream = false; textCursor = edit.cursor(); textAnchor = edit.anchor();
                     eventListener.onEvent("value", input.key(), edit.value()); requestFullRepaint();
                 });
             }
             return true;
         }
         if (shortcut && event.key() == GLFW.GLFW_KEY_A) {
+            revealEditorCaret(input.id());
             textAnchor = 0;
             textCursor = length;
             requestFullRepaint();
             return true;
         }
         if (shortcut && event.key() == GLFW.GLFW_KEY_C) {
-            copySelection(value);
+            if (!input.masked()) copySelection(value);
             return true;
         }
         if (shortcut && event.key() == GLFW.GLFW_KEY_X) {
-            copySelection(value);
-            replaceTextSelection(input, "");
+            if (!input.masked()) {
+                copySelection(value);
+                replaceTextSelection(input, "");
+            }
             return true;
         }
         if (shortcut && event.key() == GLFW.GLFW_KEY_V) {
@@ -1356,27 +1811,48 @@ public class UiScreen extends Screen {
             replaceTextSelection(input, pasted);
             return true;
         }
+        boolean pageKey = event.key() == GLFW.GLFW_KEY_PAGE_UP || event.key() == GLFW.GLFW_KEY_PAGE_DOWN;
+        if (input.multiline() && (pageKey || event.key() == GLFW.GLFW_KEY_UP || event.key() == GLFW.GLFW_KEY_DOWN)) {
+            if (!Float.isFinite(preferredCaretX)) preferredCaretX = input.caretX(textCursor, textUpstream);
+            float column = preferredCaretX;
+            int direction = event.key() == GLFW.GLFW_KEY_UP || event.key() == GLFW.GLFW_KEY_PAGE_UP ? -1 : 1;
+            UiEditorViewport editor = interactions.editors.get(input.id());
+            float viewportHeight = editor != null && editor.viewport != null ? editor.viewport.height() : input.bounds().height();
+            var target = pageKey ? input.pageCaret(textCursor, textUpstream, direction, column, viewportHeight)
+                : input.verticalCaret(textCursor, textUpstream, direction, column);
+            moveTextCursor(UiTextBoundary.floor(value, target.index()), extend);
+            textUpstream = target.upstream();
+            preferredCaretX = column;
+            return true;
+        }
+        preferredCaretX = Float.NaN;
         if (event.key() == GLFW.GLFW_KEY_LEFT) {
-            moveTextCursor(UiTextBoundary.previous(value, textCursor), extend);
+            moveTextCursor(!extend && textCursor != textAnchor ? Math.min(textCursor, textAnchor)
+                : word ? UiTextBoundary.previousWord(value, textCursor) : UiTextBoundary.previous(value, textCursor), extend);
             return true;
         }
         if (event.key() == GLFW.GLFW_KEY_RIGHT) {
-            moveTextCursor(UiTextBoundary.next(value, textCursor), extend);
+            moveTextCursor(!extend && textCursor != textAnchor ? Math.max(textCursor, textAnchor)
+                : word ? UiTextBoundary.nextWord(value, textCursor) : UiTextBoundary.next(value, textCursor), extend);
             return true;
         }
         if (event.key() == GLFW.GLFW_KEY_HOME) {
-            moveTextCursor(0, extend);
+            var target = input.multiline() && !shortcut ? input.lineEdge(textCursor, textUpstream, false)
+                : new UiInputRegion.Caret(0, false);
+            moveTextCursor(target.index(), extend); textUpstream = target.upstream();
             return true;
         }
         if (event.key() == GLFW.GLFW_KEY_END) {
-            moveTextCursor(length, extend);
+            var target = input.multiline() && !shortcut ? input.lineEdge(textCursor, textUpstream, true)
+                : new UiInputRegion.Caret(length, false);
+            moveTextCursor(target.index(), extend); textUpstream = target.upstream();
             return true;
         }
         if (event.key() == GLFW.GLFW_KEY_BACKSPACE) {
             if (textCursor != textAnchor) replaceTextSelection(input, "");
             else if (textCursor > 0) {
                 UiTextHistory.Snapshot before = new UiTextHistory.Snapshot(value, textCursor, textAnchor);
-                textAnchor = UiTextBoundary.previous(value, textCursor);
+                textAnchor = word ? UiTextBoundary.previousWord(value, textCursor) : UiTextBoundary.previous(value, textCursor);
                 replaceTextSelection(input, "", before);
             }
             return true;
@@ -1385,7 +1861,7 @@ public class UiScreen extends Screen {
             if (textCursor != textAnchor) replaceTextSelection(input, "");
             else if (textCursor < length) {
                 UiTextHistory.Snapshot before = new UiTextHistory.Snapshot(value, textCursor, textAnchor);
-                textAnchor = UiTextBoundary.next(value, textCursor);
+                textAnchor = word ? UiTextBoundary.nextWord(value, textCursor) : UiTextBoundary.next(value, textCursor);
                 replaceTextSelection(input, "", before);
             }
             return true;
@@ -1402,7 +1878,10 @@ public class UiScreen extends Screen {
     }
 
     private void moveTextCursor(int next, boolean extend) {
+        revealEditorCaret(focusedId);
+        preferredCaretX = Float.NaN;
         textCursor = next;
+        textUpstream = false;
         if (!extend) textAnchor = next;
         requestFullRepaint();
     }
@@ -1414,17 +1893,20 @@ public class UiScreen extends Screen {
     }
 
     private void replaceTextSelection(UiInputRegion input, String replacement) {
-        replaceTextSelection(input, replacement, new UiTextHistory.Snapshot(stringValue(input.key(), ""), textCursor, textAnchor));
+        replaceTextSelection(input, replacement, new UiTextHistory.Snapshot(editingValue(input), textCursor, textAnchor));
     }
 
     private void replaceTextSelection(UiInputRegion input, String replacement, UiTextHistory.Snapshot before) {
-        String value = stringValue(input.key(), "");
+        revealEditorCaret(input.id());
+        preferredCaretX = Float.NaN;
+        String value = editingValue(input);
         int start = Math.min(UiTextBoundary.floor(value, textCursor), UiTextBoundary.floor(value, textAnchor));
         int end = Math.max(UiTextBoundary.floor(value, textCursor), UiTextBoundary.floor(value, textAnchor));
         String safe = input.multiline() ? cleanMultiline(replacement) : cleanSingleLine(replacement);
         int available = Math.max(0, input.maxLength() - (value.length() - (end - start)));
         if (safe.length() > available) safe = UiTextBoundary.truncate(safe, available);
         String next = value.substring(0, start) + safe + value.substring(end);
+        textUpstream = false;
         textCursor = start + safe.length();
         textAnchor = textCursor;
         textHistories.computeIfAbsent(input.key(), ignored -> new UiTextHistory())
@@ -1470,8 +1952,8 @@ public class UiScreen extends Screen {
                 continue;
             }
             UiScrollPhysics.Frame frame = UiScrollPhysics.advance(
-                numberValue("scroll:" + entry.getKey(), 0), entry.getValue(), now);
-            state.put("scroll:" + entry.getKey(), frame.displayed());
+                scrollOffset(entry.getKey()), entry.getValue(), now);
+            interactions.offsets.put(entry.getKey(), frame.displayed());
             VirtualListLayer layer = virtualCompositeActive ? virtualLayers.get(entry.getKey()) : null;
             if (layer == null) requestPartialRepaint(region.viewport());
             else {
@@ -1508,6 +1990,14 @@ public class UiScreen extends Screen {
     }
 
     private void startInteraction(int milliseconds, String... controlIds) {
+        boolean popupOnly = controlIds != null && controlIds.length > 0;
+        boolean hasPopup = false;
+        if (popupOnly) for (String id : controlIds) {
+            if (id == null) continue;
+            if (!popupTarget(id)) popupOnly = false;
+            else hasPopup = true;
+        }
+        if (popupOnly && hasPopup) { popupDirty = true; return; }
         boolean toastOnly = controlIds != null && controlIds.length > 0;
         boolean hasToast = false;
         if (toastOnly) for (String id : controlIds) {
@@ -1517,21 +2007,43 @@ public class UiScreen extends Screen {
         }
         if (toastOnly && hasToast) { toastSurfaceDirty = true; return; }
         long duration = scaledDuration(milliseconds);
+        markAnimatedVirtualRowsDirty();animatedVirtualRows.clear();
+        boolean continuingBase = interactionPaintsBase && interactionEnd > System.nanoTime();
+        UiRect previousBounds = interactionRepaintBounds;
+        boolean hasVirtual = false;
         boolean virtualOnly = controlIds != null && controlIds.length > 0;
         if (virtualOnly) {
             for (String id : controlIds) {
-                if (id != null && virtualRow(id) == null) { virtualOnly = false; break; }
+                if (id == null) continue;
+                if (virtualRow(id) == null) { virtualOnly = false; break; }
+                hasVirtual = true;
             }
         }
+        virtualOnly &= hasVirtual;
         if (virtualOnly) {
-            interactionRepaintBounds = null;
+            interactionRepaintBounds = continuingBase ? previousBounds : null;
             requestVirtualRows(controlIds);
         } else {
             interactionRepaintBounds = interactionBounds(controlIds);
+            if (continuingBase) {
+                interactionRepaintBounds = previousBounds == null || interactionRepaintBounds == null
+                    ? null : union(previousBounds, interactionRepaintBounds);
+            }
             requestInteractionRepaint();
         }
+        interactionPaintsBase = !virtualOnly || continuingBase;
+        if (virtualOnly && continuingBase) requestInteractionRepaint();
+        if(controlIds!=null)for(String id:controlIds) {
+            VirtualRowKey key=virtualRow(id);
+            if(key!=null) {
+                invalidateVirtualItem(key.listId(),key.index());
+                if(duration>0)animatedVirtualRows.add(key);
+            }
+        }
         if (duration <= 0) {
+            markAnimatedVirtualRowsDirty();animatedVirtualRows.clear();
             interactionEnd = 0;
+            interactionPaintsBase=false;
             return;
         }
         interactionStart = System.nanoTime();
@@ -1650,17 +2162,18 @@ public class UiScreen extends Screen {
             List<UiVirtualListRequest> nextVirtualLists = new ArrayList<>();
             UiAnimationClock animationClock = new UiAnimationClock(animations, now, motionScale());
             boolean compositeVirtualLists = canCompositeVirtualLists();
+            interactions.beginPaint();
             UiContext shellContext = new UiContext(canvas, document.theme(), layoutWidth, layoutHeight,
                 page.accent(), new UiRect(0, 0, layoutWidth, layoutHeight), hoveredId, pressedId,
                 ease(now, transitionStart, transitionEnd), ease(now, interactionStart, interactionEnd),
                 transitionEnd != 0 || interactionEnd != 0, paintCount, state, nextHits, nextNativeBounds, nextNativeOverlayLayers,
                 nextAnimationBounds, nextScrollRegions, nextInputRegions, nextTooltips,
-                new UiTextInputState(focusedId, textCursor, textAnchor),
+                new UiTextInputState(focusedId, textCursor, textAnchor, textUpstream),
                 nextMenus,
                 nextDialogs,
                 animationClock,
                 guiScale() / (double) scale,
-                compositeVirtualLists ? nextVirtualLists : null);
+                compositeVirtualLists ? nextVirtualLists : null).withInteractions(interactions);
 
             UiRect content = document.shell().paint(shellContext, document, page);
             if (content == null) content = new UiRect(0, 0, layoutWidth, layoutHeight);
@@ -1668,26 +2181,40 @@ public class UiScreen extends Screen {
             UiRect clip = content;
             canvas.withClip(clip.x(), clip.y(), clip.width(), clip.height(),
                 () -> page.painter().paint(pageContext));
+            for (String id : interactions.scrollEnds.takeResolved()) scrollMotions.remove(id);
+            rootAnimationIds=animationClock.usedIds();
 
             if (compositeVirtualLists && !nextVirtualLists.isEmpty()) {
-                reconcileVirtualLayers(nextVirtualLists, qualityScale, now, animationClock);
+                reconcileVirtualLayers(nextVirtualLists, qualityScale, now);
                 virtualCompositeActive = true;
             } else {
+                if (compositeVirtualLists) closeVirtualLayers();
                 virtualCompositeActive = false;
                 clearVirtualInteractions();
             }
 
             toastSurfaceDirty = true;
-            drawMenu(canvas, nextMenus, nextHits, layoutWidth, layoutHeight);
-            drawDialog(canvas, nextDialogs, nextHits, layoutWidth, layoutHeight);
+            rebuildPopupSurface(canvas, nextMenus, nextDialogs, nextHits, layoutWidth, layoutHeight);
 
             hitRegions = List.copyOf(nextHits);
+            reconcileSliderDrag();
             scrollRegions = List.copyOf(nextScrollRegions);
             inputRegions = List.copyOf(nextInputRegions);
+            pruneEditorViewports();
             tooltips = List.copyOf(nextTooltips);
             tooltipSurfaceDirty = true;
             menus = List.copyOf(nextMenus);
             dialogs = List.copyOf(nextDialogs);
+            if(layoutHitsStale && focusedId!=null && region(focusedId).isEmpty()
+                    && !interactions.targets.containsKey(focusedId) && menuItem(focusedId)==null)focus(null);
+            if(layoutHitsStale) {
+                UiInputRegion input=inputRegion(focusedId);
+                if(input!=null) {
+                    String value=stringValue(input.key(),"");
+                    textCursor=UiTextBoundary.floor(value,textCursor);textAnchor=UiTextBoundary.floor(value,textAnchor);
+                }
+            }
+            layoutHitsStale=false;
             resolvePendingFocus();
             pendingFocus = null;
             nativeBounds.clear();
@@ -1697,9 +2224,11 @@ public class UiScreen extends Screen {
             customAnimationsActive = animationClock.active();
             activeCustomAnimationIds = animationClock.activeIds();
             customAnimationBounds = Map.copyOf(nextAnimationBounds);
+            pruneAnimations();
         } finally {
             graphics.dispose();
         }
+        if (openDialogId == null) dialogBlurScratch.clear();
         lastRasterNanos = System.nanoTime() - paintStarted;
         long uploadStarted = System.nanoTime();
         if (partial) upload(pixelRegion);
@@ -1858,10 +2387,10 @@ public class UiScreen extends Screen {
         if (openDialogId == null) return;
         UiDialogRequest request = null;
         for (UiDialogRequest candidate : candidates) if (openDialogId.equals(candidate.id())) request = candidate;
-        if (request == null) { openDialogId = null; return; }
+        if (request == null) return; // Missing sources are closed before popup layout.
         UiDialog dialog = request.dialog();
         UiDialogStyle style = dialog.style();
-        int backdrop = toastColor(style == null ? null : style.backdrop(), 0x99000000);
+        popupBackdrop = toastColor(style == null ? null : style.backdrop(), 0x99000000);
         int shadow = toastColor(style == null ? null : style.shadow(), 0x88000000);
         int surface = toastColor(style == null ? null : style.surface(), document.theme().raisedSurface());
         int border = toastColor(style == null ? null : style.border(), document.theme().border());
@@ -1873,33 +2402,72 @@ public class UiScreen extends Screen {
         int confirmBackground = toastColor(style == null ? null : style.confirmBackground(), document.theme().accent());
         int confirmText = toastColor(style == null ? null : style.confirmText(), document.theme().accentText());
         float radius = style == null || style.radius() == null ? 12 : style.radius();
-        canvas.backdropBlur(2, 0, 0, layoutWidth, layoutHeight);
-        canvas.fill(backdrop, 0, 0, layoutWidth, layoutHeight);
         hits.add(new UiHitRegion("dialog-backdrop", UiContext.internalAction(DIALOG_CANCEL_PREFIX + dialog.cancelAction()),
             0, 0, layoutWidth, layoutHeight));
-        float width = Math.min(330, layoutWidth - 24), height = 150;
-        float x = (layoutWidth - width) / 2, y = (layoutHeight - height) / 2;
-        canvas.shadow(shadow, 12, 0, 4, x, y, width, height, radius);
-        canvas.roundRect(surface, x, y, width, height, radius);
-        canvas.strokeRoundRect(border, .9F, x, y, width, height, radius);
-        canvas.text(dialog.title(), x + 16, y + 17, 12, title, java.awt.Font.BOLD, document.theme().fontFamily());
-        canvas.text(dialog.message(), x + 16, y + 45, 8, message, java.awt.Font.PLAIN, document.theme().fontFamily());
-        float cancelW = Math.max(70, canvas.textWidth(dialog.cancelLabel(), 8, java.awt.Font.BOLD, document.theme().fontFamily()) + 22);
-        float confirmW = Math.max(76, canvas.textWidth(dialog.confirmLabel(), 8, java.awt.Font.BOLD, document.theme().fontFamily()) + 22);
-        float buttonsY = y + height - 42, confirmX = x + width - 16 - confirmW, cancelX = confirmX - 7 - cancelW;
-        canvas.roundRect(cancelBackground, cancelX, buttonsY, cancelW, 28, Math.min(8, radius));
-        canvas.strokeRoundRect(cancelBorder, .8F, cancelX, buttonsY, cancelW, 28, Math.min(8, radius));
-        canvas.centeredText(dialog.cancelLabel(), cancelX + cancelW / 2, buttonsY + 14, 8, cancelText, java.awt.Font.BOLD, document.theme().fontFamily());
-        canvas.roundRect(confirmBackground, confirmX, buttonsY, confirmW, 28, Math.min(8, radius));
-        canvas.centeredText(dialog.confirmLabel(), confirmX + confirmW / 2, buttonsY + 14, 8, confirmText, java.awt.Font.BOLD, document.theme().fontFamily());
-        hits.add(new UiHitRegion("dialog-cancel", UiContext.internalAction(DIALOG_CANCEL_PREFIX + dialog.cancelAction()),
-            cancelX, buttonsY, cancelW, 28));
-        hits.add(new UiHitRegion("dialog-confirm", UiContext.internalAction(DIALOG_CONFIRM_PREFIX + dialog.confirmAction()),
-            confirmX, buttonsY, confirmW, 28));
+        if(dialogLayout==null)return;
+        dialogHitsStale=false;
+        UiRect card=dialogLayout.frame(), content=dialogLayout.content();
+        hits.add(new UiHitRegion("dialog-body",UiContext.internalAction("dialog-body"),card.x(),card.y(),card.width(),card.height()));
+        canvas.shadow(shadow,12,0,4,card.x(),card.y(),card.width(),card.height(),radius);
+        canvas.roundRect(surface,card.x(),card.y(),card.width(),card.height(),radius);
+        canvas.strokeRoundRect(border,.9F,card.x(),card.y(),card.width(),card.height(),radius);
+        canvas.withClip(content.x(),content.y(),content.width()-Math.min(6,content.width()/4),content.height(),()->{
+            for(int i=dialogLayout.firstVisible(dialogOffset);i<dialogLayout.lines().size();i++) {
+                var line=dialogLayout.lines().get(i);
+                if(line.top()>=dialogOffset+content.height())break;
+                var typography=line.title()?dialogLayout.titleText():dialogLayout.messageText();
+                canvas.text(line.text(),content.x(),content.y()+line.top()-dialogOffset,typography.size(),
+                    line.title()?title:message,typography.fontStyle(),typography.family());
+            }
+        });
+        if(dialogLayout.maxOffset()>0) {
+            float thumb=Math.min(content.height(),Math.max(8,content.height()*content.height()/dialogLayout.contentHeight()));
+            float y=content.y()+(content.height()-thumb)*dialogOffset/dialogLayout.maxOffset();
+            canvas.roundRect(document.theme().mutedText(),content.right()-2,y,2,thumb,1);
+        }
+        drawDialogAction(canvas,"dialog-cancel",dialogLayout.cancelLabel(),dialogLayout.cancel(),cancelBackground,cancelBorder,cancelText,radius);
+        drawDialogAction(canvas,"dialog-confirm",dialogLayout.confirmLabel(),dialogLayout.confirm(),confirmBackground,confirmBackground,confirmText,radius);
+        UiRect cancel=dialogLayout.cancel(),confirm=dialogLayout.confirm();
+        hits.add(new UiHitRegion("dialog-cancel",UiContext.internalAction(DIALOG_CANCEL_PREFIX+dialog.cancelAction()),cancel.x(),cancel.y(),cancel.width(),cancel.height()));
+        hits.add(new UiHitRegion("dialog-confirm",UiContext.internalAction(DIALOG_CONFIRM_PREFIX+dialog.confirmAction()),confirm.x(),confirm.y(),confirm.width(),confirm.height()));
     }
 
-    private void drawMenu(UiCanvas canvas, List<UiMenu> candidates, List<UiHitRegion> hits,
-                          int layoutWidth, int layoutHeight) {
+    private void drawDialogAction(UiCanvas canvas,String id,String label,UiRect box,int background,int border,int text,float radius) {
+        float curve=Math.min(Math.min(8,radius),Math.min(box.width(),box.height())/2);
+        canvas.roundRect(background,box.x(),box.y(),box.width(),box.height(),curve);
+        if(id.equals(hoveredId)||id.equals(pressedId))canvas.roundRect(id.equals(pressedId)?0x20000000:0x18FFFFFF,box.x(),box.y(),box.width(),box.height(),curve);
+        canvas.strokeRoundRect(border,.8F,box.x()+1,box.y()+1,Math.max(0,box.width()-2),Math.max(0,box.height()-2),curve);
+        if(id.equals(focusedId)&&box.width()>6&&box.height()>6)
+            canvas.strokeRoundRect(text,1.2F,box.x()+3,box.y()+3,box.width()-6,box.height()-6,Math.max(0,curve-2));
+        var typography=dialogLayout.buttonText();
+        canvas.withClip(box.x(),box.y(),box.width(),box.height(),()->
+            canvas.centeredText(label,box.centerX(),box.centerY(),typography.size(),text,typography.fontStyle(),typography.family()));
+    }
+
+    private void scrollDialog(float target) {
+        if(dialogLayout==null)return;
+        float next=dialogLayout.clamp(target);
+        if(next!=dialogOffset){dialogOffset=next;popupDirty=true;}
+    }
+
+    private void layoutDialog(UiCanvas canvas,UiDialogRequest request,int width,int height) {
+        DialogLayoutKey next=new DialogLayoutKey(request,width,height,surfaceQualityScale,UiCanvas.fontRevision());
+        if(!next.equals(dialogLayoutKey)) {
+            if(canvas!=null)dialogLayout=UiDialogLayout.measure(canvas,request.dialog(),document.theme().fontFamily(),width,height);
+            else {
+                Graphics2D measure=surfaceImage.createGraphics();
+                try {measure.scale(surfaceQualityScale,surfaceQualityScale);dialogLayout=UiDialogLayout.measure(new UiCanvas(measure),request.dialog(),document.theme().fontFamily(),width,height);}
+                finally {measure.dispose();}
+            }
+            dialogLayoutKey=next;
+            dialogLayoutCount++;
+            // A newly registered font can alter pixels without changing the request or card bounds.
+            popupPaintState=null;
+        }
+        dialogOffset=dialogLayout.clamp(dialogOffset);
+    }
+
+    private void layoutMenu(UiCanvas canvas, List<UiMenu> candidates, int layoutWidth, int layoutHeight) {
         if (openMenuId == null) return;
         UiMenu menu = null;
         for (int i = candidates.size() - 1; i >= 0; i--) {
@@ -1909,34 +2477,161 @@ public class UiScreen extends Screen {
             }
         }
         if (menu == null || menu.items().isEmpty()) {
-            openMenuId = null;
-            menuOpenedWithPointer = false;
+            closeMenu(false);
             return;
         }
-        float rowHeight = 27, pad = 5;
+        activeMenu = menu;
+        menuHitsStale = false;
+        if (menu.id().equals(focusedId) && menu.selectedItemId() != null) {
+            focusedId = "menu:" + menu.id() + ":" + menu.selectedItemId();
+            revealMenuFocus = true;
+        }
+        UiMenuStyle style = menu.style();
+        String family = style.fontFamily() == null ? document.theme().fontFamily() : style.fontFamily();
         float widest = menu.anchor().width();
-        for (UiMenuItem item : menu.items()) {
-            widest = Math.max(widest, canvas.textWidth(item.label(), 8, java.awt.Font.PLAIN, document.theme().fontFamily()) + 24);
+        for (UiMenuItem item : menu.items())
+            widest = Math.max(widest, canvas.textWidth(item.label(), style.textSize(), style.fontStyle(), family) + style.paddingX() * 2);
+        UiPopupLayout previousLayout = menuLayout;
+        menuLayout = UiPopupLayout.menu(menu.anchor(), widest, menu.items().size(), layoutWidth, layoutHeight, style);
+        if (menuLayout.maxOffset() > 0)
+            menuLayout = UiPopupLayout.menu(menu.anchor(), widest + 8, menu.items().size(), layoutWidth, layoutHeight, style);
+        menuOffset = menuLayout.clamp(menuOffset);
+        if (revealMenuFocus || previousLayout == null || menuLayout.rowHeight() != previousLayout.rowHeight()
+                || menuLayout.viewport().height() != previousLayout.viewport().height()
+                || menuLayout.viewport().width() != previousLayout.viewport().width()) {
+            for (int i = 0; i < menu.items().size(); i++)
+                if (("menu:" + menu.id() + ":" + menu.items().get(i).id()).equals(focusedId))
+                    menuOffset = menuLayout.reveal(menuOffset, i);
         }
-        float width = Math.min(widest, Math.max(64, layoutWidth - 12));
-        float height = menu.items().size() * rowHeight + pad * 2;
-        float x = Math.max(6, Math.min(menu.anchor().x(), layoutWidth - width - 6));
-        float below = menu.anchor().bottom() + 5;
-        float above = menu.anchor().y() - height - 5;
-        float y = below + height <= layoutHeight - 6 ? below : Math.max(6, above);
-        canvas.shadow(0x72000000, 7, 0, 3, x, y, width, height, 8);
-        canvas.roundRect(document.theme().raisedSurface(), x, y, width, height, 8);
-        canvas.strokeRoundRect(document.theme().border(), .8F, x, y, width, height, 8);
-        for (int i = 0; i < menu.items().size(); i++) {
-            UiMenuItem item = menu.items().get(i);
-            float rowY = y + pad + i * rowHeight;
-            String itemId = "menu:" + menu.id() + ":" + item.id();
-            if (itemId.equals(hoveredId)) canvas.roundRect(UiCanvas.fade(document.theme().accent(), .18F),
-                x + 3, rowY, width - 6, rowHeight, 5);
-            canvas.text(item.label(), x + 12, rowY + 8, 8, document.theme().text(), java.awt.Font.PLAIN, document.theme().fontFamily());
-            hits.add(new UiHitRegion(itemId, UiContext.internalAction(MENU_ITEM_PREFIX + item.action()),
-                x, rowY, width, rowHeight));
+        revealMenuFocus = false;
+    }
+
+    private void drawMenu(UiCanvas canvas, List<UiHitRegion> hits) {
+        if (openMenuId == null || activeMenu == null || menuLayout == null) return;
+        UiMenu menu = activeMenu;
+        UiRect frame = menuLayout.frame(), viewport = menuLayout.viewport();
+        UiMenuStyle style = menu.style();
+        String family = style.fontFamily() == null ? document.theme().fontFamily() : style.fontFamily();
+        canvas.shadow(0x72000000, 7, 0, 3, frame.x(), frame.y(), frame.width(), frame.height(), style.radius());
+        canvas.roundRect(style.background() == null ? document.theme().raisedSurface() : style.background(), frame.x(), frame.y(), frame.width(), frame.height(), style.radius());
+        if (style.borderWidth() > 0) canvas.strokeRoundRect(style.border() == null ? document.theme().border() : style.border(), style.borderWidth(), frame.x(), frame.y(), frame.width(), frame.height(), style.radius());
+        hits.add(new UiHitRegion(menuBodyId(), UiContext.internalAction("menu-body"), frame.x(), frame.y(), frame.width(), frame.height()));
+        float gutter = menuLayout.maxOffset() > 0 ? Math.min(8, viewport.width()) : 0;
+        UiMenu paintedMenu = menu;
+        canvas.withClip(viewport.x(), viewport.y(), viewport.width() - gutter, viewport.height(), () -> {
+            for (int i = 0; i < paintedMenu.items().size(); i++) {
+                UiRect hit = menuLayout.row(i, menuOffset);
+                if (hit.height() <= 0) continue;
+                UiMenuItem item = paintedMenu.items().get(i);
+                float rowY = viewport.y() + i * menuLayout.rowHeight() - menuOffset;
+                String itemId = "menu:" + paintedMenu.id() + ":" + item.id();
+                if (itemId.equals(hoveredId) || itemId.equals(focusedId)) canvas.roundRect(style.highlight() == null ? UiCanvas.fade(document.theme().accent(), .18F) : style.highlight(),
+                    frame.x() + style.rowInset(), rowY, Math.max(0, frame.width() - style.rowInset() * 2 - gutter), menuLayout.rowHeight(), style.rowRadius());
+                float textY = rowY + Math.max(0, (menuLayout.rowHeight() - canvas.textHeight(style.textSize(), style.fontStyle(), family)) / 2);
+                canvas.withClip(frame.x(), rowY, Math.max(0, frame.width() - gutter), menuLayout.rowHeight(), () ->
+                    canvas.text(item.label(), frame.x() + style.paddingX(), textY, style.textSize(), style.text() == null ? document.theme().text() : style.text(), style.fontStyle(), family));
+                hits.add(new UiHitRegion(itemId, UiContext.internalAction(MENU_ITEM_PREFIX + item.action()),
+                    hit.x(), hit.y(), Math.max(0, hit.width() - gutter), hit.height()));
+            }
+        });
+        if (menuLayout.maxOffset() > 0 && viewport.width() > 8) {
+            float thumb = Math.max(10, viewport.height() * viewport.height() / menuLayout.contentHeight());
+            thumb = Math.min(thumb, viewport.height());
+            float y = viewport.y() + (viewport.height() - thumb) * menuOffset / menuLayout.maxOffset();
+            canvas.roundRect(document.theme().mutedText(), viewport.right() - 4, y, 2, thumb, 1);
         }
+    }
+
+    private void rebuildPopupSurface(UiCanvas baseCanvas, List<UiMenu> nextMenus,
+                                     List<UiDialogRequest> nextDialogs, List<UiHitRegion> hits,
+                                     int layoutWidth, int layoutHeight) {
+        if (baseCanvas != null) layoutMenu(baseCanvas, nextMenus, layoutWidth, layoutHeight);
+        else {
+            Graphics2D measure = surfaceImage.createGraphics();
+            try {
+                measure.scale(surfaceQualityScale, surfaceQualityScale);
+                layoutMenu(new UiCanvas(measure), nextMenus, layoutWidth, layoutHeight);
+            }
+            finally { measure.dispose(); }
+        }
+        UiRect bounds = openMenuId != null && menuLayout != null ? menuLayout.frame() : null;
+        UiDialogRequest dialog = null;
+        for (UiDialogRequest candidate : nextDialogs) if (candidate.id().equals(openDialogId)) dialog = candidate;
+        if (openDialogId != null && dialog == null) closeDialog(false);
+        popupBackdrop = 0;
+        if (dialog != null) {
+            layoutDialog(baseCanvas,dialog,layoutWidth,layoutHeight);
+            UiRect card=dialogLayout.frame();
+            bounds = bounds == null ? card : union(bounds, card);
+            // Retained page chrome is blurred once; native content is dimmed by the GPU backdrop.
+            if (baseCanvas != null) baseCanvas.backdropBlur(2, 0, 0, layoutWidth, layoutHeight, dialogBlurScratch);
+        }
+        if (bounds == null) { closePopupSurface(); return; }
+        bounds = expandAndClamp(bounds, layoutWidth, layoutHeight, 20);
+        // Snap the outer surface to GUI pixels so its final blit never rounds each edge differently.
+        float x = Math.max(0, (int) Math.floor(bounds.x() / layoutScale)) * layoutScale;
+        float y = Math.max(0, (int) Math.floor(bounds.y() / layoutScale)) * layoutScale;
+        float right = Math.min(width, (int) Math.ceil(bounds.right() / layoutScale)) * layoutScale;
+        float bottom = Math.min(height, (int) Math.ceil(bounds.bottom() / layoutScale)) * layoutScale;
+        bounds = new UiRect(x, y, right - x, bottom - y);
+        PopupPaintState nextState = new PopupPaintState(openMenuId == null ? null : activeMenu, dialog, bounds,
+            menuOffset, dialogOffset, popupVisualId(hoveredId), popupVisualId(focusedId), popupVisualId(pressedId), surfaceQualityScale);
+        if (popupSurface != null && nextState.equals(popupPaintState)) {
+            hits.addAll(popupHits); popupDirty = false; dialogHitsStale=false; menuHitsStale=false;
+            if (dialog != null) popupBackdrop = toastColor(dialog.dialog().style() == null ? null : dialog.dialog().style().backdrop(), 0x99000000);
+            return;
+        }
+        int w = Math.max(1, Math.round(bounds.width() * surfaceQualityScale));
+        int h = Math.max(1, Math.round(bounds.height() * surfaceQualityScale));
+        if (popupImage == null || popupImage.getWidth() != w || popupImage.getHeight() != h) {
+            closePopupSurface();
+            popupSurface = new DynamicTexture(() -> "pane-popup-overlay", w, h, true);
+            retainedTextureAllocationCount++;
+            popupImage = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+            popupPixels = ((DataBufferInt) popupImage.getRaster().getDataBuffer()).getData();
+        } else Arrays.fill(popupPixels, 0);
+        int hitStart = hits.size();
+        Graphics2D painter = popupImage.createGraphics();
+        try {
+            painter.scale(surfaceQualityScale, surfaceQualityScale);
+            painter.translate(-bounds.x(), -bounds.y());
+            UiCanvas canvas = new UiCanvas(painter, popupImage);
+            drawMenu(canvas, hits);
+            drawDialog(canvas, nextDialogs, hits, layoutWidth, layoutHeight);
+        } finally { painter.dispose(); }
+        var target = popupSurface.getPixels().getPixelBytes().order(ByteOrder.nativeOrder()).asIntBuffer();
+        UiPixelTransfer.copy(popupPixels, target, w, 0, 0, w, h);
+        popupSurface.upload();
+        popupUploadPixels += (long) w * h;
+        popupLayoutBounds = bounds;
+        popupHits = List.copyOf(hits.subList(hitStart, hits.size()));
+        popupPaintState = nextState; popupDirty = false;
+    }
+
+    private void renderPopupOverlay(GuiGraphicsExtractor graphics) {
+        if (popupDirty && surfaceImage != null) {
+            var hits = new ArrayList<>(hitRegions);
+            hits.removeAll(popupHits);
+            rebuildPopupSurface(null, menus, dialogs, hits, surfaceLayoutWidth, surfaceLayoutHeight);
+            hitRegions = List.copyOf(hits);
+            if (hoverDirty) { hoverDirty = false; updateHover(mouseX * layoutScale, mouseY * layoutScale, false); }
+        }
+        if (popupSurface == null || popupLayoutBounds == null || openMenuId == null && openDialogId == null) return;
+        graphics.nextStratum();
+        if (openDialogId != null && popupBackdrop != 0) {
+            graphics.fill(0, 0, width, height, popupBackdrop);
+            graphics.nextStratum();
+        }
+        graphics.blit(popupSurface.getTextureView(), surfaceSampler,
+            Math.round(popupLayoutBounds.x() / layoutScale), Math.round(popupLayoutBounds.y() / layoutScale),
+            Math.round(popupLayoutBounds.right() / layoutScale), Math.round(popupLayoutBounds.bottom() / layoutScale),
+            0, 1, 0, 1);
+    }
+
+    private void closePopupSurface() {
+        if (popupSurface != null) popupSurface.close();
+        popupSurface = null; popupImage = null; popupPixels = null; popupLayoutBounds = null;
+        popupBackdrop = 0; popupDirty = false; popupPaintState = null; popupHits = List.of();
     }
 
     private void renderToastOverlay(GuiGraphicsExtractor extractor, long now) {
@@ -2040,7 +2735,7 @@ public class UiScreen extends Screen {
     }
 
     private UiTooltip hoveredTooltip() {
-        if (hoveredId == null) return null;
+        if (hoveredId == null || !focusAllowed(hoveredId)) return null;
         for (int i = virtualTooltips.size() - 1; i >= 0; i--) {
             UiTooltip tooltip = virtualTooltips.get(i);
             if (hoveredId.equals(tooltip.id())) return tooltip;
@@ -2213,7 +2908,7 @@ public class UiScreen extends Screen {
     }
 
     private void reconcileVirtualLayers(List<UiVirtualListRequest> requests, float qualityScale,
-                                        long now, UiAnimationClock animationClock) {
+                                        long now) {
         Set<String> retained = new HashSet<>();
         for (UiVirtualListRequest request : requests) {
             retained.add(request.id);
@@ -2227,8 +2922,8 @@ public class UiScreen extends Screen {
                 layer.rows.values().forEach(row -> row.dirty = true);
             }
             layer.currentOffset = Math.max(0, Math.min(request.maxOffset(),
-                numberValue("scroll:" + request.id, 0)));
-            ensureVirtualRows(layer, now, animationClock);
+                scrollOffset(request.id)));
+            ensureVirtualRows(layer, now);
         }
         var iterator = virtualLayers.entrySet().iterator();
         while (iterator.hasNext()) {
@@ -2240,7 +2935,7 @@ public class UiScreen extends Screen {
         refreshVirtualInteractions();
     }
 
-    private boolean ensureVirtualRows(VirtualListLayer layer, long now, UiAnimationClock animationClock) {
+    private boolean ensureVirtualRows(VirtualListLayer layer, long now) {
         int pixelWidth = Math.max(1, Math.round(layer.request.viewport.width() * layer.qualityScale));
         int pixelHeight = Math.max(1, Math.round(layer.request.rowHeight * layer.qualityScale));
         layer.ensureAtlas(pixelWidth, pixelHeight);
@@ -2266,7 +2961,7 @@ public class UiScreen extends Screen {
                 layer.rows.put(index, row);
             }
             if (row.dirty || row.image == null) {
-                renderVirtualRow(layer, row, now, animationClock);
+                renderVirtualRow(layer, row, now);
                 changed = true;
             }
         }
@@ -2287,8 +2982,7 @@ public class UiScreen extends Screen {
         return changed;
     }
 
-    private void renderVirtualRow(VirtualListLayer layer, VirtualRowSurface row, long now,
-                                  UiAnimationClock animationClock) {
+    private void renderVirtualRow(VirtualListLayer layer, VirtualRowSurface row, long now) {
         long started = System.nanoTime();
         int pixelWidth = Math.max(1, Math.round(layer.request.viewport.width() * layer.qualityScale));
         int pixelHeight = Math.max(1, Math.round(layer.request.rowHeight * layer.qualityScale));
@@ -2305,6 +2999,7 @@ public class UiScreen extends Screen {
         List<UiTooltip> tips = new ArrayList<>();
         List<UiMenu> rowMenus = new ArrayList<>();
         List<UiDialogRequest> rowDialogs = new ArrayList<>();
+        Map<String, UiButtonState> rowButtons = new HashMap<>();
         try {
             graphics.scale(layer.qualityScale, layer.qualityScale);
             float rowY = layer.request.viewport.y() + row.index * layer.request.stride();
@@ -2314,10 +3009,11 @@ public class UiScreen extends Screen {
             UiVirtualListRequest.DynamicState dynamic = new UiVirtualListRequest.DynamicState(
                 hoveredId, pressedId, ease(now, transitionStart, transitionEnd),
                 ease(now, interactionStart, interactionEnd), transitionEnd != 0 || interactionEnd != 0,
-                paintCount, new UiTextInputState(focusedId, textCursor, textAnchor), rowClock);
+                paintCount, new UiTextInputState(focusedId, textCursor, textAnchor, textUpstream), rowClock);
             layer.request.paintRow(canvas, row.index, dynamic,
-                new UiVirtualListRequest.RowOutput(hits, nativeRows, nativeOverlayRows, scrolls, inputs, tips, rowMenus, rowDialogs));
+                new UiVirtualListRequest.RowOutput(hits, nativeRows, nativeOverlayRows, scrolls, inputs, tips, rowMenus, rowDialogs, rowButtons));
             row.customAnimating = rowClock.active();
+            row.animationIds=rowClock.usedIds();
         } finally {
             graphics.dispose();
         }
@@ -2342,6 +3038,7 @@ public class UiScreen extends Screen {
             layer.atlas.getTexture(), upload, 0, 0, 0, row.atlasSlot * layer.atlasSlotHeight,
             pixelWidth, uploadHeight
         );
+        row.buttons = Map.copyOf(rowButtons);
         row.hits = List.copyOf(hits);
         row.nativeBounds = Map.copyOf(nativeRows);
         row.nativeOverlayLayers = Map.copyOf(nativeOverlayRows);
@@ -2367,10 +3064,9 @@ public class UiScreen extends Screen {
     }
 
     private void renderVirtualLayers(GuiGraphicsExtractor graphics, long now, UiRect overlayClip) {
-        UiAnimationClock animationClock = new UiAnimationClock(animations, now, motionScale());
         boolean interactionsChanged = false;
         for (VirtualListLayer layer : virtualLayers.values()) {
-            if (ensureVirtualRows(layer, now, animationClock)) interactionsChanged = true;
+            if (ensureVirtualRows(layer, now)) interactionsChanged = true;
             UiRect viewport = layer.request.viewport;
             UiRect visible = overlayClip == null ? viewport : clipped(viewport, overlayClip);
             if (visible.width() <= 0 || visible.height() <= 0) continue;
@@ -2416,7 +3112,6 @@ public class UiScreen extends Screen {
             graphics.disableScissor();
         }
         if (interactionsChanged) refreshVirtualInteractions();
-        customAnimationsActive |= animationClock.active();
     }
 
     static UiRect virtualRowGuiRect(UiVirtualListRequest request, int index, float layoutScale) {
@@ -2463,6 +3158,7 @@ public class UiScreen extends Screen {
         List<UiTooltip> tips = new ArrayList<>();
         List<UiMenu> rowMenus = new ArrayList<>();
         List<UiDialogRequest> rowDialogs = new ArrayList<>();
+        Map<String, UiButtonState> rowButtons = new HashMap<>();
         virtualNativeBounds.clear();
         virtualNativeOverlayLayers.clear();
         for (VirtualListLayer layer : virtualLayers.values()) {
@@ -2487,7 +3183,8 @@ public class UiScreen extends Screen {
                     float[] ys = input.caretYs();
                     for (int i = 0; i < ys.length; i++) ys[i] += shiftY;
                     inputs.add(new UiInputRegion(input.id(), input.key(), moved, input.maxLength(),
-                        input.multiline(), xs, ys));
+                        input.multiline(), xs, ys,
+                        input.lines().stream().map(line -> line.translate(0, shiftY)).toList(), input.masked()));
                 }
                 for (UiTooltip tooltip : row.tooltips) {
                     UiRect moved = clipped(tooltip.anchor().translate(0, shiftY), clip);
@@ -2495,7 +3192,7 @@ public class UiScreen extends Screen {
                 }
                 for (UiMenu menu : row.menus) {
                     UiRect moved = clipped(menu.anchor().translate(0, shiftY), clip);
-                    if (moved.width() > 0 && moved.height() > 0) rowMenus.add(new UiMenu(menu.id(), moved, menu.items()));
+                    if (moved.width() > 0 && moved.height() > 0) rowMenus.add(new UiMenu(menu.id(), moved, menu.items(), menu.selectedItemId(), menu.style()));
                 }
                 rowDialogs.addAll(row.dialogs);
                 double nativeShift = shiftY * layer.request.nativeScale;
@@ -2507,6 +3204,9 @@ public class UiScreen extends Screen {
         }
         virtualHitRegions = List.copyOf(hits);
         virtualInputRegions = List.copyOf(inputs);
+        reconcileSliderDrag();
+        pruneEditorViewports();
+        pruneAnimations();
         List<UiTooltip> nextTooltips = List.copyOf(tips);
         if (!virtualTooltips.equals(nextTooltips)) tooltipSurfaceDirty = true;
         virtualTooltips = nextTooltips;
@@ -2560,7 +3260,6 @@ public class UiScreen extends Screen {
             VirtualRowSurface row = layer == null ? null : layer.rows.get(key.index());
             if (row != null) {
                 row.dirty = true;
-                animatedVirtualRows.add(key);
                 found = true;
             }
         }
@@ -2638,7 +3337,7 @@ public class UiScreen extends Screen {
 
         double offset() {
             currentOffset = Math.max(0, Math.min(request.maxOffset(),
-                numberValue("scroll:" + request.id, currentOffset)));
+                scrollOffset(request.id)));
             return currentOffset;
         }
 
@@ -2700,6 +3399,8 @@ public class UiScreen extends Screen {
         int atlasSlot;
         boolean dirty = true;
         boolean customAnimating;
+        Set<String> animationIds=Set.of();
+        Map<String, UiButtonState> buttons = Map.of();
         List<UiHitRegion> hits = List.of();
         Map<String, NativeBounds> nativeBounds = Map.of();
         Map<String, UiRect> nativeOverlayLayers = Map.of();
@@ -2714,10 +3415,12 @@ public class UiScreen extends Screen {
             this.index = index;
             dirty = true;
             customAnimating = false;
+            animationIds=Set.of();
             clearInteractions();
         }
 
         void clearInteractions() {
+            buttons = Map.of();
             hits = List.of();
             nativeBounds = Map.of();
             nativeOverlayLayers = Map.of();
@@ -2755,6 +3458,8 @@ public class UiScreen extends Screen {
     }
 
     private void closeSurface() {
+        dialogBlurScratch.clear();
+        closePopupSurface();
         closeToastSurface();
         closeVirtualLayers();
         closeTooltipSurface();
@@ -2784,11 +3489,22 @@ public class UiScreen extends Screen {
 
     @Override
     public void removed() {
+        pressedId = null; draggingSlider = null; draggingTextInput = null;
+        nativeText.clear(); lastNativeTextCount = 0;
+        interactions.scrollEnds.cancelPending();
+        animations.clear();rootAnimationIds=Set.of();customAnimationsActive=false;
+        interactions.editors.clear();
+        interactions.textLayouts.clear();
         closeSurface();
+        openMenuId = null; activeMenu = null; menuLayout = null; menuOffset = 0;
+        openDialogId = null;
+        dialogLayout=null;dialogLayoutKey=null;dialogOffset=0;dialogHitsStale=false;
         requestFullRepaint();
         hoverDirty = true;
         scrollMotions.clear();
         hitRegions = List.of();
+        interactions.textLayouts.clear();
+        interactions.beginPaint();
         scrollRegions = List.of();
         inputRegions = List.of();
         draggingTextInput = null;
@@ -2797,6 +3513,6 @@ public class UiScreen extends Screen {
         super.removed();
     }
 
-    @Override public boolean isPauseScreen() { return false; }
+    @Override public boolean isPauseScreen() { return options.pauseGame(); }
     @Override public boolean isInGameUi() { return true; }
 }

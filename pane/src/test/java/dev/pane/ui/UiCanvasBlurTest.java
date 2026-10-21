@@ -33,6 +33,29 @@ final class UiCanvasBlurTest {
         } finally { graphics.dispose(); }
     }
 
+    @Test void partialBlurMatchesFullBlurAndReusesOnlyPaddedClipStorage() {
+        var full = new BufferedImage(400,300,BufferedImage.TYPE_INT_ARGB);
+        var clipped = new BufferedImage(400,300,BufferedImage.TYPE_INT_ARGB);
+        for (int y=0;y<300;y++) for(int x=0;x<400;x++) {
+            int color=(x+y)%3==0?0xFFFFFFFF:0xFF223344;
+            full.setRGB(x,y,color);clipped.setRGB(x,y,color);
+        }
+        var scratch=new UiBlurScratch();
+        var a=full.createGraphics();var b=clipped.createGraphics();
+        try {
+            new UiCanvas(a,full).backdropBlur(2,0,0,400,300);
+            b.setClip(100,100,20,20);
+            new UiCanvas(b,clipped).backdropBlur(2,0,0,400,300,scratch);
+            for(int y=100;y<120;y++)for(int x=100;x<120;x++) assertEquals(full.getRGB(x,y),clipped.getRGB(x,y));
+            assertEquals(24L*24*2,scratch.retainedPixels());
+            assertEquals(2,scratch.allocations);
+            new UiCanvas(b,clipped).backdropBlur(2,0,0,400,300,scratch);
+            assertEquals(2,scratch.allocations,"same-sized repaint reuses buffers across canvases");
+            scratch.releaseIfIdle(System.nanoTime());assertTrue(scratch.retainedPixels()>0);
+            scratch.releaseIfIdle(System.nanoTime()+600_000_000L);assertEquals(0,scratch.retainedPixels());
+        } finally { a.dispose();b.dispose(); }
+    }
+
     @Test void fullyClippedBlurDoesNoWork() {
         var image = new BufferedImage(80, 80, BufferedImage.TYPE_INT_ARGB);
         var graphics = image.createGraphics();

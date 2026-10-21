@@ -4,6 +4,7 @@ loom {
     runs {
         client {
             if (project.hasProperty('benchmark') || project.hasProperty('isolated')) runDir 'run-benchmark'
+            if (project.hasProperty('adoptionTest')) runDir 'run-adoption'
         }
     }
     mods {
@@ -18,6 +19,7 @@ dependencies {
 }
 
 tasks.named('runClient') {
+    if (project.hasProperty('adoptionTest')) systemProperty 'pane.demo.adoptionTest', 'true'
     if (project.hasProperty('benchmark')) {
         systemProperty 'pane.demo.studioTest', 'true'
         systemProperty 'pane.demo.benchmark', 'true'
@@ -28,6 +30,23 @@ tasks.named('runClient') {
             jvmArgs "-XX:StartFlightRecording=filename=${recording.absolutePath},settings=profile,dumponexit=true,maxsize=128m"
         }
     }
+    if (project.hasProperty('wayfarer')) systemProperty 'pane.demo.wayfarer', 'true'
+    if (project.hasProperty('wayfarerTest')) systemProperty 'pane.demo.wayfarerTest', 'true'
+    if (project.hasProperty('discord')) systemProperty 'pane.demo.discord', 'true'
+    if (project.hasProperty('discordTest')) systemProperty 'pane.demo.discordTest', 'true'
+    if (project.hasProperty('gmail')) systemProperty 'pane.demo.gmail', 'true'
+    if (project.hasProperty('gmailTest') || project.hasProperty('gmailCapture')) systemProperty 'pane.demo.gmailTest', 'true'
+    if (project.hasProperty('gmailCapture')) systemProperty 'pane.demo.gmailCapture', 'true'
+    if (project.hasProperty('castleTest')) systemProperty 'pane.demo.castleTest', 'true'
+    if (project.hasProperty('castleWorldTest')) systemProperty 'pane.demo.castleWorldTest', 'true'
+    if (project.hasProperty('castle')) systemProperty 'pane.demo.castle', 'true'
+    if (project.hasProperty('resourceTest')) systemProperty 'pane.demo.resourceTest', 'true'
+    if (project.hasProperty('editingTest')) systemProperty 'pane.demo.editingTest', 'true'
+    if (project.hasProperty('animationTest')) systemProperty 'pane.demo.animationTest', 'true'
+    if (project.hasProperty('editorTest')) systemProperty 'pane.demo.editorTest', 'true'
+    if (project.hasProperty('dialogTest')) systemProperty 'pane.demo.dialogTest', 'true'
+    if (project.hasProperty('popupTest')) systemProperty 'pane.demo.popupTest', 'true'
+    if (project.hasProperty('reviewTest')) systemProperty 'pane.demo.reviewTest', 'true'
     if (project.hasProperty('apiTest')) systemProperty 'pane.demo.apiTest', 'true'
     if (project.hasProperty('studio')) systemProperty 'pane.demo.studio', 'true'
     if (project.hasProperty('studioPreview')) {
@@ -63,10 +82,6 @@ tasks.named('runClient') {
     if (project.hasProperty('gallery')) {
         systemProperty 'pane.demo.gallery', 'true'
     }
-    // Hands-on consumer-layout test: opens the native YouTube-style screen after a scratch world loads.
-    if (project.hasProperty('youtube')) {
-        systemProperty 'pane.demo.youtube', 'true'
-    }
     // Hands-on Minecraft texture and player-skin fill reference.
     if (project.hasProperty('textures')) {
         systemProperty 'pane.demo.textures', 'true'
@@ -81,5 +96,91 @@ tasks.named('runClient') {
     }
     if (project.hasProperty('levelId')) {
         systemProperty 'pane.demo.levelId', project.property('levelId')
+    }
+}
+
+// A graceful Minecraft shutdown is not proof that the fixture passed.
+def fixtureMarkers = [adoptionTest: '[AdoptionTest] complete PASS', wayfarerTest: '[WayfarerTest] complete PASS', discordTest: '[DiscordTest] complete PASS', gmailTest: '[GmailTest] complete PASS', castleTest: '[CastleTest] complete PASS', resourceTest: '[ResourceTest] complete PASS', editingTest: '[EditingTest] complete PASS', animationTest: '[AnimationTest] complete PASS', editorTest: '[EditorTest] complete PASS', dialogTest: '[DialogTest] complete PASS', popupTest: '[PopupTest] complete PASS', reviewTest: '[ReviewFix] complete PASS', apiTest: '[ApiTest] complete PASS', perftest: '[PanePerf] complete PASS', designTest: '[DesignLab] complete PASS', studioTest: '[StudioTest] complete PASS', benchmark: '[StudioTest] complete PASS', autotestExit: 'autotest complete']
+def expectedMarkers = fixtureMarkers.findAll { key, marker -> project.hasProperty(key) }.values()
+if (!expectedMarkers.isEmpty()) {
+    def captured = new ByteArrayOutputStream()
+    def fixtureName = fixtureMarkers.keySet().findAll { project.hasProperty(it) }.join('-')
+    def saveFixtureLog = tasks.register('saveFixtureLog') {
+        doLast {
+            def destination = layout.buildDirectory.file("fixture-logs/${fixtureName}.log").get().asFile
+            destination.parentFile.mkdirs()
+            destination.bytes = captured.toByteArray()
+        }
+    }
+    tasks.named('runClient') {
+        finalizedBy(saveFixtureLog)
+        timeout = java.time.Duration.ofMinutes(5)
+        def console = System.out
+        def tee = new OutputStream() {
+            @Override void write(int value) { captured.write(value); console.write(value) }
+            @Override void write(byte[] data, int offset, int length) {
+                captured.write(data, offset, length); console.write(data, offset, length)
+            }
+            @Override void flush() { console.flush() }
+        }
+        standardOutput = tee
+        errorOutput = tee
+        doFirst {
+            captured.reset()
+            // Isolated automated clients must reach the title screen on a fresh CI worker.
+            if (project.hasProperty('isolated') || project.hasProperty('adoptionTest')) {
+                def options = file(project.hasProperty('adoptionTest') ? 'run-adoption/options.txt' : 'run-benchmark/options.txt')
+                options.parentFile.mkdirs()
+                def lines = options.exists() ? options.readLines().findAll { !it.startsWith('onboardAccessibility:') } : []
+                options.text = (lines + 'onboardAccessibility:false').join('\n') + '\n'
+            }
+        }
+        doLast {
+            def output = captured.toString('UTF-8')
+            if (project.hasProperty('fixtureFailureProbe')) output += '\n[Fixture] injected FAIL'
+            if (output =~ /(?m)\[(AdoptionTest|WayfarerTest|DiscordTest|GmailTest|CastleTest|ResourceTest|EditingTest|AnimationTest|EditorTest|DialogTest|PopupTest|ReviewFix|ApiTest|PanePerf|DesignLab|StudioTest|ConsumerTest|AutoTest|pane-autotest|Fixture)\][^\r\n]*FAIL/
+                    || expectedMarkers.any { !output.contains(it) }) {
+                throw new GradleException('Client fixture failed or did not finish. Inspect its PASS/FAIL output above.')
+            }
+        }
+    }
+}
+
+// The independently distributed showcase carries the same project license as the library.
+tasks.withType(Jar).configureEach { from(rootProject.file('LICENSE')) }
+
+// Supported public examples. No cached argument-file parsing, private save, or local Java path.
+loom.runs {
+    [Examples: 'gallery', Wayfarer: 'wayfarer', Gather: 'gather', Mail: 'mail',
+     WayfarerHud: 'wayfarer-hud', VanillaHud: 'vanilla-hud'].each { label, example ->
+        create(label[0].toLowerCase() + label.substring(1)) {
+            inherit client
+            configName "PaneLib / ${label}"
+            runDir "run-examples/${example}"
+            vmArg "-Dpane.demo.example=${example}"
+        }
+    }
+}
+if (project.hasProperty('exampleTest')) {
+    tasks.named('runExamples') {
+        systemProperty 'pane.demo.exampleTest', 'true'
+        timeout = java.time.Duration.ofMinutes(5)
+        def capturedExamples = new ByteArrayOutputStream()
+        standardOutput = capturedExamples
+        errorOutput = capturedExamples
+        doFirst {
+            def options = file('run-examples/gallery/options.txt')
+            options.parentFile.mkdirs()
+            def lines = options.exists() ? options.readLines().findAll { !it.startsWith('onboardAccessibility:') } : []
+            options.text = (lines + 'onboardAccessibility:false').join('\n') + '\n'
+        }
+        doLast {
+            def output = capturedExamples.toString('UTF-8')
+            def log = layout.buildDirectory.file('fixture-logs/examples.log').get().asFile
+            log.parentFile.mkdirs(); log.text = output
+            println output.readLines().findAll { it.contains('[ExamplesTest]') }.join('\n')
+            if (!output.contains('[ExamplesTest] complete PASS') || output.contains('[ExamplesTest] FAIL'))
+                throw new GradleException('Example fixture failed or did not finish. See ' + log)
+        }
     }
 }

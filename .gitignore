@@ -12,3 +12,17 @@ pane/logs/
 *.jfr
 
 pane-demo/run-benchmark/
+
+# Local release preservation and reproducible gallery exports
+/release-snapshots/
+/marketing/modrinth-gallery/archive-v1/
+/marketing/modrinth-gallery/panelib-gallery/
+/marketing/modrinth-gallery/*.zip
+
+pane-demo/run-discord/
+
+pane-demo/run-wayfarer/
+
+# Disposable example/test clients and Python fixture bytecode
+/pane-demo/run-*/
+__pycache__/

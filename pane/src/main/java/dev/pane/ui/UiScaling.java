@@ -22,6 +22,9 @@ public record UiScaling(float referenceWidth, float referenceHeight, float adapt
                         float minScale, float maxScale) {
 
     public UiScaling {
+        if (!Float.isFinite(referenceWidth) || !Float.isFinite(referenceHeight)
+                || !Float.isFinite(adaptivity) || !Float.isFinite(minScale) || !Float.isFinite(maxScale))
+            throw new IllegalArgumentException("UI scaling values must be finite");
         referenceWidth = Math.max(120, referenceWidth);
         referenceHeight = Math.max(90, referenceHeight);
         adaptivity = clamp(adaptivity, 0, 1);

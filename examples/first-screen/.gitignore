@@ -1,0 +1,5 @@
+.gradle/
+build/
+run-example/
+run-example-smoke/
+libs/*.jar

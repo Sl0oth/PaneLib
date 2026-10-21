@@ -4,19 +4,30 @@ PaneLib is a 100% client-side Fabric UI library for building desktop-quality Min
 
 It is native and retained-mode. It does not start Chromium, load HTML, parse CSS, or require MCEF. A screen is rasterized only when something changes, uploaded to one reusable GPU texture, and then blitted while idle. Minecraft items and entities render in a separate native layer.
 
-Current release candidate: `dev.pane:panelib:0.9.8`, targeting Minecraft 26.2, Fabric Loader 0.19.3, and Java 25.
+Current local candidate: `dev.pane:panelib:0.9.9-beta.1`, targeting Minecraft 26.2, Fabric Loader
+0.19.3, and Java 25. Root `gradle.properties` is the version authority. The submitted 0.9.8
+snapshot is preserved; this candidate is not a published update.
 
-## Try the field console
+## First screen in your own mod
+
+Use the complete [standalone starter](examples/first-screen/README.md): a Fabric entrypoint,
+five controls, an opening key, real Save/Cancel, and packaged-JAR validation. It compiles against
+the runtime JAR without Maven Local or a dependency on this repository's source projects.
+
+PaneLib paints custom controls with Java2D into retained GPU textures. Minecraft items/entities
+remain native overlays. The library alone intentionally adds no screen, command, or key binding.
+
+## Try the examples
 
 ```sh
-./gradlew :pane-demo:runClient -Pstudio
+./gradlew :pane-demo:runExamples
 ```
 
-This opens Atlas in its reserved disposable world. H opens the console; J toggles the live HUD.
-The motion studio demonstrates expanding cards, spring retargeting, staggered controls and finite
-choreography. The HUD editor exposes live health/position instruments, anchors, scale and reduced
-motion. [Motion preview](docs/previews/atlas-motion.gif) · [Live HUD preview](docs/previews/atlas-hud.gif).
-See [HUDs and composable motion](docs/huds-and-composable-motion.md) for the reusable APIs.
+This opens the curated example shelf at the title screen. Try Wayfarer's game menu and HUD,
+Gather's chat layout, Pane Mail's inbox, or the vanilla HUD recipe. H opens examples; J toggles
+the selected HUD after you create or join a world. Public launchers require an installed Java 25,
+but no Python launcher, private save, or Mac-specific Java path.
+See the [example index](examples/README.md) for direct launch commands.
 
 ## What is included
 
@@ -38,7 +49,7 @@ See [HUDs and composable motion](docs/huds-and-composable-motion.md) for the reu
 - Parent-aware Escape/back navigation and thread-safe async completion invalidation.
 - Balanced, high-quality, low-memory, and opt-in typography surface presets, with raster and scroll viewport diagnostics.
 
-The low-level `UiCanvas` remains public, so these components do not lock a mod into PaneLib's default appearance. The same renderer already powers modern dark screens, editorial layouts, terminal UI, blueprint UI, a paper/field-notes theme, and a dense consumer-video layout.
+The low-level `UiCanvas` remains public, so these components do not lock a mod into PaneLib's default appearance. The same renderer already powers modern dark screens, editorial layouts, terminal UI, blueprint UI, a paper/field-notes theme, a dense mail inbox, and a chat layout.
 
 ## Repository layout
 
@@ -68,7 +79,7 @@ var document = UiDocument.builder("My mod")
     .page(home)
     .build();
 
-var screen = new UiScreen(document, NativeOverlayRenderer.NONE, event -> {
+var screen = UiScreen.create(document, NativeOverlayRenderer.NONE, (owner, event) -> {
     if (event.type() == UiEventType.ACTION && event.key().equals("save-config")) {
         saveConfig();
     }
@@ -78,7 +89,9 @@ Minecraft.getInstance().gui.setScreen(screen);
 ```
 
 Start with [the documentation website](https://sl0oth.github.io/PaneLib/) or [the Markdown guides](docs/index.md). The [Minecraft integration guide](docs/minecraft-integration.md)
-covers panorama-backed screens, Escape, raw input, and asynchronous server data. The
+covers panorama-backed screens, Escape, raw input, and asynchronous server data.
+[Moving an existing mod to PaneLib](docs/migrating-to-panelib.md) explains what to keep, what to
+replace, and where adoption still needs care. The
 [paper-craft recipe](docs/paper-craft.md) maps the PaneLib marketing design directly to native API calls.
 
 ## Performance model
@@ -100,32 +113,30 @@ covers panorama-backed screens, Escape, raw input, and asynchronous server data.
 - `motionScale(0)` disables transition work.
 
 The integration harness verifies that the paint count remains unchanged for five idle seconds.
-See the [layered UI iteration](docs/layered-iteration-2026-10-16.md) and
-[initial engineering audit](docs/engineering-audit-2026-10-16.md) for measured fixes,
-remaining upload/overlay limits, and the `-Pperftest` client benchmark.
+See the [performance guide](docs/performance.md) for measurement methods, remaining limits, and the `-Pperftest` client benchmark.
 
-## Showcase and verification
+## Examples and verification
+
+Open the curated example shelf with Java 25:
 
 ```sh
-./gradlew runClient
-./gradlew runClient -Pstudio
-./gradlew runClient -PstudioTest
-./gradlew runClient -Pplay -Pgallery
-./gradlew runClient -Pplay -Pyoutube
-./gradlew runClient -Pplay -Ptextures
-./gradlew runClient -PdesignLab
-./gradlew runClient -PdesignTest
-./gradlew runClient -Pautotest
-./gradlew clean build
-./gradlew :pane:publishToMavenLocal
+./gradlew :pane-demo:runExamples
 ```
 
-Use `-PdesignLab` for three translucent, functional visual systems and runtime reduced motion.
-See [layered UI and motion](docs/layered-ui-and-motion.md) for group fades, translated input, and upload constraints.
+Wayfarer, Gather, Pane Mail and the vanilla HUD recipe have distinct visual styles and dedicated launch commands. See the [example index](examples/README.md). Public launches need no private save, Python launcher or Mac-specific Java path. H opens examples; J toggles the selected HUD.
 
-Press `H` for Atlas; its Examples page opens the core showcase, including Discover's 10,000-project virtualized directory. Press `G` for nine distinct visual systems, `Y` for the dense consumer layout, and `T` for Minecraft texture and skin clipping.
+The [independent starter](examples/first-screen/README.md) compiles against the packaged library and is the smallest place to begin your own mod.
 
-`-Pautotest` creates a disposable singleplayer world, exercises controls, opens every core and gallery screen, captures screenshots, resizes the window four times, verifies live item/player rendering paths, and checks zero idle repaints. It also continuously scrolls and reverses the 10,000-row directory, measures GPU-composited row-atlas uploads against full-surface work, clicks a moving row and a recycled far-away row, and verifies that page chrome remains cached. Screenshots are written under `pane-demo/run/screenshots`.
+Developer verification is separate:
+
+```sh
+./gradlew :pane:build :pane-demo:build
+./gradlew :pane-demo:runExamples -PexampleTest
+./gradlew :pane-demo:runClient -Pisolated -PgmailTest
+./gradlew :pane-demo:runClient -PstudioTest
+```
+
+The examples fixture creates a fresh disposable world. The broader historical `-Pautotest` and Studio fixtures still exercise the 10,000-row directory, retained raster work and low-level controls. They are regression tools, not the public example lineup. See [performance](docs/performance.md) and [layered UI and motion](docs/layered-ui-and-motion.md).
 
 ## MCEF
 
@@ -133,11 +144,25 @@ The old MCEF experiment is preserved under `dev.pane.mcef` for a possible option
 
 ## Release state
 
-`0.9.8` builds on the clean-room-tested API with native backdrop/parent integration, raw input,
-thread-safe row invalidation, GPU-composited virtual lists, and hardened resize handling. A separate Fabric mod built the
-original public surface from the published documentation and Maven artifact without reading
-PaneLib's implementation. Keep the
-release candidate version until a public Maven host is selected and Windows/Linux GPU behavior is
-profiled; the renderer and public API are usable now.
+The current local candidate gives post-submission fixes their own identity. Root `gradle.properties`
+drives its runtime, sources, Javadoc, starter descriptor, and Maven coordinates. The preserved
+submitted 0.9.8 snapshot is never overwritten with newer bytes.
 
-Known post-1.0 candidates are IME text composition, Minecraft narrator semantics, and broader Windows/Linux GPU profiling. They are not required to reproduce the supplied PaneLib paper marketing system.
+Prepare and verify local release artifacts with:
+
+```sh
+./gradlew prepareRelease
+./gradlew verifyRelease
+```
+
+The output includes matching runtime/source/Javadoc artifacts, a standalone starter ZIP, a local
+Maven repository ZIP, checksums, and a release manifest. This is a local packaging dry run;
+it creates no public Maven endpoint, Git tag, GitHub release, or Modrinth upload. See
+[installation and repository consumption](docs/installation.md) and the
+[local release verification guide](docs/releasing.md).
+
+A separate Fabric consumer validates the packaged library instead of depending on this repository's
+implementation sources. Known adoption gaps include IME composition, narrator semantics, large
+popup lists, and broader Windows/Linux GPU profiling. See [source status](docs/status.md) and the
+[developer adoption audit](docs/audits/developer-adoption-2026-10-21.md). Modrinth approval has not been
+independently verified.

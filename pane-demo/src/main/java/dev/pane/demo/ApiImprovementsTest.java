@@ -14,6 +14,7 @@ final class ApiImprovementsTest {
     private UiScreen screen;
     private int ticks, checks, rawKeys, submits, backgroundActions;
     private boolean failed;
+    private int sliderEvents;
     private double scrollBefore;
     private final List<String> actions = new ArrayList<>();
     private static final UiInputStyle LARGE = UiInputStyle.defaults().font(UiCanvas.MONO, 16, Font.BOLD).padding(12, 6);
@@ -39,6 +40,16 @@ final class ApiImprovementsTest {
                 });
                 ui.dialogButton("builtin","Built-in dialog",20,366,150,28,UiContext.ButtonStyle.GHOST,UiContext.Shape.ROUNDED,
                     new UiDialog("Confirm choice","Background input stays isolated.","Allow","confirm","Cancel","cancel"));
+                ui.dropdown("current-option", "choice", 500,366,140,28,"beta", List.of(
+                    new UiSelectOption("alpha","Alpha"), new UiSelectOption("beta","Beta"), new UiSelectOption("gamma","Gamma")));
+                ui.menuButton("keyboard-menu", "Menu", 380, 366, 100, 28, UiContext.ButtonStyle.SECONDARY,
+                    UiContext.Shape.ROUNDED, List.of(new UiMenuItem("one", "One", "one"),
+                    new UiMenuItem("two", "Two", "two"), new UiMenuItem("three", "Three", "three")));
+                ui.withTranslation(400, 300, shifted -> shifted.scroll("shifted", new UiRect(0,0,160,50), 150,
+                    content -> content.button("shifted-button", "Translated", "translated", 5,5,100,25,
+                        UiContext.ButtonStyle.SECONDARY, UiContext.Shape.ROUNDED)));
+                ui.slider("keyboard-slider","audio:volume",20,410,180,-50,50,10);
+                ui.slider("normalized-slider","ratio",220,410,140,.6);
                 if(ui.booleanValue("modal",false)) {
                     c.fill(0xB0000000,0,0,ui.width(),ui.height());
                     float x=Math.max(12,(ui.width()-350)/2);
@@ -57,6 +68,7 @@ final class ApiImprovementsTest {
             })).page(new UiPage("other","Other","",0xFF64D4FF,ui -> {})).build();
         return new UiScreen(doc,NativeOverlayRenderer.NONE,(UiEventListener)(kind,key,value)->{
             if(kind.equals("submit")) submits++;
+            if(kind.equals("value") && key.equals("audio:volume")) sliderEvents++;
             if(!kind.equals("action")) return;
             actions.add(key);
             switch(key) {
@@ -104,6 +116,42 @@ final class ApiImprovementsTest {
                 check(screen.stringValue("limit","").isEmpty(),"forward delete uses codepoint boundaries");
                 screen.focus("area");key(GLFW.GLFW_KEY_END,0);type("\nVisible end");
             }
+            if(ticks==22) {
+                screen.focus("keyboard-slider");key(GLFW.GLFW_KEY_RIGHT,0);
+                check(screen.numberValue("audio:volume",0)==11,"slider arrow changes ranged value by one percent");
+                key(GLFW.GLFW_KEY_PAGE_DOWN,0);check(screen.numberValue("audio:volume",0)==1,"slider Page Down changes by ten percent");
+                key(GLFW.GLFW_KEY_END,0);int before=sliderEvents;key(GLFW.GLFW_KEY_UP,0);
+                check(screen.numberValue("audio:volume",0)==50 && sliderEvents==before,"slider clamps and emits no duplicate boundary change");
+                key(GLFW.GLFW_KEY_HOME,0);check(screen.numberValue("audio:volume",0)==-50,"slider Home selects minimum");
+                key(GLFW.GLFW_KEY_RIGHT,GLFW.GLFW_MOD_CONTROL);check(screen.numberValue("audio:volume",0)==-50,"modified shortcut does not alter slider");
+                screen.focus("normalized-slider");key(GLFW.GLFW_KEY_LEFT,0);
+                check(Math.abs(screen.numberValue("ratio",0)-.59)<1e-9,"normalized slider keyboard starts from painted fallback");
+                screen.pushFocusScope("slider-guard",List.of("field"),"field");key(GLFW.GLFW_KEY_END,0);
+                check(Math.abs(screen.numberValue("ratio",0)-.59)<1e-9,"focus scope blocks background slider keys immediately");
+                screen.popFocusScope("slider-guard");
+            }
+            if(ticks==24) {
+                screen.setValue("notes", "abcd\nx\nabcd"); screen.focus("area");
+                screen.focus("keyboard-menu"); key(GLFW.GLFW_KEY_ENTER,0);
+            }
+            if(ticks==26) {
+                key(GLFW.GLFW_KEY_DOWN,0); check(screen.focusedId().orElse("").equals("menu:keyboard-menu:one"),"menu Down selects first item");
+                key(GLFW.GLFW_KEY_UP,0); check(screen.focusedId().orElse("").equals("menu:keyboard-menu:three"),"menu Up wraps");
+                key(GLFW.GLFW_KEY_HOME,0);key(GLFW.GLFW_KEY_DOWN,0);key(GLFW.GLFW_KEY_ENTER,0);
+                check(actions.contains("two") && screen.focusedId().orElse("").equals("keyboard-menu"),"menu Enter selects and restores trigger");
+                click("shifted-button");check(actions.contains("translated"),"closed menu cannot intercept next pointer event before repaint");
+                screen.focus("area"); key(GLFW.GLFW_KEY_HOME,GLFW.GLFW_MOD_CONTROL);key(GLFW.GLFW_KEY_RIGHT,0);
+                key(GLFW.GLFW_KEY_RIGHT,0);key(GLFW.GLFW_KEY_RIGHT,0);key(GLFW.GLFW_KEY_DOWN,0);key(GLFW.GLFW_KEY_DOWN,0);type("!");
+                check(screen.stringValue("notes","").equals("abcd\nx\nabc!d"),"textarea Down preserves column across short line");
+
+            }
+            if(ticks==28) {
+                click("shifted-button");check(actions.contains("translated"),"translated scroll button receives actual pointer");
+                var shifted=screen.scrollViewport("shifted").orElseThrow();wheel(shifted,-2);
+                check(screen.scrollSnapshot("shifted").orElseThrow().targetOffset()>0,"translated scroll receives wheel at painted position");
+                screen.focus("field");screen.focus("area");key(GLFW.GLFW_KEY_HOME,0);type("^");
+                check(screen.stringValue("notes","").equals("abcd\nx\n^abc!d"),"textarea Home moves to current visual line start");
+            }
             if(ticks==30) {
                 capture(client,"styled-inputs");check(!screen.rasterQuality().upscaled(),"typography raster meets physical target");
                 check(screen.scrollViewport("list").isPresent(),"public scroll viewport exists");
@@ -128,6 +176,18 @@ final class ApiImprovementsTest {
                 key(GLFW.GLFW_KEY_ESCAPE,0);check(screen.focusScopeId().isEmpty(),"Escape closes custom scope through callback");
                 check(screen.focusedId().orElse("").equals("field"),"scope restores prior focus");type("!");
                 check(value().equals("D!raft"),"scope restores prior caret position");
+            }
+            if(ticks==47) { screen.focus("current-option");key(GLFW.GLFW_KEY_ENTER,0); }
+            if(ticks==49) {
+                check(screen.focusedId().orElse("").equals("menu:current-option:option-1"),"dropdown opens focused on current value");
+                key(GLFW.GLFW_KEY_DOWN,0);key(GLFW.GLFW_KEY_ENTER,0);
+                check(screen.stringValue("choice","").equals("gamma"),"dropdown Down advances from current value");
+                check(screen.focusedId().orElse("").equals("current-option"),"dropdown selection restores trigger focus");
+            }
+            if(ticks==51) { screen.focus("current-option");key(GLFW.GLFW_KEY_ENTER,0); }
+            if(ticks==53) {
+                key(GLFW.GLFW_KEY_UP,0);key(GLFW.GLFW_KEY_ENTER,0);
+                check(screen.stringValue("choice","").equals("beta"),"reopened dropdown Up moves from saved value");
             }
             if(ticks==55)click("open");
             if(ticks==65)click("nest");

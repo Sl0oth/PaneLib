@@ -1,6 +1,6 @@
 # Build the PaneLib paper-craft look natively
 
-The PaneLib marketing design uses paper as its brand theme. It is an example of the library, not
+The paper-craft example uses a warm paper theme. It is an example of the library, not
 a renderer limitation. Every part of that design maps to the public native API:
 
 | Marketing treatment | Native PaneLib API |
@@ -27,7 +27,6 @@ No bitmap paper texture, HTML, CSS runtime, browser, or generated image is neede
 
 ```java
 static void paperCard(UiContext ui, String id, UiRect box, String title, String body) {
-    UiCanvas g = ui.canvas();
     boolean hover = ui.hovered(id);
     boolean press = ui.pressed(id);
     float lift = ui.animate(id + ":lift", hover && !press, 150);
@@ -35,7 +34,8 @@ static void paperCard(UiContext ui, String id, UiRect box, String title, String 
     float dx = -lift + push * 3;
     float dy = -lift + push * 4;
 
-    g.withTranslation(dx, dy, () -> {
+    ui.withTranslation(dx, dy, moved -> {
+        UiCanvas g = moved.canvas();
         // The signature stiff-paper shadow is geometry, not a blur.
         g.roundRect(0x6622201C, box.x() + 3, box.y() + 4,
             box.width(), box.height(), 3);
@@ -50,9 +50,8 @@ static void paperCard(UiContext ui, String id, UiRect box, String title, String 
         g.wrappedText(body, box.x() + 16, box.y() + 42,
             box.width() - 32, 9, 14, 0xFF615C53,
             Font.PLAIN, "paper-body");
+        moved.hit(id, "open-card", box.x(), box.y(), box.width(), box.height());
     });
-
-    ui.hit(id, "open-card", box.x(), box.y(), box.width(), box.height());
 }
 ```
 

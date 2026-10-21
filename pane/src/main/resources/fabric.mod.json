@@ -4,7 +4,9 @@
   "version": "${version}",
   "name": "PaneLib",
   "description": "A native, client-side UI library for building desktop-quality Minecraft screens entirely from code.",
-  "authors": ["Sl0oth"],
+  "authors": [
+    "Sl0oth"
+  ],
   "license": "MIT",
   "environment": "client",
   "depends": {
@@ -12,5 +14,13 @@
     "minecraft": "~26.2",
     "java": ">=25",
     "fabric-api": "*"
-  }
+  },
+  "entrypoints": {
+    "client": [
+      "dev.pane.ui.PaneClientResources"
+    ]
+  },
+  "mixins": [
+    "panelib.mixins.json"
+  ]
 }

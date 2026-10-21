@@ -2,6 +2,8 @@ package dev.pane.ui;
 
 import java.util.Map;
 import java.util.Optional;
+import java.util.Objects;
+import net.minecraft.world.entity.player.PlayerSkin;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
@@ -20,11 +22,26 @@ public final class NativeOverlayContext {
     private final double guiScale;
     private final int mouseX;
     private final int mouseY;
+    private final boolean pointerBlocked;
     private int renderedItemCount;
     private int renderedEntityCount;
+    private int renderedTextCount;
+    private final NativeTextRenderer textRenderer;
 
     NativeOverlayContext(GuiGraphicsExtractor graphics, String pageId, Map<String, NativeBounds> bounds,
                          double guiScale, int mouseX, int mouseY) {
+        this(graphics, pageId, bounds, guiScale, mouseX, mouseY, false);
+    }
+
+    NativeOverlayContext(GuiGraphicsExtractor graphics, String pageId, Map<String, NativeBounds> bounds,
+                         double guiScale, int mouseX, int mouseY, boolean pointerBlocked) {
+        this(graphics, pageId, bounds, guiScale, mouseX, mouseY, pointerBlocked, new NativeTextRenderer());
+    }
+
+    NativeOverlayContext(GuiGraphicsExtractor graphics, String pageId, Map<String, NativeBounds> bounds,
+                         double guiScale, int mouseX, int mouseY, boolean pointerBlocked, NativeTextRenderer textRenderer) {
+        this.textRenderer = textRenderer;
+        this.pointerBlocked = pointerBlocked;
         this.graphics = graphics;
         this.pageId = pageId;
         this.bounds = bounds;
@@ -36,13 +53,41 @@ public final class NativeOverlayContext {
     /** Id of the page currently painted, so an overlay can skip work for other pages. */
     public String pageId() { return pageId; }
 
+    /** True when a menu, dialog or custom focus scope blocks background pointer interaction.
+     * Consumers should suppress their hover tooltips; entity previews still receive the real pointer. */
+    public boolean pointerBlocked() { return pointerBlocked; }
+
     public GuiGraphicsExtractor graphics() { return graphics; }
 
-    /** Slot rectangle in GUI space, if the active page reserved one under this id. */
+    /** Slot rectangle in physical backing pixels. Helpers perform the GUI-scale conversion internally. */
     public Optional<NativeBounds> bounds(String id) { return Optional.ofNullable(bounds.get(id)); }
 
     /** Ids of every slot the active page reserved. */
     public Iterable<String> slotIds() { return bounds.keySet(); }
+
+    /** Draw a single line of white, shadowed vanilla text, ellipsized to fit its native slot. */
+    public void text(String slotId, String text) { text(slotId, text, UiMinecraftTextStyle.hud()); }
+    public void text(String slotId, net.minecraft.network.chat.Component text) { text(slotId, text, UiMinecraftTextStyle.hud()); }
+
+    /**
+     * Draw a single line using Minecraft's font renderer. Slot height is the line height; width
+     * constrains clipping/ellipsis. Translation, component colors and resource fonts are preserved.
+     * This inherits HUD fading and the normal native-slot visibility, rectangular clipping and
+     * popup ordering rules. No bitmap is copied into the retained CPU surface.
+     */
+    public void text(String slotId, net.minecraft.network.chat.Component text, UiMinecraftTextStyle style) {
+        drawText(slotId, text, style);
+    }
+
+    /** Plain-string equivalent of the component overload. Repeated equal strings reuse layout. */
+    public void text(String slotId, String text, UiMinecraftTextStyle style) { drawText(slotId, text, style); }
+
+    private void drawText(String slotId, Object text, UiMinecraftTextStyle style) {
+        Objects.requireNonNull(slotId, "slotId");
+        Objects.requireNonNull(text, "text");
+        Objects.requireNonNull(style, "style");
+        if (textRenderer.render(graphics, slotId, bounds.get(slotId), guiScale, text, style)) renderedTextCount++;
+    }
 
     /** Draws a stack centred in the named slot, scaled to fill it. */
     public void item(String slotId, ItemStack stack) {
@@ -101,9 +146,33 @@ public final class NativeOverlayContext {
         entity(slotId, entity);
     }
 
+    /** Draws a world-free standing avatar using the default presentation. See the options overload. */
+    public void playerPreview(String slotId, PlayerSkin skin) {
+        playerPreview(slotId, skin, UiPlayerPreview.standing());
+    }
+
+    /**
+     * Draws a world-free standing player from a resolved skin, with no player entity or level.
+     * Null skin selects Minecraft's bundled default; this method does not fetch profiles or skins.
+     * Custom texture assets must be registered/available to Minecraft (missing assets use its
+     * missing texture). Both wide and slim models are supported. The account skin is never changed.
+     *
+     * <p>Missing, hidden or zero-sized slots submit nothing. The existing rectangular native-slot
+     * clipping rules in {@link #entity} apply. This counts as one native entity submission per draw.
+     * Settings must be non-null, even if the slot is absent.</p>
+     */
+    public void playerPreview(String slotId, PlayerSkin skin, UiPlayerPreview options) {
+        Objects.requireNonNull(options, "options");
+        var frame = PlayerPreviewRenderer.frame(bounds.get(slotId), guiScale, options, mouseX, mouseY, pointerBlocked);
+        if (frame == null) return;
+        PlayerPreviewRenderer.render(graphics, frame, skin, options);
+        renderedEntityCount++;
+    }
+
     /** The local player, or null outside a world. */
     public LivingEntity localPlayer() { return Minecraft.getInstance().player; }
 
     int renderedItemCount() { return renderedItemCount; }
     int renderedEntityCount() { return renderedEntityCount; }
+    int renderedTextCount() { return renderedTextCount; }
 }

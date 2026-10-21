@@ -4,8 +4,13 @@ import java.awt.Font;
 
 /** Shared text metrics and padding for fields, password fields, and multiline editors. */
 public record UiInputStyle(float fontSize, int fontStyle, String fontFamily,
-                           float paddingX, float paddingY, float lineHeight) {
+                           float paddingX, float paddingY, float lineHeight, UiInputAppearance appearance) {
+    /** Source and binary compatible constructor for the original typography-only style. */
+    public UiInputStyle(float fontSize, int fontStyle, String fontFamily, float paddingX, float paddingY, float lineHeight) {
+        this(fontSize, fontStyle, fontFamily, paddingX, paddingY, lineHeight, UiInputAppearance.defaults());
+    }
     public UiInputStyle {
+        java.util.Objects.requireNonNull(appearance, "appearance");
         if (!Float.isFinite(fontSize) || fontSize <= 0 || !Float.isFinite(lineHeight) || lineHeight <= 0
                 || !Float.isFinite(paddingX) || !Float.isFinite(paddingY) || paddingX < 0 || paddingY < 0)
             throw new IllegalArgumentException("Input metrics must be finite and positive; padding may be zero");
@@ -16,12 +21,15 @@ public record UiInputStyle(float fontSize, int fontStyle, String fontFamily,
     /** Null family inherits the document theme. Existing overloads retain these metrics. */
     public static UiInputStyle defaults() { return DEFAULT; }
     public UiInputStyle font(String family, float size, int style) {
-        return new UiInputStyle(size, style, family, paddingX, paddingY, Math.max(lineHeight, size * 1.5F));
+        return new UiInputStyle(size, style, family, paddingX, paddingY, Math.max(lineHeight, size * 1.5F), appearance);
     }
     public UiInputStyle padding(float horizontal, float vertical) {
-        return new UiInputStyle(fontSize, fontStyle, fontFamily, horizontal, vertical, lineHeight);
+        return new UiInputStyle(fontSize, fontStyle, fontFamily, horizontal, vertical, lineHeight, appearance);
     }
     public UiInputStyle lineHeight(float height) {
-        return new UiInputStyle(fontSize, fontStyle, fontFamily, paddingX, paddingY, height);
+        return new UiInputStyle(fontSize, fontStyle, fontFamily, paddingX, paddingY, height, appearance);
+    }
+    public UiInputStyle appearance(UiInputAppearance paint) {
+        return new UiInputStyle(fontSize, fontStyle, fontFamily, paddingX, paddingY, lineHeight, paint);
     }
 }

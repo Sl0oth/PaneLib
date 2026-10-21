@@ -11,6 +11,7 @@ final class UiAnimationClock {
     private final float motionScale;
     private boolean active;
     private final Set<String> activeIds = new LinkedHashSet<>();
+    private final Set<String> usedIds = new LinkedHashSet<>();
 
     UiAnimationClock(Map<String, State> states, long now, float motionScale) {
         this.states = states;
@@ -24,6 +25,7 @@ final class UiAnimationClock {
 
     float value(String id, float initial, float target, int durationMillis, int delayMillis, UiEasing easing) {
         if (id == null || id.isBlank()) return target;
+        usedIds.add(id);
         UiEasing curve = easing == null ? UiEasing.EASE_OUT : easing;
         long duration = Math.max(0L, Math.round(Math.max(0, durationMillis) * motionScale * 1_000_000D));
         State state = states.get(id);
@@ -48,7 +50,28 @@ final class UiAnimationClock {
         return current;
     }
 
+    float angle(String id, float targetDegrees, int durationMillis, UiEasing easing) {
+        if (!Float.isFinite(targetDegrees)) throw new IllegalArgumentException("Angle must be finite");
+        float target = ((targetDegrees % 360) + 360) % 360;
+        State previous = states.get(id);
+        if (previous != null) {
+            // Keep bounded coordinates and the same current trajectory across repeated revolutions.
+            float shift = (float) Math.floor(previous.target / 360) * 360;
+            if (shift != 0) {
+                previous = new State(previous.from - shift, previous.target - shift,
+                    previous.start, previous.end, previous.easing);
+                states.put(id, previous);
+            }
+            float delta = ((target - previous.target + 540) % 360) - 180;
+            target = previous.target + delta;
+        }
+        float result = value(id, target, durationMillis, easing);
+        return ((result % 360) + 360) % 360;
+    }
+
     float sequence(String id, long revision, UiTimeline timeline) {
+        if(id==null||id.isBlank())return timeline.endValue();
+        usedIds.add(id);
         State state = states.get(id);
         if (state == null || state.timeline == null || state.revision != revision) {
             float from = state == null ? timeline.startValue() : state.value(now);
@@ -66,6 +89,7 @@ final class UiAnimationClock {
 
     boolean active() { return active; }
     Set<String> activeIds() { return Set.copyOf(activeIds); }
+    Set<String> usedIds() { return Set.copyOf(usedIds); }
 
     record State(float from, float target, long start, long end, UiEasing easing, UiTimeline timeline, long revision) {
         State(float from, float target, long start, long end, UiEasing easing) {

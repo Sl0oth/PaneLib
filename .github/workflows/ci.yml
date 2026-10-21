@@ -19,6 +19,68 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - name: Test and verify artifacts
         run: ./gradlew clean build :pane:verifyPaneArtifact --no-daemon
+      - name: Compile the independent consumer against the runtime JAR
+        run: |
+          pane_version=$(sed -n 's/^version=//p' gradle.properties)
+          ./gradlew -p examples/first-screen build -PpaneJar="$GITHUB_WORKSPACE/pane/build/libs/panelib-$pane_version.jar" --no-daemon
+      - name: Install a virtual display for client checks
+        run: sudo apt-get update && sudo apt-get install -y xvfb libgl1-mesa-dri libopenal1
+      - name: Exercise input in an isolated Minecraft client
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "true"
+        run: xvfb-run -a ./gradlew :pane-demo:runClient -Pisolated -PapiTest --no-daemon
+      - name: Exercise wrapping, nested focus, dropdowns and scroll state
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "true"
+        run: xvfb-run -a ./gradlew :pane-demo:runClient -Pisolated -PreviewTest --no-daemon
+      - name: Exercise bounded popup navigation and resizing
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "true"
+        run: xvfb-run -a ./gradlew :pane-demo:runClient -Pisolated -PpopupTest --no-daemon
+      - name: Animation ownership and routing checks
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "true"
+        run: xvfb-run -a ./gradlew :pane-demo:runClient -Pisolated -PanimationTest --no-daemon
+
+      - name: Keyboard and pointer editing acceptance
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "true"
+        run: xvfb-run -a ./gradlew :pane-demo:runClient -Pisolated -PeditingTest --no-daemon
+      - name: Resource reload and dynamic image checks
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "true"
+        run: xvfb-run -a ./gradlew :pane-demo:runClient -Pisolated -PresourceTest --no-daemon
+      - name: Independent textarea browsing checks
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "true"
+        run: xvfb-run -a ./gradlew :pane-demo:runClient -Pisolated -PeditorTest --no-daemon
+      - name: Responsive dialog client checks
+        run: xvfb-run -a ./gradlew :pane-demo:runClient -Pisolated -PdialogTest --no-daemon
+      - name: Screen adoption, pointer lifetime and singleplayer pause
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "true"
+        run: xvfb-run -a ./gradlew :pane-demo:runClient -Pisolated -PadoptionTest --no-daemon
+      - name: Exercise the independent binary consumer
+        env:
+          LIBGL_ALWAYS_SOFTWARE: "true"
+        run: |
+          pane_version=$(sed -n 's/^version=//p' gradle.properties)
+          xvfb-run -a ./gradlew -p examples/first-screen runClient -PsmokeTest -PpaneJar="$GITHUB_WORKSPACE/pane/build/libs/panelib-$pane_version.jar" --no-daemon
+      - name: Preserve client diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: panelib-client-diagnostics
+          if-no-files-found: ignore
+          path: |
+            pane-demo/build/fixture-logs/*.log
+            pane-demo/run-benchmark/logs/latest.log
+            pane-demo/run-benchmark/screenshots/*.png
+            pane-demo/run-adoption/logs/latest.log
+            pane-demo/run-adoption/screenshots/*.png
+            examples/first-screen/run-example-smoke/logs/latest.log
+            examples/first-screen/run-example-smoke/screenshots/*.png
+            pane/build/test-results/test/*.xml
       - uses: actions/upload-artifact@v4
         with:
           name: panelib-build

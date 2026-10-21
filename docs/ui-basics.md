@@ -4,7 +4,11 @@
 
 Controls keep their state on the `UiScreen`. Give each control a stable id and state key, then
 read the current value while painting. The event listener receives the change so your mod can
-persist it or react to it.
+persist it or react to it. Scroll positions are separate internal state and do not emit consumer `VALUE` events.
+Repeated equal immutable scalar values (`String` and boxed primitive values)
+do not repaint a `UiScreen`. Mutable objects passed through `UiScreen.setValue` remain explicit
+update notifications. Prefer immutable snapshots for complex data; external model changes still
+need `screen.invalidate()` or a targeted row invalidation.
 
 ```java
 boolean compact = ui.booleanValue("compact-mode", false);
@@ -25,12 +29,66 @@ PaneLib's internal state actions are isolated. Consumer actions may contain text
 constructor when starting a new mod:
 
 ```java
-new UiScreen(document, nativeOverlay, event -> {
+UiScreen.create(document, nativeOverlay, (screen, event) -> {
     if (event.type() == UiEventType.VALUE && event.key().equals("volume")) {
         setVolume(event.numberValue(0.5));
     }
 });
 ```
+
+### Scroll position API
+
+Use `screen.scrollTo("settings", offset)` to move an ordinary or virtual scroll viewport. Offsets are layout units, clamped to the content extent. A request before first paint is clamped when the viewport registers. Worker calls are marshalled to the client thread. Read `screen.scrollSnapshot("settings")` for displayed and target offsets.
+
+Migration from earlier 0.9.8 candidates: `setValue("scroll:<id>", ...)` no longer scrolls, and wheel actions no longer emit `VALUE` events named `scroll:<id>`. Those keys now belong entirely to the consuming mod. Use `scrollTo` and snapshots instead; filter/persist your application's own fields explicitly. Same-id scroll offsets persist across pages within a screen.
+
+### Append content and follow the end
+
+Use `scrollToEnd` immediately after changing the model. PaneLib resolves the request when the
+viewport registers its **new** content height, before drawing content, hit targets or virtual rows.
+Do not wait for a tick/repaint, store a rendered-message count, or use an oversized numeric offset.
+
+```java
+// On a local send, on the client thread:
+messages.add(message);
+screen.scrollToEnd("history:" + conversationId); // also requests the repaint
+
+// During painting, with the freshly measured wrapped content height:
+ui.scroll("history:" + conversationId, viewport, contentHeight,
+    UiScrollFollow.WHEN_AT_END, history -> paintMessages(history, messages));
+
+// Incoming data: repaint, allowing the policy to decide whether to follow.
+messages.add(incoming);
+screen.invalidate();
+```
+
+`scrollToEnd(id)` is a one-time, immediate position request, not a smooth scrolling animation.
+It works before first paint. If the viewport is absent, it waits for registration without an idle
+paint loop. Multiple requests coalesce. `scrollTo`, wheel navigation, or keyboard/virtual-row reveal
+that moves the viewport cancel an older pending request. Page changes and screen removal cancel
+unfinished requests; offsets still retain their existing per-ID semantics. Worker calls to
+`scrollToEnd` are marshalled to the client thread, but your mutable model must also be updated safely.
+
+`WHEN_AT_END` follows content growth and viewport resizing only when the previous scroll position
+was at the end (within half a layout unit). While wheel motion is in flight, its intended target
+decides attachment: scrolling away detaches immediately, before the first interpolated frame;
+scrolling back to the end reattaches. Reading older content preserves the numeric offset, clamped
+if filtering removes that range. A viewport whose content entirely fits is considered at the end,
+so it follows if that content later grows. This is not item-identity anchoring across arbitrary
+reordering or text reflow. First registration starts at the top unless an explicit end request exists.
+
+The existing overloads default to `UiScrollFollow.NONE`. The same optional policy is available for
+virtual lists, whose empty state now registers a zero extent:
+
+```java
+ui.virtualList("log", viewport, entries.size(), 24, 2,
+    UiScrollFollow.WHEN_AT_END, (row, item) -> paintEntry(row, entries.get(item.index())));
+```
+
+Use separate stable IDs for different conversations/datasets. For example, Gather uses
+`history:general` and `history:dm:Maya`; selecting a channel explicitly scrolls its own ID to zero,
+which also cancels any old pending command for that channel. Ordinary and virtual views share the
+same end-scrolling behavior. No scrollbar-specific controller or consumer timer is needed.
 
 ## Fonts
 
@@ -56,8 +114,8 @@ ui.canvas().text("A matching heading", x, y, 18, ui.theme().text(), Font.BOLD,
 ```
 
 If loading fails, Pane safely falls back to its normal sans-serif font. Include the font's license
-next to the resource when you redistribute it. The native video-site reference uses bundled
-Roboto under the SIL Open Font License.
+next to the resource when you redistribute it. Pane Mail, Gather, and Wayfarer share the bundled
+Roboto family under the SIL Open Font License.
 
 ## Minecraft-formatted text
 
@@ -120,9 +178,18 @@ ui.canvas().withCircleClip(cx, cy, 32, () -> {
 });
 ```
 
-Both methods return `false` instead of crashing when a texture is not ready. Call
-`UiCanvas.clearMinecraftTextureCache()` after a resource-pack reload if your mod needs the new
-pixels immediately. The `T` reference screen demonstrates this in a real world.
+Both methods return `false` instead of crashing when a texture is not ready. Resource-pack reloads
+clear decoded images automatically and refresh retained screens/HUDs on their next rendered frame.
+For a dynamic texture changed under the same identifier, upload its new pixels first, then call
+`UiCanvas.invalidateMinecraftTexture(id)`. This drops that decoded image and schedules refresh by
+revision; it does not upload your texture. `clearMinecraftTextureCache()` remains available for
+bulk changes. Invalidations between frames coalesce into one repaint.
+
+If you cache image drawing in your own `cachedLayer`, include
+`UiCanvas.minecraftTextureRevision()` in that layer's revision key (alongside your own content
+revision). PaneLib cannot replace consumer-owned cached content automatically. Custom AWT fonts
+registered through `registerFont` remain consumer-owned; Minecraft font-provider reloads do not
+replace them. The `T` reference screen demonstrates Minecraft textures in a real world.
 
 ## Layout and scrolling
 
@@ -349,6 +416,72 @@ ui.menuButton("waypoint-actions", "Actions", x, y, 82, 30,
 Keep menu item ids unique within that menu. Their action strings are your mod's normal action
 strings; Pane does not own or interpret them.
 
+## Styling popup triggers
+
+Popup content and the control that opens it are independently styled. Use `UiButtonStyle` for
+`menuButton`, `dropdown`, and `dialogButton` triggers. Existing enum-style overloads remain available.
+For example, build these immutable styles once and reuse them:
+
+```java
+UiButtonStyle trigger = UiButtonStyle.builder()
+    .fontFamily("My bundled font").fontStyle(Font.PLAIN).textSize(14)
+    .background(0xFF232629).hoverBackground(0xFF34383C)
+    .pressedBackground(0xFF171A1D).text(0xFFF2F4F7)
+    .radius(3).borderWidth(1).build();
+UiMenuStyle popup = UiMenuStyle.builder()
+    .fontFamily("My bundled font").textSize(14).rowHeight(34).build();
+
+ui.menuButton("actions", "Server actions", x, y, 180, 36,
+    trigger, enabled, items, popup);
+ui.dropdown("role", "selected-role", x, y + 46, 180, 36,
+    "member", options, trigger, enabled, popup);
+ui.dialogButton("deploy", "Ready to explore", x, y + 92, 220, 48,
+    trigger, enabled, confirmation);
+```
+
+Omit `enabled` to use the enabled convenience overload. A selector inherits the theme's surface,
+text color, and font family when the corresponding trigger fields are unset; its default font
+weight is plain. Explicit trigger typography measures and draws the selected label consistently,
+vertically centers it, and clips/ellipsizes long labels before the arrow. The returned/bound value
+is unchanged. `UiMenuStyle` still controls only popup rows, and `UiDialogStyle` controls only the
+confirmation body, including its typography.
+
+For textures, icons, asymmetrical headings, or other authored controls, use `paintedMenuButton`,
+`paintedDropdown`, or `paintedDialogButton` instead of painting over an empty built-in label:
+
+```java
+ui.paintedMenuButton("server", "Trailside server menu", x, y, width, height,
+    3, enabled, items, popup, (canvas, state) -> {
+        canvas.roundRect(state.pressed() ? 0xFF252528
+            : state.hovered() ? 0xFF161619 : 0xFF08080A, x, y, width, height, 3);
+        canvas.text("Trailside", x + 12, y + 10, 14, 0xFFFFFFFF,
+            Font.BOLD, "My bundled font");
+        UiIcon.CHEVRON_DOWN.draw(canvas, 0xFFAAAAAA, x + width - 20, y + 12, 8, 1);
+    });
+```
+
+The painter receives `UiButtonState`: label, enabled, hovered, pressed, and focused. PaneLib applies
+disabled opacity once, draws the focus ring after your painter, and owns activation, anchoring,
+selection, dismissal and focus restoration. Draw the control inside this callback; do not add a
+second hit region or emit internal action strings. Use `ui.animate` with bounded repaint geometry
+inside the painter if you want eased effects; boolean state changes alone do not start a timer.
+`paintedDialogButton` takes a `UiDialog` before the painter. `paintedDropdown` follows the dropdown's
+ID/key/geometry/fallback/options arguments, then takes radius, enabled, popup style and painter.
+Its painter state's label is the selected option's display label (or unmatched value; an empty
+unmatched value uses the ID as a semantic fallback).
+
+New menu/dialog triggers require descriptive labels, exposed through `screen.buttonState(id)` and
+normal tooltips. This is semantic metadata, not automatic narrator support. Disabled triggers have
+no pointer/keyboard targets or popup registration; disabling an open trigger and invalidating the
+screen closes its popup on the next paint. A menu with no items is drawn disabled. Dropdowns with
+no options retain the existing no-control behavior. Translations, clipped scroll areas, affine
+button groups and retained virtual rows use the existing shared input/composition paths.
+
+These APIs add no polling loop or independent textures. Painter callbacks run when their retained
+page/row needs painting, not once per game frame. Keep painters side-effect-free and reuse styles
+when their values do not change. See Gather's server heading/role selector, Wayfarer's deploy button,
+and the video example's icon menus for migrations.
+
 ## Dropdowns
 
 `dropdown` is for one stored value chosen from a compact list. It uses the same safe anchoring
@@ -405,6 +538,49 @@ UiDialogStyle danger = UiDialogStyle.builder()
 var dialog = new UiDialog("Hold sequence?", "The current vector will be preserved.",
     "Hold", "hold-sequence", "Continue", "continue-sequence", danger);
 ```
+
+### Dialog fonts and text layout
+
+Bundle a TTF or AWT-compatible OTF in your mod resources and register it once during client setup.
+Use an alias owned by your mod; registration does not download fonts or depend on fonts installed
+on the player's computer. Check the boolean result so a missing or invalid asset is visible during
+development. `registerFont` closes the supplied stream.
+
+```java
+boolean loaded = UiCanvas.registerFont("my-mod:heading",
+    MyClient.class.getResourceAsStream("/assets/my_mod/fonts/Heading.ttf"));
+if (!loaded) throw new IllegalStateException("Could not load bundled heading font");
+
+UiDialogStyle typography = UiDialogStyle.builder()
+    .fontFamily(UiCanvas.SANS)
+    .titleFontFamily("my-mod:heading")
+    .titleSize(24).messageSize(14).buttonSize(13)
+    .titleFontStyle(java.awt.Font.BOLD)
+    .messageFontStyle(java.awt.Font.PLAIN)
+    .buttonFontStyle(java.awt.Font.BOLD)
+    .titleLineSpacing(3).messageLineSpacing(5)
+    .maxWidth(480).padding(20)
+    .build();
+```
+
+`fontFamily` sets a common family/registered alias. `titleFontFamily`, `messageFontFamily`, and
+`buttonFontFamily` override each group independently. An unset group inherits the common family,
+then the document theme. `Font.PLAIN`, `Font.BOLD`, `Font.ITALIC`, and `Font.BOLD | Font.ITALIC` are
+supported; these are style flags, not a variable-font weight/axis API.
+
+Sizes are layout units (finite 1–128). Line spacing is extra space after each measured line
+(finite 0–128), not an absolute line height. Defaults remain title 12 bold, message 8 plain,
+buttons 8 bold, and 2 units of extra line spacing. Measurement and drawing use the same resolved
+fonts. Actions grow vertically when space allows, stack for long labels, and ellipsize safely.
+Overflowing title/message content scrolls. Extremely small windows can clip oversized action
+text; buttons stay bounded and keyboard reachable.
+
+Register fonts before opening screens. If replacing/registering a font while a screen is open,
+do so on the client thread and call `screen.invalidate()` (or invalidate affected HUD widgets).
+Dialogs then remeasure and redraw against the new font revision. A failed registration returns
+false and preserves the previous alias. Registration alone does not schedule global repaint work.
+Scrolling and focus reuse the measured lines; unchanged styles reuse the cache even when rebuilt.
+`screen.dialogLayoutCount()` exposes measurement count for diagnostics.
 
 ## Toasts
 
@@ -481,8 +657,8 @@ confirmation.
 
 ## Native Minecraft overlays
 
-`ui.nativeSlot(id, x, y, width, height)` reserves a layout rectangle for Minecraft's own item or
-entity renderer. Supply the matching content through the `NativeOverlayRenderer` passed to the
+`ui.nativeSlot(id, x, y, width, height)` reserves a layout rectangle for Minecraft's own item,
+entity or font renderer. Supply the matching content through the `NativeOverlayRenderer` passed to the
 screen. Pane converts the coordinates for you and hides a native overlay when it would be clipped
 by a scroll viewport.
 
@@ -498,6 +674,55 @@ UiScreen screen = new UiScreen(document, overlays, event -> handle(event));
 The ids passed to `item` and `entity` must match slots painted by `ui.nativeSlot`. `player(...)`
 remains as a compatibility alias, but use `entity(...)` in new code: it supports a player, villager,
 iron golem, or any other `LivingEntity`.
+
+### Player previews without a world
+
+Use `playerPreview` for a title screen, skin selector or fixed character portrait. It needs no
+player entity, loaded level, connection or integrated server:
+
+```java
+// Reserve this rectangle in the page painter, in normal PaneLib layout coordinates.
+ui.nativeSlot("avatar", 400, 60, 220, 400);
+
+// Keep immutable presentation settings outside the per-frame callback.
+UiPlayerPreview presentation = UiPlayerPreview.standing()
+    .bodyYaw(210)
+    .headRotation(-12, 0)
+    .cameraPitch(-8)
+    .heightFraction(.8F)
+    .feet(.5F, .95F);
+
+NativeOverlayRenderer overlays = nativeUi ->
+    nativeUi.playerPreview("avatar", resolvedPlayerSkin, presentation);
+```
+
+`resolvedPlayerSkin` is Minecraft's `PlayerSkin`, including its wide/slim model. For a bundled
+costume, construct it from `new ClientAsset.ResourceTexture(Identifier.fromNamespaceAndPath(
+"your_mod", "costumes/explorer"))` and `PlayerModelType.WIDE` or `SLIM`. The resource texture path
+is relative to `textures/` and omits `.png`: that example resolves to
+`assets/your_mod/textures/costumes/explorer.png`. Use a compatible Minecraft skin layout.
+
+The two-argument overload uses `UiPlayerPreview.standing()`. A null skin selects Minecraft's
+bundled default. The helper does not fetch accounts/profiles or change the account/world player's
+skin. Missing custom resources use Minecraft's missing texture; it does not silently download a
+replacement. Supply an already resolved skin if your mod handles remote profiles.
+
+Angles are degrees. Body yaw 180 faces the viewer; head angles are relative to the body.
+Negative camera pitch looks down. Height is the requested **unprojected** 1.8-block body height
+as a fraction of the slot, also limited by a 1.1-block-wide standing frame. Foot coordinates are
+normalized within the slot; the default is bottom-center with a small inset. Rotating the camera
+can extend the projected soles around that anchor. Extreme anchors/rotations may intentionally
+clip, so leave padding. This API is for a standing avatar, not animated poses, equipment or capes.
+
+Fixed settings ignore the pointer. `.followPointer(true)` adds bounded head tracking without
+repainting the retained UI; menus/dialogs/custom focus scopes suspend tracking while they block
+background interaction. Missing/hidden/zero-size slots submit nothing. Draws contribute to
+`performanceSnapshot().nativeEntityCount()`. Native overlays use rectangular clipping and cannot
+inherit rounded Canvas clips; partially scrolled slots follow the existing hide policy.
+
+No quaternion, render-state object, raw graphics call or GUI-scale conversion belongs in the
+consumer. `NativeOverlayContext.bounds()` is diagnostic geometry in **physical backing pixels**;
+`playerPreview` converts it internally. See Wayfarer for a skin and fixed-camera example.
 
 ### Entity card previews
 
@@ -618,3 +843,47 @@ inventory preview is the supported orientation.
 rectangle in layout space until the final retained composite, so it aligns with the Pane content it
 covers at every GUI scale. `UiScreen.layoutScale()`, `regionBounds(id)`, and `trackBounds(id)` are
 available for your own popovers and tooltips.
+
+## Image fit, filters and source-point mapping
+
+Existing `minecraftTexture` and `minecraftTextureRegion` calls retain nearest-neighbor sampling.
+For photographs or explicit fitting, use the new options path:
+
+```java
+var options = new UiImageOptions(UiImageOptions.Fit.COVER,
+    UiImageOptions.Sampling.BILINEAR, .5F, .5F);
+var image = ui.canvas().minecraftImage(backgroundTexture,
+    new UiRect(0, 0, ui.width(), ui.height()), options);
+image.ifPresent(placement -> {
+    float footX = placement.mapX(890); // coordinates in the original source image
+    float footY = placement.mapY(492);
+    // Position related content from the same mapping used to draw the image.
+});
+```
+
+`COVER` fills and clips, `CONTAIN` preserves the entire image with remaining space left transparent,
+and `STRETCH` fills without preserving aspect ratio. Alignment 0/0 keeps the left/top edges; .5/.5
+centers; 1/1 keeps right/bottom. Alignment distributes cropping or letterbox space; it is not a
+request to put an arbitrary source pixel at the viewport center. `mapX/mapY` can return coordinates
+outside the viewport when a source point is cropped out.
+
+`UiImageOptions.pixelArt()` is centered nearest cover; `photo()` is centered bilinear cover.
+Bicubic is available explicitly. Filtering cannot create missing detail in a low-resolution asset.
+`UiImagePlacement.fit(sourceWidth, sourceHeight, viewport, options)` computes geometry without
+loading an asset. `canvas.image(bufferedImage, viewport, options)` draws caller-owned pixels.
+`minecraftImage` returns empty when the resource/dynamic texture is unavailable and shares the
+existing reload/invalidation cache. No network download is performed.
+
+Exact crops can choose filtering with the final `UiImageOptions.Sampling` parameter on
+`minecraftTextureRegion`. All source/target geometry must be finite and positive on the new
+placement path; alignment must be in 0..1. Drawing preserves the surrounding clip, transform,
+opacity and interpolation hints. Nine-slice borders remain a proposed separate helper.
+
+
+## Vanilla font labels
+
+Use `NativeOverlayContext.text(slotId, String/Component[, UiMinecraftTextStyle])` with a reserved
+native slot on either a screen or HUD. Height is one line height; width bounds ellipsis/clipping.
+The helper handles scaling, translations/resource fonts, styled spans, opacity and ordering.
+Stable lines reuse measurement; updated text does not require repainting an unchanged CPU panel.
+See [native Minecraft text](native-minecraft-text.md) for the complete recipe and limitations.

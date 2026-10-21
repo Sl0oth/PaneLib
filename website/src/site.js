@@ -2,13 +2,14 @@
   'use strict';
 
   const GROUPS = [
-    ['Start here', ['getting-started', 'installation']],
-    ['Build interfaces', ['ui-basics', 'input-and-focus', 'drawing-and-theming']],
+    ['Start here', ['getting-started', 'installation', 'migrating-to-panelib']],
+    ['Build interfaces', ['ui-basics', 'input-and-focus', 'drawing-and-theming', 'native-minecraft-text']],
     ['In the game', ['huds-and-composable-motion', 'minecraft-integration']],
     ['Go deeper', ['layered-ui-and-motion', 'paper-craft', 'performance', 'status']],
   ];
   const FALLBACK = {
     'getting-started': 'Build your first screen', installation: 'Install locally', 'ui-basics': 'UI basics',
+    'migrating-to-panelib': 'Move an existing mod to PaneLib', 'native-minecraft-text': 'Minecraft fonts',
     'input-and-focus': 'Styled inputs and modal focus', 'drawing-and-theming': 'Drawing, themes and animation',
     'huds-and-composable-motion': 'HUDs and composable motion', 'minecraft-integration': 'Minecraft integration',
     'layered-ui-and-motion': 'Layered UI and motion', 'paper-craft': 'Paper-craft recipe',

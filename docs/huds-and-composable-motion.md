@@ -112,8 +112,59 @@ ClientTickEvents.END_CLIENT_TICK.register(client -> {
 HUD painting reuses `UiContext` drawing, state reads, and motion. Controls can be painted, but no
 HUD input handlers exist: use a separate `UiScreen` for editing or actions. The library installs
 no key/mouse listeners and never calls `setScreen`. Host mods own data sampling, key bindings, and
-configuration. Equal values do not invalidate the retained surface. Native item/entity slots
-are not rendered by this HUD API; use canvas primitives/textures for HUD content.
+configuration. Equal values do not invalidate the retained surface. Treat complex HUD values as
+immutable snapshots (records or copied lists); mutating an object in place and setting it again
+can compare equal to the retained value. For a deliberately mutable external model, call
+`status.invalidate()` after changing it on the client thread.
+
+## Native items and previews in a HUD
+
+Use the optional native callback with the same slot IDs and helpers as a screen:
+
+```java
+UiHud equipment = new UiHud(100, 56, UiTheme.dark(), ui -> {
+    ui.canvas().fill(0xFF302A21, 0, 0, 100, 56);
+    ui.nativeSlot("held", 12, 10, 36, 36);
+}, overlay -> {
+    var player = Minecraft.getInstance().player;
+    if (player != null) overlay.item("held", player.getMainHandItem());
+}).attach(Identifier.fromNamespaceAndPath("my_mod", "equipment"));
+```
+
+`overlay.entity(...)` and `overlay.playerPreview(...)` also work. PaneLib owns placement,
+GUI/DPI conversion, the rectangular HUD clip, and visibility. No separate Fabric renderer or
+snapshot-based transform is needed. Slots use HUD-local UI points; low-level `bounds()` retains
+the screen API's physical-pixel contract. The callback's `pageId()` is `"hud"`.
+Missing or fully clipped slots are skipped. Existing partially clipped-slot limitations remain.
+
+The callback runs on visible render frames even when the canvas is retained, so inventory/entity
+updates remain live without repainting the panel. Built-in item/entity/player helpers inherit the
+HUD's fade. Native content is composited above the canvas; this is not an arbitrary offscreen
+group compositor. The supported `text` helper also inherits fade. Raw `graphics()` operations do not automatically inherit it.
+`nativeItemCount()`, `nativeEntityCount()` and `nativeTextCount()` report the latest frame's helper submissions and
+clear when suppressed/closed. F1, ordinary screens, `showOnScreens`, hide/show, world changes and
+close apply to both layers. HUD callbacks do not handle input; `pointerBlocked()` is true beneath
+an open screen. Attach/close/update from lifecycle code, never during the native callback.
+
+## Scroll a compass beneath a fixed marker
+
+Sample the unrounded heading into a dedicated HUD value every client tick. Use `animateAngle`
+to interpolate along the shortest angular path, including 359° → 0° → 1°:
+
+```java
+float heading = ui.animateAngle("bearing", (float) ui.numberValue("heading", 0),
+    90, UiEasing.EASE_OUT);
+// For each visible fixed 5-degree bearing, draw its tick/label at:
+// centerX + (unwrappedBearing - heading) * pixelsPerDegree.
+// Clip the moving strip, then draw the stationary center marker above it.
+```
+
+The return value is in [0, 360). Stable IDs retain position when retargeted; reduced motion
+adopts the target immediately. The track stops repainting when settled. Use separate IDs for
+angle/scalar/sequence tracks. Wayfarer's compass demonstrates the moving strip; changing only
+the displayed number is not a scrolling compass.
+
+## HUD lifecycle
 
 Painters should only draw/read state and motion; attach or close widgets from lifecycle code,
 not from inside a painting callback. Updates, attachment, and cleanup belong on the Minecraft client/render thread; enqueue worker
@@ -141,17 +192,133 @@ HUD condition. `showOnScreens` draws beneath screens, so the host editor must re
 space and restore the setting when it closes. There is no automatic collision avoidance with other
 mods' HUDs. The demo separates its two widgets and exposes anchor/scale toggles.
 
-Textures are capped at 2x raster quality; one widget is limited to 1024 UI points on each axis.
+All nine anchors are supported: the four corners, `CENTER`, `TOP_CENTER`, `BOTTOM_CENTER`,
+`CENTER_LEFT`, and `CENTER_RIGHT`. Centered axes ignore their corresponding margin; edge-aligned
+axes use an inset in logical points. Scaling uses the final fitted widget size, so a centered
+compass or equipment bar stays centered at .5–2x placement scale without reading window width.
+
+```java
+compass.setPlacement(new UiHudPlacement(UiHudPlacement.Anchor.TOP_CENTER, 0, 18, 1));
+equipment.setPlacement(new UiHudPlacement(UiHudPlacement.Anchor.BOTTOM_CENTER, 0, 18, 1));
+
+// Optional responsive recipe. The callback receives logical point dimensions, not GUI pixels.
+equipment.setPlacementPolicy(viewport -> new UiHudPlacement(
+    UiHudPlacement.Anchor.BOTTOM_CENTER, 0, 18, viewport.width() < 800 ? .75F : 1));
+```
+
+`setPlacementPolicy` resolves on the next visible frame and caches the result until the logical
+viewport dimensions change. Stable frames do not allocate a viewport or invoke the callback.
+Reinstall the policy when captured settings change; `invalidate()` refreshes pixels, not placement
+settings. Callbacks run on the client render thread, must return non-null placement, and should
+not render or mutate HUDs. A failed callback propagates its error and does not replace the prior
+placement/cache. `placement()` returns the most recently resolved value (the prior placement
+before the first policy resolution). Calling `setPlacement(...)` removes the policy. Disabled,
+fully hidden and closed widgets do not resolve policies; showing one resolves any pending change.
+Position-only changes reuse retained pixels and native slots. Size changes may resize the raster within its quality budget.
+
+For a multi-widget HUD, share an authored recipe between policies. Wayfarer's
+`WayfarerHudLayout` uses corner/edge-center anchors at roomy sizes; compact layouts put the compass
+above the two upper panels and the belt below the lower panels, then reduce a shared scale to fit.
+It reserves a clear center crosshair and is designed for logical viewports of 640×440 and larger.
+Smaller windows still get per-widget viewport clamping, but the recipe does not promise a readable,
+collision-free seven-widget arrangement there. This is an example composition, not a general
+layout solver or collision avoidance against other mods. Placement motion can be disabled with
+`setMotionScale(0)` when transitions should move immediately.
+
+HUD raster resolution follows effective displayed size, including placement scale and viewport fitting.
+Defaults retain the previous 2x/2048×2048 ceiling. Opt into higher ceilings per widget with
+`hud.setRenderSettings(UiRenderSettings.highQuality())`, or select `lowMemory()`. One widget is
+limited to 1024 UI points on each axis. `hud.rasterQuality()` reports desired/actual scale and
+pixel dimensions; `upscaled()` reports a deliberate budget limit. `hud.rasterBytes()` reports one
+RGBA surface's bytes, not total CPU+GPU+scratch memory. Shrinking widgets releases oversized
+buffers; unchanged position/GUI scale/quality settings do not force uploads. Higher ceilings
+are explicit: no global default budget increase. Wayfarer opts into highQuality (3x ceiling).
 Use small components rather than a fullscreen HUD texture. Snapshots expose paint/upload/allocation
 counters, last and cumulative raster/upload CPU cost, and last rendered bounds. They are diagnostic
 values, not GPU fence timings.
 
-## Try Atlas
+## Replace vanilla HUD elements safely
+
+Declare the vanilla elements each widget replaces; loading PaneLib or attaching a normal HUD
+does not hide anything. Use Fabric's public `VanillaHudElements` identifiers:
+
+```java
+equipment.replaceVanilla(VanillaHudElements.HOTBAR, VanillaHudElements.HELD_ITEM_TOOLTIP);
+status.replaceVanilla(VanillaHudElements.HEALTH_BAR, VanillaHudElements.ARMOR_BAR);
+
+equipment.setEnabled(false); // immediate off: release its surface and restore vanilla
+equipment.setEnabled(true);  // resume from retained values and visible preference
+equipment.setVisible(false); // animated hide: restore vanilla when the exit fade finishes
+equipment.setVisible(true);
+equipment.replaceVanilla(); // remove claims, keep drawing the widget
+equipment.close();           // permanent: release claims, surface, values and registry ownership
+```
+
+`replaceVanilla(...)` replaces the whole declaration, rather than adding to it. Duplicate IDs
+are harmless; invalid/null identifiers fail without changing the existing declaration. It can be
+called before `attach`; unattached HUDs never suppress vanilla. `replacedVanillaElements()` returns
+an immutable declaration. `enabled()` is false after close; a closed HUD cannot be reattached or
+claim elements again. Keep lifecycle calls on the client thread outside rendering callbacks.
+
+Each widget owns its claims. If multiple HUDs claim the same element, vanilla remains suppressed
+while any eligible owner is presented. Hide/close one widget without releasing another widget's
+claim. For a multi-widget toggle, call `setEnabled` on each widget from one client-thread action;
+Wayfarer and Bramble demonstrate this with J. Disable immediately cancels pending fades/motion;
+it does not overwrite the widget's values or `visible` preference.
+
+Ordinary screens suppress custom HUDs by default, so the original callbacks resume behind those
+screens. `setShowOnScreens(true)` keeps the widget and its claims active there. F1 still uses
+Minecraft/Fabric's normal visibility gates. Without a world/player, no claim is active. World
+changes release retained surfaces/values/motion; enabled/visible preferences and declarations
+survive, allowing an enabled replacement to resume on rejoin. Disable explicitly if it should
+stay off across sessions. Close is permanent.
+
+PaneLib installs one delegating wrapper for each claimed registry ID. When no eligible owner
+claims it, the wrapper calls the original callback chain. Close removes owner references; it
+does not reinstall an old callback over a later mod's registration. Earlier wrappers are part of
+the suppressed/restored chain; later wrappers may draw their own content around ours. A mod that
+discards the original callback or removes the registry element can bypass this integration;
+PaneLib does not override that mod. These wrappers do not change Fabric's vanilla render gates.
+
+## Vanilla visual style
+
+HUDs are not restricted to PaneLib's dark/smooth examples. Use `minecraftTexture` or
+`minecraftTextureRegion` with Minecraft's resource textures, square fills/borders, and native
+item slots for a vanilla-looking composition. Resource-pack reloads refresh cached textures.
+Minecraft texture copies currently use nearest-neighbor sampling within the canvas, while the
+final retained HUD texture uses linear filtering; integer sizing helps avoid resampling blur.
+
+Use `overlay.text(slotId, text)` for Minecraft's actual font renderer. Reserve the matching
+`ui.nativeSlot(id, x, y, width, lineHeight)` in the retained painter. Plain strings and styled/
+translated Components are supported; `UiMinecraftTextStyle` adds ARGB color, shadow, alignment,
+and ellipsis/clip behavior. PaneLib owns coordinates, scaling, clipping and HUD fade. Resource-pack
+font/language reloads invalidate measured lines automatically. Stable labels reuse a bounded cache.
+
+There is still no complete built-in vanilla widget theme. `UiCanvas.text` and retained text editors
+continue to use Java2D/custom TTF fonts; native labels are a separate supported renderer, with the
+existing native-slot composition rules. See [native Minecraft text](native-minecraft-text.md) for
+a copyable example, custom resource fonts, diagnostics, scope and the real-Minecraft test command.
+
+## Try the supported examples
+
+- `./gradlew :pane-demo:runWayfarerHud` selects the textured Wayfarer HUD.
+- `./gradlew :pane-demo:runVanillaHud` selects the native font/item HUD recipe.
+- `./gradlew :pane-demo:runExamples` opens the full example shelf.
+
+Create or join a world, then use J to toggle the selected HUD. These public launch paths do not
+create a world, position the camera, modify inventory, or need a private save. H opens the shelf.
+See the [example index](../examples/README.md) for the remaining public recipes.
+
+## Developer reference: Atlas fixtures
+
+Atlas remains a historical regression fixture, separate from the curated public examples.
+The following commands intentionally prepare disposable test worlds:
+
 
 - `./gradlew :pane-demo:runClient -Pstudio` opens Atlas in a dedicated disposable field world.
 - H opens the console; J toggles the HUD. Return to world resumes normal movement/look/attack.
 - Motion Studio demonstrates interrupted card expansion, spring retargeting, a finite three-beat
-  sequence, animated selection, and staggered controls. Examples opens the existing demos.
+  sequence, animated selection, and staggered controls.
 - Field HUD exposes visibility, anchors, scale, and reduced motion with a live editor preview.
 - `-PstudioTest` runs the full automated world/input/lifecycle checks and quits.
 - `-PstudioRecord` runs those checks while sampling actual client frames at 20 Hz.

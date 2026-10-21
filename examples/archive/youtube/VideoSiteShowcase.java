@@ -6,6 +6,8 @@ import dev.pane.ui.UiDialog;
 import dev.pane.ui.UiDialogStyle;
 import dev.pane.ui.UiDocument;
 import dev.pane.ui.UiMenuItem;
+import dev.pane.ui.UiMenuStyle;
+import dev.pane.ui.UiIcon;
 import dev.pane.ui.UiPage;
 import dev.pane.ui.UiRect;
 import dev.pane.ui.UiScreen;
@@ -141,9 +143,12 @@ public final class VideoSiteShowcase {
         ui.tooltip("video-search-button", "Results update while you type.");
 
         float rightX = w - 76;
-        g.roundRect(RAISED, rightX, 12, 30, 30, 15); g.text("⋮", rightX + 10, 17, 17, TEXT, Font.BOLD, FONT);
-        ui.menuButton("video-account", "", rightX, 12, 30, 30, UiContext.ButtonStyle.GHOST, UiContext.Shape.PILL,
-            List.of(new UiMenuItem("account", "This is a local demo", "video-menu:account")));
+        ui.paintedMenuButton("video-account", "Account options", rightX, 12, 30, 30, 15, true,
+            List.of(new UiMenuItem("account", "This is a local demo", "video-menu:account")), UiMenuStyle.defaults(),
+            (canvas,state)->{
+                canvas.roundRect(state.pressed()?0xFF404040:state.hovered()?0xFF353535:RAISED,rightX,12,30,30,15);
+                UiIcon.MORE_VERTICAL.draw(canvas,TEXT,rightX+7,19,16,1.3F);
+            });
         g.circle(0xFF7A91B8, w - 25, 27, 15); g.centeredText("P", w - 25, 27, 12, 0xFFFFFFFF, Font.BOLD, FONT);
     }
 
@@ -263,13 +268,16 @@ public final class VideoSiteShowcase {
         g.text(ellipsize(video.title, Math.max(18, (int) (width / 6.8F))), textX, y + thumbH + 10, 9, TEXT, Font.BOLD, FONT);
         g.text(video.channel, textX, y + thumbH + 27, 8, MUTED, Font.PLAIN, FONT);
         g.text(video.views + " · " + video.when, textX, y + thumbH + 40, 8, MUTED, Font.PLAIN, FONT);
-        g.text("⋮", x + width - 11, y + thumbH + 8, 14, TEXT, Font.BOLD, FONT);
         ui.hit("video-card-" + video.id(), "video-open:" + video.id(), x, y, width - 25, thumbH + 57);
-        ui.menuButton("video-more-" + video.id(), "", x + width - 25, y + thumbH, 25, 27,
-            UiContext.ButtonStyle.GHOST, UiContext.Shape.PILL,
+        ui.paintedMenuButton("video-more-" + video.id(), "Options for " + video.title(), x + width - 25, y + thumbH, 25, 27,
+            12, true,
             List.of(new UiMenuItem("queue", "Add to queue", "video-menu:queue-" + video.id()),
                 new UiMenuItem("save", "Save to Watch later", "video-menu:save-" + video.id()),
-                new UiMenuItem("hide", "Not interested", "video-menu:hide-" + video.id())));
+                new UiMenuItem("hide", "Not interested", "video-menu:hide-" + video.id())), UiMenuStyle.defaults(),
+            (canvas,state)->{
+                if(state.hovered()||state.pressed())canvas.roundRect(state.pressed()?0xFF404040:RAISED,x+width-25,y+thumbH,25,27,12);
+                UiIcon.MORE_VERTICAL.draw(canvas,TEXT,x+width-19,y+thumbH+6,14,1.3F);
+            });
     }
 
     private static List<Video> filtered(String nav, String topic, String query) {

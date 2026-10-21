@@ -5,6 +5,7 @@ import net.minecraft.client.gui.screens.Screen;
 /** Optional Minecraft lifecycle and raw-input integration for a {@link UiScreen}. */
 public final class UiScreenOptions {
     private final Screen parent;
+    private final boolean pauseGame;
     private final UiBackdrop backdrop;
     private final UiKeyHandler keyHandler;
     private final UiClickHandler clickHandler;
@@ -13,6 +14,7 @@ public final class UiScreenOptions {
 
     private UiScreenOptions(Builder builder) {
         parent = builder.parent;
+        pauseGame = builder.pauseGame;
         backdrop = builder.backdrop;
         keyHandler = builder.keyHandler;
         clickHandler = builder.clickHandler;
@@ -23,6 +25,8 @@ public final class UiScreenOptions {
     public static UiScreenOptions defaults() { return builder().build(); }
     public static Builder builder() { return new Builder(); }
 
+    /** Requests pausing an eligible local singleplayer world; multiplayer keeps running. */
+    public boolean pauseGame() { return pauseGame; }
     public Screen parent() { return parent; }
     public UiBackdrop backdrop() { return backdrop; }
     public UiKeyHandler keyHandler() { return keyHandler; }
@@ -33,6 +37,7 @@ public final class UiScreenOptions {
 
     public static final class Builder {
         private Screen parent;
+        private boolean pauseGame;
         private UiBackdrop backdrop = UiBackdrop.NONE;
         private boolean backdropChosen;
         private UiKeyHandler keyHandler = UiKeyHandler.NONE;
@@ -43,7 +48,7 @@ public final class UiScreenOptions {
         /** Parent restored by the default Escape/back behavior. Also inherits its background. */
         public Builder parent(Screen parent) {
             this.parent = parent;
-            if (!backdropChosen && parent != null) backdrop = UiBackdrop.PARENT_BACKGROUND;
+            if (!backdropChosen) backdrop = parent == null ? UiBackdrop.NONE : UiBackdrop.PARENT_BACKGROUND;
             return this;
         }
 
@@ -53,6 +58,9 @@ public final class UiScreenOptions {
             backdropChosen = true;
             return this;
         }
+
+        /** Requests Minecraft singleplayer pause behavior. Defaults to false. */
+        public Builder pauseGame(boolean pause) { pauseGame = pause; return this; }
 
         public Builder onKey(UiKeyHandler handler) {
             keyHandler = handler == null ? UiKeyHandler.NONE : handler;

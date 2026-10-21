@@ -1,0 +1,27 @@
+// Fixture-only export. Read the configured Gradle model instead of guessing a JAR or JDK.
+import groovy.json.JsonOutput
+
+gradle.projectsEvaluated {
+    def demo = gradle.rootProject.project(':pane-demo')
+    def library = gradle.rootProject.project(':pane')
+    demo.tasks.register('writeFixtureRuntime') {
+        dependsOn demo.tasks.named('classes'), library.tasks.named('jar'), demo.tasks.named('configureClientLaunch')
+        doLast {
+            def client = demo.tasks.named('runClient').get()
+            def jar = library.tasks.named('jar').get().archiveFile.get().asFile
+            def output = demo.layout.buildDirectory.file('fixture-runtime.json').get().asFile
+            def launcher = client.javaLauncher.get()
+            output.parentFile.mkdirs()
+            output.text = JsonOutput.prettyPrint(JsonOutput.toJson([
+                schema: 1,
+                java: launcher.executablePath.asFile.absolutePath,
+                javaVersion: launcher.metadata.languageVersion.asInt(),
+                version: library.version.toString(),
+                libraryJar: jar.absolutePath,
+                classpath: client.classpath.files.collect { it.absolutePath },
+                outputs: demo.sourceSets.main.output.files.findAll { it.exists() }.collect { it.absolutePath },
+                launchConfig: gradle.rootProject.file('.gradle/loom-cache/projects/pane-demo/launch.cfg').absolutePath
+            ])) + '\n'
+        }
+    }
+}

@@ -16,7 +16,9 @@ DIST = HERE / 'dist'
 REPOSITORY = 'https://github.com/Sl0oth/PaneLib'
 GUIDES = [
     ('getting-started', 'Build your first screen', 'Start here', 'Create a native screen, paint controls, and handle your first action.'),
-    ('installation', 'Installation', 'Start here', 'Build the library locally and add it to a Fabric project.'),
+    ('migrating-to-panelib', 'Move an existing mod to PaneLib', 'Start here', 'Keep your config and game logic while replacing one screen or HUD at a time.'),
+    ('native-minecraft-text', 'Minecraft fonts', 'Build interfaces', 'Use resource-pack-aware Minecraft text beside custom typography.'),
+    ('installation', 'Installation', 'Start here', 'Run the standalone starter and choose how to deliver the library with your mod.'),
     ('ui-basics', 'Controls & layout', 'Build interfaces', 'Compose controls, layouts, scrolling, text inputs, menus, and dialogs.'),
     ('input-and-focus', 'Inputs & focus', 'Build interfaces', 'Style text inputs, undo edits, and keep modal focus where it belongs.'),
     ('drawing-and-theming', 'Drawing & theming', 'Build interfaces', 'Draw with Java, choose typography, and make the interface your own.'),
@@ -84,24 +86,31 @@ def flatten_headings(items):
     return out
 
 def build():
+    version = next(line.split('=', 1)[1].strip() for line in (ROOT / 'gradle.properties').read_text().splitlines()
+        if line.startswith('version='))
+    if not re.fullmatch(r'[0-9A-Za-z][0-9A-Za-z._-]*', version):
+        raise SystemExit('Invalid release version in root gradle.properties')
     required = [HERE / 'src' / name for name in ('index.html', 'site.css', 'site.js')]
     missing = [str(p) for p in required if not p.is_file()]
     if missing: raise SystemExit('Waiting for site implementation: ' + ', '.join(missing))
     DIST.mkdir(exist_ok=True)
     for path in (HERE / 'src').iterdir():
-        if path.is_file(): shutil.copy2(path, DIST / path.name)
+        if path.is_file():
+            if path.suffix == '.html':
+                (DIST / path.name).write_text(path.read_text().replace('{{pane_version}}', version))
+            else:
+                shutil.copy2(path, DIST / path.name)
     (DIST / 'assets').mkdir(exist_ok=True)
     for name, source in ASSETS.items(): shutil.copy2(source, DIST / 'assets' / name)
     pages = []
     for slug, title, section, description in GUIDES:
-        source = (ROOT / 'docs' / (slug + '.md')).read_text()
+        source = (ROOT / 'docs' / (slug + '.md')).read_text().replace('{{pane_version}}', version)
         converter = markdown.Markdown(extensions=['fenced_code', 'tables', 'toc', 'sane_lists', 'codehilite'],
             extension_configs={'codehilite': {'guess_lang': False, 'css_class': 'codehilite'}})
         html = converter.convert(source)
         parser = ContentParser(slug); parser.feed(html)
         pages.append({'slug': slug, 'title': title, 'section': section, 'description': description,
             'html': ''.join(parser.output), 'text': ' '.join(parser.text), 'headings': flatten_headings(converter.toc_tokens)})
-    version = next(line.split('=',1)[1].strip() for line in (ROOT/'gradle.properties').read_text().splitlines() if line.startswith('version='))
     (DIST / 'content.json').write_text(json.dumps({'version': version, 'repository': REPOSITORY, 'pages': pages}, ensure_ascii=False))
     (DIST / 'pygments.css').write_text(HtmlFormatter(style='github-dark').get_style_defs('.codehilite'))
     (DIST / '.nojekyll').write_text('')

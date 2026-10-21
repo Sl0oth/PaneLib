@@ -1,4 +1,4 @@
-// The Pane library. Contains the public API and nothing else - no entrypoint, no demo code.
+// The Pane library: public API and a resource-reload lifecycle hook, with no demo code.
 // Client-only, so a single main source set keeps the artifact consumable by other projects.
 
 base {
@@ -76,6 +76,9 @@ tasks.register('verifyPaneArtifact') {
         }
         def forbidden = entries.findAll { it.contains('/dev/pane/demo/') || it.contains('/dev/pane/mcef/') }
         if (!forbidden.isEmpty()) throw new GradleException("Pane artifact contains excluded classes: ${forbidden}")
+        if (!zipTree(artifact).matching { include 'LICENSE' }.files) {
+            throw new GradleException('Pane artifact is missing its license notice')
+        }
         if (!zipTree(artifact).matching { include 'dev/pane/ui/UiScreen.class' }.files) {
             throw new GradleException('Pane artifact is missing the public native renderer')
         }
@@ -86,8 +89,30 @@ tasks.named('check') {
     dependsOn tasks.named('verifyPaneArtifact')
 }
 
-// The library has no entrypoint. Runs happen from :pane-demo, so plain `gradlew runClient`
+// The library installs no UI. Runs happen from :pane-demo, so plain `gradlew runClient`
 // launches exactly one client instead of two.
 tasks.matching { it.name == 'runClient' || it.name == 'runServer' }.configureEach {
     enabled = false
+}
+
+// Every distributed archive carries the license, including sources and Javadoc.
+tasks.withType(Jar).configureEach {
+    from(rootProject.file('LICENSE'))
+}
+
+// Explicit matched CPU workload; not part of normal tests and not an FPS claim.
+tasks.register('textBenchmark', JavaExec) {
+    dependsOn tasks.named('testClasses')
+    classpath = sourceSets.test.runtimeClasspath
+    mainClass = 'dev.pane.ui.TextBenchmark'
+    systemProperty 'java.awt.headless', 'true'
+}
+
+tasks.register('warmTextBenchmark', JavaExec) {
+    dependsOn tasks.named('testClasses')
+    classpath = project.hasProperty('textBaselineJar')
+        ? files(rootProject.file(project.property('textBaselineJar')), sourceSets.test.runtimeClasspath)
+        : sourceSets.test.runtimeClasspath
+    mainClass = 'dev.pane.ui.WarmTextBenchmark'
+    systemProperty 'java.awt.headless', 'true'
 }

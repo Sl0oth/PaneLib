@@ -44,6 +44,10 @@ public final class ShowcaseHub {
             else if (key.equals("hud-toggle")) { FieldHudDemo.toggle(); screen.invalidate(); }
             else if (key.equals("hud-anchor")) { FieldHudDemo.cycleAnchor(); screen.invalidate(); }
             else if (key.equals("resume")) { FieldHudDemo.preview(false); Minecraft.getInstance().gui.setScreen(null); }
+            else if (key.equals("wayfarer")) Minecraft.getInstance().gui.setScreen(WayfarerShowcase.createScreen(screen));
+            else if (key.equals("discord")) Minecraft.getInstance().gui.setScreen(DiscordShowcase.createScreen(screen));
+            else if (key.equals("gmail")) Minecraft.getInstance().gui.setScreen(GmailShowcase.createScreen(screen));
+            else if (key.equals("castle")) Minecraft.getInstance().gui.setScreen(CastleShowcase.createScreen(screen));
             else if (key.equals("designs")) Minecraft.getInstance().gui.setScreen(DesignLabShowcase.createScreen(screen));
             else if (key.equals("classic")) Minecraft.getInstance().gui.setScreen(NativeDemoShowcase.createScreen(screen));
             else if (key.equals("gallery")) Minecraft.getInstance().gui.setScreen(StyleGallery.createScreen());
@@ -182,6 +186,10 @@ public final class ShowcaseHub {
 
     private static void library(UiContext ui) {
         chrome(ui, "library", "Different worlds. Same library.", "Working examples, from a route inventory to a dense native control surface.");
+        ui.button("wayfarer-example", "Wayfarer", "wayfarer", ui.width() - 542, 118, 100, 29, button(true));
+        ui.button("discord-example", "Gather", "discord", ui.width() - 435, 118, 100, 29, button(true));
+        ui.button("gmail-example", "Gmail inbox", "gmail", ui.width() - 328, 118, 140, 29, button(true));
+        ui.button("castle-example", "Briarkeep castle", "castle", ui.width() - 176, 118, 148, 29, button(true));
         String[] titles = {"Design Lab", "Core controls", "Style gallery"};
         String[] copy = {"Three distinct translucent visual systems", "Lists, forms, dialogs, tooltips and native items", "Nine separate approaches to native UI"};
         String[] actions = {"designs", "classic", "gallery"};

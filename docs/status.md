@@ -1,69 +1,93 @@
-# PaneLib 0.9.8 status
+# PaneLib source status — October 21, 2026
 
-Current caveats and measured performance: [current Atlas/HUD iteration](atlas-iteration-2026-10-16.md).
-The list below is a feature inventory, not a claim that all performance or integration work is complete.
+This page describes the current source checkout and local candidate, not a newly published release.
+Root `gradle.properties` supplies the candidate version. The preserved submitted `0.9.8` snapshot
+remains unchanged; post-submission fixes have a new version and matching artifacts. Use the matching
+runtime, starter descriptor, and checksums. A local Maven repository ZIP tests module consumption,
+not public hosting. Nothing here establishes Modrinth approval or publication.
 
-## Ready now
+The local release gate now checks immutable, repeatable packaging and both extracted file/Maven
+consumers in Minecraft. See the [release packaging audit](audits/release-packaging-2026-10-21.md)
+and [maintainer commands](releasing.md). Public hosting remains open.
+The [Maven hosting setup](public-maven.md) and local HTTPS checks are prepared; release upload,
+deployment and verification of the public endpoint are still pending.
 
-- Input-free retained gameplay HUDs, world/session cleanup, anchors and viewport fitting, runtime
-  visibility/reduced motion, and data-driven meter/counter animation.
-- Delayed entrances, finite scalar timelines, bounded spring curves, and transformed drawing/button
-  groups with polygon hit targets. Rotated/scaled editors, sliders, scroll containers, and native
-  item/entity slots remain unsupported; use translation for those.
-- Atlas, a motion studio, live HUD editor, and entry point to the existing design/control examples.
+## Current public examples
 
+`./gradlew :pane-demo:runExamples` opens the curated shelf at the title screen:
 
-- Native retained rendering with a cached GPU texture.
-- Texture-safe grayscale text smoothing, so PaneLib text stays neutral and crisp after Minecraft samples the cached surface.
-- Custom Java drawing plus gradients, procedural texture, shadows, blur, clipping, and transforms.
-- Default and per-instance restylable buttons, code-drawn icon buttons, toggles, ranged sliders,
-  checkboxes, radio options, tabs, badges, removable tags, progress bars, and selectable regions.
-- Responsive rows, columns, weighted splits, adaptive grids, stacks, gaps, and spacers.
-- Smooth clipped wheel/trackpad scrolling with bounded CPU rasterization and aligned input targets.
-  Ordinary scroll containers upload full-width scanline bands with unchanged guard rows.
-- Independent toast overlays preserve virtual-list composition, plus reusable bounded group fades,
-  multiplicative nested opacity, and runtime reduced-motion controls.
-- Three translucent functional design references: inventory, playful/open, and tactical/compact.
-- GPU-composited fixed-height lists with a bounded row atlas, partial row uploads, and zero page
-  rerasterization while scrolling. Rows share one fractional transform and guarded atlas edges, so
-  separators and baselines keep constant spacing during motion. A warmed reusable row-buffer pool
-  keeps the steady scroll hot path allocation-free.
-- Tab and Shift-Tab traversal, visible focus rings, keyboard activation, public focus control, and nested modal focus scopes.
-- Single-line text, password fields, and soft-wrapped multiline textareas with keyboard editing,
-  clipboard support, pointer caret placement, drag selection, double-click selection, configurable typography,
-  bounded undo/redo, and codepoint-safe navigation/deletion. See [input and focus](input-and-focus.md).
-- Delayed native tooltips for controls and custom painted rectangles, including independent
-  pixel-stable overlays for virtual-list rows.
-- Anchored action menus with item selection, click-away dismissal, and Escape dismissal.
-- Single-value dropdowns backed by normal screen state.
-- Fully customizable native confirmation dialogs with confirm, cancel, Escape, and backdrop dismissal.
-- Fully customizable edge-anchored toasts: icon, colors, radius, placement, duration, close button, stack limit, spacing, and fade speed.
-- Native item and entity overlays.
-- Nine real, distinct showcase screens that demonstrate the same library can support very different UI systems.
-- A native YouTube-style consumer reference page with responsive cards, typed search, filters, menus, toasts, and confirmation.
-- Bundled custom fonts: a document theme can set one family for built-in controls and overlay chrome, and custom painters can use it too.
-- Opt-in Minecraft component and legacy MOTD text with RGB colors, bold, italic, underline,
-  strikethrough, stable obfuscation, newlines, Unicode, and style-preserving ellipsis.
-- Minecraft texture cover fills and source-region crops, including a live player-skin face inside a circular clip.
-- Isolated internal actions plus typed consumer events.
-- Per-control retained animations that stop scheduling repaints when complete.
-- Parent/title panorama, in-world, and full-parent backdrops beneath transparent retained UI.
-- Raw keyboard and target-aware pointer callbacks, including true double-click handling.
-- Parent restoration and consumer-controlled Escape/back handling.
-- Thread-safe completion-driven invalidation for remote logos, pings, and other asynchronous data,
-  including single-row `invalidateVirtualItem` updates.
-- Render-viewport synchronization that reallocates stale surfaces during native window resizing.
-- Locally publishable Maven metadata, sources JAR, Javadoc JAR, API unit tests, and artifact-boundary verification.
+- Wayfarer: an authored game menu with a native player preview, plus a textured gameplay HUD.
+- Gather: a chat layout with channels, direct messages, menus, and settings.
+- Pane Mail: a light, dense inbox with search, local message actions, and composition.
+- Vanilla HUD: native Minecraft font labels, items, and vanilla texture treatment.
 
-Every item above has been built and checked in the real Minecraft client through the showcase.
+Dedicated public launch tasks use installed Java 25 and separate profiles. They require no private
+save, Python launcher, or Mac-specific Java path. HUD examples wait for you to create or join a
+world. See the [example index](../examples/README.md).
 
-## Not ready to promise yet
+The independent [first-screen starter](../examples/first-screen/README.md) is the recommended
+consumer entry point: five controls, persistent settings, parent restoration, optional single-player
+pause, and an isolated packaged-JAR smoke test. The [migration guide](migrating-to-panelib.md)
+explains how to replace one existing mod screen without rewriting its game logic.
 
-- Hosting the artifact on a public Maven repository and final 1.0 compatibility guarantees.
-- Automated visual regression checks.
-- Windows and Linux GPU profiling.
-- Minecraft narrator/accessibility semantics.
-- IME text composition.
+YouTube and older duplicate showcases are retired from the public lineup. Atlas and other retained
+internal fixtures remain available for regression work; their historic layouts and world setup are
+not the current first-run experience.
 
-The active implementation order lives in the repository's `TODO.md`. This page records what is
-safe to use today; it is not a release roadmap.
+## Implemented in current source
+
+- Retained screens and input-free gameplay HUDs, with cached textures and bounded quality settings.
+- Custom Java drawing, bundled fonts, images with fit/sampling options, procedural textures,
+  shadows, gradients, clipping, and transforms.
+- Restylable controls, custom control painters, menus, dialogs, toasts, and configurable input/
+  dialog typography. Custom styling preserves the built-in interaction and focus contracts.
+- Responsive layouts, document reference scaling, HUD placement policies, smooth scrolling,
+  explicit end scrolling, follow-at-end behavior, and virtualized fixed-height lists.
+- Keyboard focus/navigation, clipboard editing, pointer caret/selection, Unicode codepoint-safe
+  editing, and bounded undo/redo. These do not imply complete narrator or IME support.
+- Native item/entity/player slots, world-free player appearance/framing, and single-line Minecraft
+  font labels. Resource-pack font/language changes refresh native text layout.
+- Finite scalar/angle animations, sequences, bounded spring curves, and transformed drawing/button
+  groups. Motion stops scheduling repaints when settled; reduced motion is available.
+- HUD ownership and vanilla-element replacement/restoration, with world/session cleanup.
+- Parent/backdrop integration, raw input callbacks, owner-aware typed screen events, and opt-in
+  single-player pause. Multiplayer and LAN-shared worlds follow Minecraft's own pause rules.
+- Completion-driven invalidation, targeted virtual-row updates, retained-state update rules,
+  viewport resizing, and opt-in performance diagnostics.
+- Runtime/source/Javadoc artifacts, artifact-boundary checks, and independent consumer builds.
+
+## Evidence and its limits
+
+Each audit records the tested source/artifact, fixture scope, and runtime environment. Do not add
+historical check counts together and treat that as one test run of the current binary.
+
+- [Curated examples and portable launches](audits/example-refresh-2026-10-21.md): the completed
+  example-refresh baseline, including real-client checks and packaged-consumer validation.
+- [Native Minecraft fonts](audits/vanilla-font-api-2026-10-21.md): label rendering, resource reloads,
+  clipping, and HUD/native-layer interaction checks at that artifact revision.
+- [API and efficiency work](audits/api-comparison-and-efficiency-2026-10-21.md): scoped upload,
+  placement, and state-projection measurements. These are not general FPS guarantees.
+
+The October 16 Atlas reports and October 17 independent audit remain historical evidence. Their
+old feature inventories and issue status do not supersede the newer per-change reports or current
+source.
+
+## Limits to consider before adopting
+
+- A local Maven repository bundle is available for candidate testing; no public Maven host or
+  final 1.0 API compatibility guarantee is established.
+- Minecraft narrator semantics and IME composition remain incomplete.
+- Native Minecraft text currently supports single-line labels, not editable or wrapped native-font
+  paragraphs. There is no complete built-in vanilla widget theme.
+- HUDs do not receive control input; use a `UiScreen` for interactive UI.
+- Affine groups support drawing/buttons, not rotated/scaled editors, sliders, scroll containers,
+  or native slots. Document scaling and translation have separate supported paths.
+- Large popup lists, arbitrary native-layer composition, and cross-mod HUD conflicts need their
+  documented constraints respected; a showcase does not prove every combination.
+- Local real-client evidence is macOS ARM64. Windows/Linux GPU behavior, general performance
+  guarantees, and broad automated visual-regression coverage remain unproven.
+- Some internal historical fixtures still rely on private disposable saves or duplicated launcher
+  helpers. That remaining developer-tooling debt does not affect the curated public launch tasks.
+
+Test the packaged library with your own mod, target platforms, window sizes, and modpack before
+making broader compatibility or performance promises.

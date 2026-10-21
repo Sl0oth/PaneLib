@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PaneLib — native Minecraft interfaces for Fabric</title>
-<meta name="description" content="Documentation for PaneLib 0.9.8, a native retained-mode Java UI library for Minecraft Fabric client mods.">
+<meta name="description" content="Documentation for PaneLib {{pane_version}}, a native retained-mode Java UI library for Minecraft Fabric client mods.">
 <meta name="theme-color" content="#102E45">
 <link rel="preload" href="assets/Roboto-Variable.ttf" as="font" type="font/ttf" crossorigin>
 <link rel="stylesheet" href="site.css">
@@ -27,7 +27,7 @@
     </svg>
     <span>PaneLib</span>
   </a>
-  <span class="release"><span data-version>0.9.8</span> / release candidate</span>
+  <span class="release"><span data-version>{{pane_version}}</span> / local candidate</span>
   <span class="masthead__gap"></span>
   <button class="search-trigger" type="button" aria-haspopup="dialog" aria-controls="site-search" aria-label="Search documentation" data-search-open>
     <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="8.5" cy="8.5" r="5.5"/><path d="m13 13 4.5 4.5"/></svg>
@@ -56,16 +56,16 @@
         <div class="cover__text">
           <p class="eyebrow">Native interfaces / Fabric</p>
           <h1 id="site-home-title" tabindex="-1">Build a proper interface. Keep the game.</h1>
-          <p class="lede">PaneLib is a client-side Fabric library for building Minecraft screens and gameplay HUDs entirely in Java. It is native and retained: no Chromium, HTML, CSS parser or MCEF. A screen repaints only when something changes, and Minecraft still draws its own items, entities and world.</p>
+          <p class="lede">PaneLib is a client-side Fabric library for building Minecraft screens and gameplay HUDs entirely in Java. Custom controls are painted with Java2D into reusable GPU textures; Minecraft items and entities use native rendering. No browser runtime is required. A screen repaints only when something changes, and Minecraft still draws its own items, entities and world.</p>
           <p class="actions">
             <a class="btn btn--primary" href="#guide-getting-started">Get started</a>
-            <a class="btn" href="#guide-ui-basics">Browse the API</a>
+            <a class="btn" href="#guide-ui-basics">API guide</a>
           </p>
         </div>
         <figure class="plate">
-          <span class="plate__tab">Plate 1 · Atlas console</span>
+          <span class="plate__tab">Plate 1 · Historical Atlas console</span>
           <div class="plate__frame"><img src="assets/atlas-console.png" width="1708" height="960" alt="The Atlas field console from the PaneLib demo, drawn by PaneLib over a live Minecraft world."></div>
-          <figcaption>Actual Minecraft client capture</figcaption>
+          <figcaption>Historical Minecraft capture. Current examples: Wayfarer, Gather, Pane Mail and vanilla HUD.</figcaption>
         </figure>
       </section>
 
@@ -74,7 +74,7 @@
         <div><dt>Fabric Loader</dt><dd>0.19.3</dd></div>
         <div><dt>Java</dt><dd>25</dd></div>
         <div><dt>License</dt><dd>MIT</dd></div>
-        <div><dt>Artifact</dt><dd><code>dev.pane:panelib:<span data-version>0.9.8</span></code> via Maven Local</dd></div>
+        <div><dt>Artifact</dt><dd><code>dev.pane:panelib:<span data-version>{{pane_version}}</span></code> runtime JAR</dd></div>
       </dl>
 
       <section class="band" aria-labelledby="site-h-render">
@@ -85,15 +85,16 @@
           <li><strong>Reuse the texture</strong><span>The result is uploaded to one reusable GPU texture and simply blitted while the screen is idle.</span></li>
           <li><strong>Compose native layers</strong><span><code>ItemStack</code>s and entities render through Minecraft in a separate layer, and do not invalidate the retained surface.</span></li>
         </ol>
-        <p class="note">This website is documentation only; nothing here runs inside the game.</p>
+        <p class="note">This website is documentation only. Local candidate bundles are not a published release or hosted Maven service.</p>
       </section>
 
       <section class="band band--split" aria-labelledby="site-h-first">
         <div>
           <p class="eyebrow"><span class="num">§02</span> Your first screen</p>
           <h2 id="site-h-first">A document, a page, a screen</h2>
-          <p>Publish the release candidate to Maven Local, then build a <code>UiDocument</code> with one or more <code>UiPage</code> painters and open a <code>UiScreen</code>. A public Maven host has not been selected yet.</p>
-          <pre class="mini"><code>./gradlew :pane:publishToMavenLocal
+          <p>Start with the complete standalone example, then build a <code>UiDocument</code> with one or more <code>UiPage</code> painters and open a <code>UiScreen</code>. The starter includes an entrypoint, an opening key and real settings persistence.</p>
+          <pre class="mini"><code>./gradlew :pane:build
+cd examples/first-screen
 ./gradlew runClient</code></pre>
           <p><a href="#guide-getting-started">Read the full guide →</a> · <a href="#guide-installation">Gradle setup</a></p>
         </div>
@@ -115,7 +116,7 @@ var document = UiDocument.builder("My mod")
     .page(home)
     .build();
 
-var screen = new UiScreen(document, NativeOverlayRenderer.NONE, event -> {
+var screen = UiScreen.create(document, NativeOverlayRenderer.NONE, (owner, event) -> {
     if (event.type() == UiEventType.ACTION &amp;&amp; event.key().equals("save")) saveConfig();
 });
 
@@ -171,7 +172,7 @@ Minecraft.getInstance().gui.setScreen(screen);</code></pre>
 </div>
 
 <footer class="footer">
-  <span>PaneLib <span data-version>0.9.8</span> release candidate</span>
+  <span>PaneLib <span data-version>{{pane_version}}</span> release candidate</span>
   <a href="https://github.com/Sl0oth/PaneLib/blob/main/LICENSE" data-repo-path="/blob/main/LICENSE">MIT License</a>
   <a href="https://github.com/Sl0oth/PaneLib" data-repo>GitHub</a>
   <a href="#guide-status">Status</a>

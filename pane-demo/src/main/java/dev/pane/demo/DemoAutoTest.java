@@ -1,5 +1,7 @@
 package dev.pane.demo;
 
+import dev.pane.ui.UiScrollSnapshot;
+
 import dev.pane.ui.UiRect;
 import dev.pane.ui.UiScreen;
 import dev.pane.ui.UiPerformanceSnapshot;
@@ -35,7 +37,7 @@ final class DemoAutoTest {
     private static final String ENTITY_LEVEL_ID = "pane_entity_autotest";
     private static final String[] CAPTURE_PAGES = {"loadout", "discover", "waypoints", "performance", "settings"};
 
-    private enum Stage { WAIT_FOR_TITLE, TITLE_BACKDROP, TITLE_BACK, LOADING_WORLD, SETTLING, ENTITY_CAPTURE, ENTITY_HOVER_COLD, ENTITY_HOVER_COLD_RESULT, ENTITY_HOVER_WARM_OPEN, ENTITY_HOVER_WARM, ENTITY_HOVER_WARM_RESULT, SHADOW_CAPTURE, SHADOW_HOVER, CAPTURING, INTERACTION, SCROLL, ASYNC_INVALIDATION, DROPDOWN_OPEN, DROPDOWN_SELECT, DROPDOWN_ESCAPE, TEXT_INPUT, SEARCH_SUGGESTIONS, MENU_OPEN, MENU_ESCAPE, MENU_REOPEN, MENU_ITEM, TOAST_VISIBLE, TOAST_CUSTOM, TOAST_CUSTOM_EXPIRY, TOAST_STACK_VISIBLE, TOAST_EXPIRY, MENU_CLICK_AWAY, DIALOG_OPEN, DIALOG_BACKDROP, DIALOG_REOPEN, DIALOG_ESCAPE, DIALOG_CONFIRM_OPEN, DIALOG_CONFIRM, TOOLTIP, HOVER_JUMP, LONG_LIST_SCROLL, LONG_LIST_REVERSE, LONG_LIST_CLICK, LONG_LIST_IDLE, GALLERY, ALT_SHELL, RESIZE, IDLE_CHECK, VIDEO_SEARCH, VIDEO_TOPIC, VIDEO_CARD, VIDEO_MENU_OPEN, VIDEO_MENU_ITEM, VIDEO_HISTORY, VIDEO_HISTORY_DIALOG, VIDEO_HISTORY_CONFIRM, DONE }
+    private enum Stage { WAIT_FOR_TITLE, TITLE_BACKDROP, TITLE_BACK, LOADING_WORLD, SETTLING, ENTITY_CAPTURE, ENTITY_HOVER_COLD, ENTITY_HOVER_COLD_RESULT, ENTITY_HOVER_WARM_OPEN, ENTITY_HOVER_WARM, ENTITY_HOVER_WARM_RESULT, SHADOW_CAPTURE, SHADOW_HOVER, CAPTURING, INTERACTION, SCROLL, ASYNC_INVALIDATION, DROPDOWN_OPEN, DROPDOWN_SELECT, DROPDOWN_ESCAPE, TEXT_INPUT, SEARCH_SUGGESTIONS, MENU_OPEN, MENU_ESCAPE, MENU_REOPEN, MENU_ITEM, TOAST_VISIBLE, TOAST_CUSTOM, TOAST_CUSTOM_EXPIRY, TOAST_STACK_VISIBLE, TOAST_EXPIRY, MENU_CLICK_AWAY, DIALOG_OPEN, DIALOG_BACKDROP, DIALOG_REOPEN, DIALOG_ESCAPE, DIALOG_CONFIRM_OPEN, DIALOG_CONFIRM, TOOLTIP, HOVER_JUMP, LONG_LIST_SCROLL, LONG_LIST_REVERSE, LONG_LIST_CLICK, LONG_LIST_IDLE, GALLERY, ALT_SHELL, RESIZE, IDLE_CHECK, DONE }
 
     private Stage stage = Stage.WAIT_FOR_TITLE;
     private int ticks;
@@ -108,10 +110,6 @@ final class DemoAutoTest {
         return Boolean.getBoolean("pane.demo.gallery");
     }
 
-    private static boolean youtubeMode() {
-        return Boolean.getBoolean("pane.demo.youtube");
-    }
-
     private static boolean texturesMode() {
         return Boolean.getBoolean("pane.demo.textures");
     }
@@ -165,19 +163,17 @@ final class DemoAutoTest {
             }
             case SETTLING -> {
                 if (ticks > 60) {
-                    client.gui.setScreen(shadowsMode() ? ShadowTabShowcase.createScreen() : entitiesMode() ? EntityPreviewShowcase.createScreen() : texturesMode() ? TextureSkinShowcase.createScreen() : youtubeMode() ? VideoSiteShowcase.createScreen()
-                        : galleryMode() ? StyleGallery.createScreen() : NativeDemoShowcase.createScreen());
+                    client.gui.setScreen(shadowsMode() ? ShadowTabShowcase.createScreen() : entitiesMode() ? EntityPreviewShowcase.createScreen() : texturesMode() ? TextureSkinShowcase.createScreen() : galleryMode() ? StyleGallery.createScreen() : NativeDemoShowcase.createScreen());
                     ticks = 0;
                     if (playMode()) {
                         log(entitiesMode() ? "ready - native iron-golem and villager entity previews open"
                             : texturesMode() ? "ready - Minecraft texture and skin fill reference open; click the material chips"
-                            : youtubeMode() ? "ready - native YouTube-style test open; type, filter, and click cards"
                             : galleryMode() ? "ready - gallery open; use 1-9 or the bottom bar"
                             : "ready - press Esc to play, H to reopen, 1-5 for pages");
                         stage = Stage.DONE;
                         return;
                     }
-                    stage = shadowsMode() ? Stage.SHADOW_CAPTURE : entitiesMode() ? Stage.ENTITY_CAPTURE : youtubeMode() ? Stage.VIDEO_SEARCH : Stage.CAPTURING;
+                    stage = shadowsMode() ? Stage.SHADOW_CAPTURE : entitiesMode() ? Stage.ENTITY_CAPTURE : Stage.CAPTURING;
                     captureIndex = 0;
                 }
             }
@@ -343,100 +339,6 @@ final class DemoAutoTest {
                     + " uploadPixels=0 dirty=0 (passive tooltip; no retained repaint)");
                 stage = Stage.DONE;
             }
-            // A dedicated consumer-layout check. Run it with -Pautotest -Pyoutube; it keeps the
-            // reference page separate from the base showcase regression sequence.
-            case VIDEO_SEARCH -> {
-                if (ticks < 24) return;
-                if (client.gui.screen() instanceof UiScreen screen) {
-                    boolean focused = clickAndExpect(screen, "video-search",
-                        () -> "video-search".equals(screen.focusedId().orElse("")));
-                    for (char letter : "coding".toCharArray()) screen.charTyped(new CharacterEvent(letter));
-                    boolean filtered = "coding".equals(screen.stringValue("video-search", ""));
-                    log("video page typed search: " + (focused && filtered ? "PASS" : "FAIL"));
-                } else log("FAILED: video page was replaced before typed search");
-                stage = Stage.VIDEO_TOPIC;
-                ticks = 0;
-                return;
-            }
-            case VIDEO_TOPIC -> {
-                if (ticks < 12) return;
-                if (client.gui.screen() instanceof UiScreen screen) {
-                    boolean changed = clickAndExpect(screen, "video-topic-3",
-                        () -> "Coding".equals(screen.stringValue("video-topic", "")));
-                    log("video page topic chip filters: " + (changed ? "PASS" : "FAIL"));
-                } else log("FAILED: video page was replaced before topic check");
-                stage = Stage.VIDEO_CARD;
-                ticks = 0;
-                return;
-            }
-            case VIDEO_CARD -> {
-                if (ticks < 12) return;
-                if (client.gui.screen() instanceof UiScreen screen) {
-                    boolean opened = clickAndExpect(screen, "video-card-building-a-tiny-ui-library-from-scratch",
-                        () -> screen.activeToastCount() == 1);
-                    log("video page card action and toast: " + (opened ? "PASS" : "FAIL"));
-                } else log("FAILED: video page was replaced before card check");
-                stage = Stage.VIDEO_MENU_OPEN;
-                ticks = 0;
-                return;
-            }
-            case VIDEO_MENU_OPEN -> {
-                if (ticks < 12) return;
-                if (client.gui.screen() instanceof UiScreen screen) {
-                    String menuId = "video-more-building-a-tiny-ui-library-from-scratch";
-                    boolean opened = clickAndExpect(screen, menuId, () -> menuId.equals(screen.openMenuId().orElse(null)));
-                    log("video page card menu opens: " + (opened ? "PASS" : "FAIL"));
-                } else log("FAILED: video page was replaced before menu check");
-                stage = Stage.VIDEO_MENU_ITEM;
-                ticks = 0;
-                return;
-            }
-            case VIDEO_MENU_ITEM -> {
-                if (ticks < 8) return;
-                if (client.gui.screen() instanceof UiScreen screen) {
-                    String itemId = "menu:video-more-building-a-tiny-ui-library-from-scratch:queue";
-                    boolean selected = clickAndExpect(screen, itemId,
-                        () -> screen.openMenuId().isEmpty() && screen.activeToastCount() == 1);
-                    log("video page menu action and toast: " + (selected ? "PASS" : "FAIL"));
-                } else log("FAILED: video page was replaced before menu item check");
-                stage = Stage.VIDEO_HISTORY;
-                ticks = 0;
-                return;
-            }
-            case VIDEO_HISTORY -> {
-                if (ticks < 8) return;
-                if (client.gui.screen() instanceof UiScreen screen) {
-                    boolean selected = clickAndExpect(screen, "video-nav-4",
-                        () -> "History".equals(screen.stringValue("video-nav", "")));
-                    log("video page navigation changes content: " + (selected ? "PASS" : "FAIL"));
-                } else log("FAILED: video page was replaced before history check");
-                stage = Stage.VIDEO_HISTORY_DIALOG;
-                ticks = 0;
-                return;
-            }
-            case VIDEO_HISTORY_DIALOG -> {
-                if (ticks < 12) return;
-                if (client.gui.screen() instanceof UiScreen screen) {
-                    boolean opened = clickAndExpect(screen, "video-clear-history",
-                        () -> "video-clear-history".equals(screen.openDialogId().orElse(null)));
-                    log("video page confirmation opens: " + (opened ? "PASS" : "FAIL"));
-                } else log("FAILED: video page was replaced before confirmation check");
-                stage = Stage.VIDEO_HISTORY_CONFIRM;
-                ticks = 0;
-                return;
-            }
-            case VIDEO_HISTORY_CONFIRM -> {
-                if (ticks < 8) return;
-                if (client.gui.screen() instanceof UiScreen screen) {
-                    boolean cleared = clickAndExpect(screen, "dialog-confirm",
-                        () -> screen.booleanValue("history-cleared", false) && screen.openDialogId().isEmpty());
-                    capture(client, "pane-video-site");
-                    log("video page confirmation writes state: " + (cleared ? "PASS" : "FAIL"));
-                    log("video consumer test complete");
-                } else log("FAILED: video page was replaced before confirmation");
-                stage = Stage.DONE;
-                return;
-            }
             case CAPTURING -> {
                 if (ticks < 25) return;
                 ticks = 0;
@@ -474,12 +376,12 @@ final class DemoAutoTest {
                 if (client.gui.screen() instanceof UiScreen screen) {
                     if (ticks <= 20) {
                         screen.mouseScrolled(scrollMouseX, scrollMouseY, 0, -.1);
-                        if (ticks == 10) scrollMidOffset = screen.numberValue("scroll:settings-content", 0);
-                        if (ticks == 20) scrollReleaseOffset = screen.numberValue("scroll:settings-content", 0);
+                        if (ticks == 10) scrollMidOffset = screen.scrollSnapshot("settings-content").map(UiScrollSnapshot::offset).orElse(0D);
+                        if (ticks == 20) scrollReleaseOffset = screen.scrollSnapshot("settings-content").map(UiScrollSnapshot::offset).orElse(0D);
                         return;
                     }
                     if (ticks == 21) {
-                        scrollAfterReleaseOffset = screen.numberValue("scroll:settings-content", 0);
+                        scrollAfterReleaseOffset = screen.scrollSnapshot("settings-content").map(UiScrollSnapshot::offset).orElse(0D);
                         return;
                     }
                     if (ticks == 22) {
@@ -497,7 +399,7 @@ final class DemoAutoTest {
                         return;
                     }
                     if (ticks < 34) return;
-                    boolean moved = screen.numberValue("scroll:settings-content", 0) > 0;
+                    boolean moved = screen.scrollSnapshot("settings-content").map(UiScrollSnapshot::offset).orElse(0D) > 0;
                     boolean partial = screen.partialPaintCount() > beforeScrollPartialPaints;
                     long fullPixels = (long) screen.surfacePixelWidth() * screen.surfacePixelHeight();
                     // The macOS seam workaround deliberately uploads the complete DynamicTexture.
@@ -1046,7 +948,7 @@ final class DemoAutoTest {
                     capture(client, "pane-live-long-directory");
                     longListIdlePaints = -1;
                     longListStableTicks = 0;
-                    longListLastOffset = screen.numberValue("scroll:discover-directory", 0);
+                    longListLastOffset = screen.scrollSnapshot("discover-directory").map(UiScrollSnapshot::offset).orElse(0D);
                     longListLastPaintCount = screen.paintCount();
                 } else log("FAILED: directory screen was replaced before row click");
                 stage = Stage.LONG_LIST_IDLE;
@@ -1058,7 +960,7 @@ final class DemoAutoTest {
                     return;
                 }
                 if (longListIdlePaints < 0) {
-                    double offset = screen.numberValue("scroll:discover-directory", 0);
+                    double offset = screen.scrollSnapshot("discover-directory").map(UiScrollSnapshot::offset).orElse(0D);
                     int paints = screen.paintCount();
                     if (Math.abs(offset - longListLastOffset) < .01 && paints == longListLastPaintCount) {
                         longListStableTicks++;

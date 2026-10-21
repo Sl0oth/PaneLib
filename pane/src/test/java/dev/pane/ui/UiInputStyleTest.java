@@ -7,6 +7,25 @@ import java.util.*;
 import org.junit.jupiter.api.Test;
 
 final class UiInputStyleTest {
+    @Test void selectedBlankLineHasVisibleHighlight() {
+        var image=new BufferedImage(420,250,BufferedImage.TYPE_INT_ARGB);var g=image.createGraphics();
+        try {
+            var ui=context(new UiCanvas(g,image),new ArrayList<>(),new UiTextInputState("area",3,0));
+            ui.textArea("area","key","",10,10,200,100,"A\n\nB",100);
+            assertNotEquals(image.getRGB(22,32),image.getRGB(20,32));
+        } finally {g.dispose();}
+    }
+    @Test void maskedEmojiPointerGeometryUsesOriginalCodepointBoundaries() {
+        var image=new BufferedImage(420,250,BufferedImage.TYPE_INT_ARGB);var g=image.createGraphics();
+        try {
+            var inputs=new ArrayList<UiInputRegion>();
+            var ui=context(new UiCanvas(g,image),inputs,new UiTextInputState("field",4,4));
+            ui.passwordField("field","key","",10,10,300,42,"A😀B",50,UiInputStyle.defaults());
+            var input=inputs.getFirst();
+            assertTrue(Float.isNaN(input.caretXs()[2]));
+            for(int i:new int[]{0,1,3,4})assertEquals(i,input.caretAt(input.caretXs()[i],30));
+        } finally {g.dispose();}
+    }
     @Test void styledFieldUsesIdenticalFontMetricsForPaintAndPointerCarets() {
         var image = new BufferedImage(420,250,BufferedImage.TYPE_INT_ARGB); var g=image.createGraphics();
         try {
@@ -16,7 +35,8 @@ final class UiInputStyleTest {
             ui.textField("field","key","",10,10,300,42,"A😀B",50,style);
             var input=inputs.getFirst();float[] x=input.caretXs();
             assertEquals(24,x[0],.01);assertTrue(Float.isNaN(x[2]));
-            assertEquals(24+canvas.textWidth("A😀",18,Font.BOLD,UiCanvas.MONO),x[3],.01);
+            var expected=new java.awt.font.TextLayout("A😀B",new Font(UiCanvas.MONO,Font.BOLD,18),g.getFontRenderContext());
+            assertEquals(24+expected.getCaretInfo(java.awt.font.TextHitInfo.leading(3))[0],x[3],.01);
             assertEquals(3,input.caretAt(x[3],30));
         } finally {g.dispose();}
     }

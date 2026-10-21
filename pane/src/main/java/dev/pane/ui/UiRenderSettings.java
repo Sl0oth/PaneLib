@@ -3,6 +3,7 @@ package dev.pane.ui;
 /** Quality and memory limits for the retained raster surface. */
 public record UiRenderSettings(int maximumWidth, int maximumHeight, float maximumScale) {
     public UiRenderSettings {
+        if (!Float.isFinite(maximumScale)) throw new IllegalArgumentException("maximumScale must be finite");
         maximumWidth = Math.max(512, Math.min(8192, maximumWidth));
         maximumHeight = Math.max(512, Math.min(8192, maximumHeight));
         maximumScale = Math.max(1, Math.min(4, maximumScale));
@@ -19,4 +20,7 @@ public record UiRenderSettings(int maximumWidth, int maximumHeight, float maximu
 
     /** Conservative ceiling for integrated and older GPUs. */
     public static UiRenderSettings lowMemory() { return new UiRenderSettings(1920, 1080, 1.5F); }
+
+    /** Legacy HUD memory/scale ceilings: at most 2048x2048 (16 MiB per RGBA surface), 2x. */
+    public static UiRenderSettings hud() { return new UiRenderSettings(2048, 2048, 2); }
 }

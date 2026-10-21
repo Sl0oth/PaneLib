@@ -40,6 +40,7 @@ final class UiAnimationClockTest {
         assertEquals(1, finished.value("hover", 1, 100, UiEasing.LINEAR));
         assertFalse(finished.active());
         assertTrue(finished.activeIds().isEmpty());
+        assertEquals(java.util.Set.of("hover"),finished.usedIds(),"completed but present controls retain their target state");
     }
 
     @Test

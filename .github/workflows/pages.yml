@@ -7,6 +7,11 @@ on:
       - 'website/**'
       - 'docs/**'
       - 'gradle.properties'
+      - 'distribution/maven/**'
+      - 'scripts/build_maven_site.py'
+      - 'scripts/check_maven_deployment.py'
+      - 'scripts/prepare_release.py'
+      - 'scripts/tests/**'
       - 'pane-demo/src/main/resources/assets/pane_demo/fonts/**'
       - '.github/workflows/pages.yml'
   workflow_dispatch:
@@ -20,29 +25,52 @@ concurrency:
 
 jobs:
   build:
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Reject a stale main revision
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python3 scripts/check_maven_deployment.py current-main
       - uses: actions/setup-python@v6
         with:
           python-version: '3.12'
           cache: pip
           cache-dependency-path: website/requirements.txt
       - run: python -m pip install -r website/requirements.txt
+      - name: Verify offline release tooling
+        run: python -m unittest discover -s scripts/tests
+      - name: Read the deployed Maven catalog
+        run: python scripts/check_maven_deployment.py baseline --catalog distribution/maven/releases.json --output build/maven-deployment/previous.json
       - run: python website/build.py
+      - name: Assemble every approved Maven version
+        run: python scripts/build_maven_site.py --catalog distribution/maven/releases.json --output website/dist/maven --previous-catalog build/maven-deployment/previous.json
       - uses: actions/upload-pages-artifact@v4
         with:
           path: website/dist
 
   deploy:
+    if: github.ref == 'refs/heads/main'
     needs: build
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       pages: write
       id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Reject removal or replacement of deployed versions
+        run: python scripts/check_maven_deployment.py check-live --catalog distribution/maven/releases.json
+      - name: Recheck main immediately before deployment
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python scripts/check_maven_deployment.py current-main
       - uses: actions/deploy-pages@v4
         id: deployment

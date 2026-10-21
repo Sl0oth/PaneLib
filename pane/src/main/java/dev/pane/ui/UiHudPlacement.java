@@ -1,8 +1,12 @@
 package dev.pane.ui;
 
-/** HUD placement in logical UI points, with bounded viewport fitting. */
+/**
+ * HUD placement in logical UI points, with bounded viewport fitting. Margins apply only on
+ * edge-aligned axes; a centered axis ignores its margin. Scale changes size about the chosen anchor.
+ */
 public record UiHudPlacement(Anchor anchor, float marginX, float marginY, float scale) {
-    public enum Anchor { TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT, CENTER }
+    public enum Anchor { TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT, CENTER,
+        TOP_CENTER, BOTTOM_CENTER, CENTER_LEFT, CENTER_RIGHT }
     public UiHudPlacement {
         anchor = anchor == null ? Anchor.TOP_LEFT : anchor;
         if (!Float.isFinite(marginX) || !Float.isFinite(marginY) || !Float.isFinite(scale))
@@ -20,14 +24,14 @@ public record UiHudPlacement(Anchor anchor, float marginX, float marginY, float 
         w *= fit; h *= fit;
         float mx = marginX / unit, my = marginY / unit;
         float x = switch (anchor) {
-            case TOP_LEFT, BOTTOM_LEFT -> mx;
-            case TOP_RIGHT, BOTTOM_RIGHT -> viewportWidth - w - mx;
-            case CENTER -> (viewportWidth - w) / 2;
+            case TOP_LEFT, BOTTOM_LEFT, CENTER_LEFT -> mx;
+            case TOP_RIGHT, BOTTOM_RIGHT, CENTER_RIGHT -> viewportWidth - w - mx;
+            case CENTER, TOP_CENTER, BOTTOM_CENTER -> (viewportWidth - w) / 2;
         };
         float y = switch (anchor) {
-            case TOP_LEFT, TOP_RIGHT -> my;
-            case BOTTOM_LEFT, BOTTOM_RIGHT -> viewportHeight - h - my;
-            case CENTER -> (viewportHeight - h) / 2;
+            case TOP_LEFT, TOP_RIGHT, TOP_CENTER -> my;
+            case BOTTOM_LEFT, BOTTOM_RIGHT, BOTTOM_CENTER -> viewportHeight - h - my;
+            case CENTER, CENTER_LEFT, CENTER_RIGHT -> (viewportHeight - h) / 2;
         };
         return new UiRect(Math.max(0, Math.min(viewportWidth - w, x)),
             Math.max(0, Math.min(viewportHeight - h, y)), w, h);

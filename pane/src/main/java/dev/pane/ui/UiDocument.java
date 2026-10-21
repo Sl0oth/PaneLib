@@ -31,6 +31,10 @@ public final class UiDocument {
         renderSettings = builder.renderSettings == null ? UiRenderSettings.balanced() : builder.renderSettings;
         scrollSettings = builder.scrollSettings == null ? UiScrollSettings.smooth() : builder.scrollSettings;
         if (pages.isEmpty()) throw new IllegalStateException("A UI document needs at least one page");
+        var pageIds = new java.util.HashSet<String>();
+        for (UiPage page : pages) {
+            if (!pageIds.add(page.id())) throw new IllegalArgumentException("Duplicate page ID: " + page.id());
+        }
         initialPageId = builder.initialPageId == null ? pages.getFirst().id() : builder.initialPageId;
         if (page(initialPageId) == null) throw new IllegalStateException("Unknown initial page: " + initialPageId);
     }
