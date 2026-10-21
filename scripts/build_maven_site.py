@@ -254,7 +254,18 @@ def build_site(catalog, output, *, previous_catalog, asset_dir=None):
         check_path(output)
         require(not output.exists() or (output.is_dir() and not any(output.iterdir())),
                 'Output changed during assembly; refusing to replace it.')
-        os.replace(staging, output)
+        # Windows cannot rename a directory over an existing directory, even an empty one.
+        # Remove only the validated empty placeholder after all assembly checks have passed;
+        # the complete staged tree still becomes visible in one same-filesystem rename.
+        had_empty_output = output.exists()
+        if had_empty_output:
+            output.rmdir()  # Also rejects a concurrent writer that made the directory nonempty.
+        try:
+            os.replace(staging, output)
+        except BaseException:
+            if had_empty_output:
+                output.mkdir(exist_ok=True)
+            raise
     finally:
         if staging.exists():
             shutil.rmtree(staging)
