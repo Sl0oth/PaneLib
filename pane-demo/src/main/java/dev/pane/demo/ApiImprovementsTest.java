@@ -21,7 +21,8 @@ final class ApiImprovementsTest {
 
     private UiScreen create(boolean lowMemory) {
         var doc = UiDocument.builder("PaneLib / Input and focus")
-            .scaling(UiScaling.fixed()).pageShortcuts(true)
+            // Force the low-memory probe above its 1.5x ceiling even on a 1x CI display.
+            .scaling(lowMemory ? UiScaling.fixed().range(2, 2) : UiScaling.fixed()).pageShortcuts(true)
             .renderSettings(lowMemory ? UiRenderSettings.lowMemory() : UiRenderSettings.typography())
             .page(new UiPage("main", "Inputs", "", 0xFF64D4FF, ui -> {
                 var c = ui.canvas(); c.fill(0xFF0B1826,0,0,ui.width(),ui.height());
@@ -224,7 +225,11 @@ final class ApiImprovementsTest {
                 capture(client,"large-inputs");screen=create(true);client.gui.setScreen(screen);
             }
             if(ticks==160) {
-                check(screen.rasterQuality().upscaled(),"low-memory cap reports physical upscaling");
+                var quality=screen.rasterQuality();
+                float ceiling=UiRenderSettings.lowMemory().maximumScale();
+                check(quality.desiredScale()>ceiling,"low-memory fixture requests scale above its ceiling");
+                check(quality.actualScale()<=ceiling,"low-memory raster obeys configured scale ceiling");
+                check(quality.upscaled(),"low-memory cap reports physical upscaling");
                 client.getWindow().setWindowed(854,480);
                 screen.pushFocusScope("leaving",List.of("field"),"field");screen.showPage("other");
                 check(screen.focusScopeId().isEmpty()&&screen.focusedId().isEmpty(),"page change releases scopes and focus");
