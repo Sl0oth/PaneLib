@@ -33,8 +33,15 @@ The corpus and its Unicode license are checked in as test resources only.
 - The isolated Minecraft editing fixture passes **84 checks on macOS ARM64**: keyboard navigation,
   deletion and selection; clipboard/history; joined ZWJ and flag edits; insertion limits; masked fields;
   painted vertical movement and pointer placement. The fixture restores the previous clipboard.
-- Hosted platform results are recorded in [platform testing](../platform-testing.md). Windows desktop
-  testing remains a separate pending gate.
+- [Hosted run 39665812338](https://github.com/Sl0oth/PaneLib/actions/runs/39665812338) passed at
+  implementation commit `e9fbc41d3d0fcf17a5a9eeec5d9f2619203847df`: all 1,265 Java tests and
+  independent consumer builds on Windows/macOS/Linux, plus all ten Ubuntu Minecraft fixture steps.
+  The expanded editing fixture passed all 84 checks there too.
+- The macOS independent consumer also passed against the exact beta.2 development JAR: editing,
+  keyboard Save, disk persistence, Cancel/Escape, resize and reopening. Local runtime SHA-256:
+  `7f246d3e08d3df526873f99b4a506fcf3e551ca31ec5ee6f1d2c3ef753ff2938`.
+- [Platform testing](../platform-testing.md) records runner versions, tooling skips, per-platform hashes
+  and remaining desktop checks. Windows hands-on testing remains a separate pending gate.
 
 A fresh local source review found repeated scans of oversized values. Snapshot construction,
 selection replacement and key handling now reuse a local boundary map. The shared cache holds at

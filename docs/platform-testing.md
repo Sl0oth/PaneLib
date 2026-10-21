@@ -1,8 +1,29 @@
 # Platform testing
 
-The build workflow now defines Windows, macOS and Ubuntu jobs. This configuration is not a
-passing result: record the actual workflow run and all three job outcomes before claiming a
-cross-platform build gate. No new release or binary upload is performed by these checks.
+The build workflow runs Windows, macOS and Ubuntu jobs. The automated build gate passed on
+October 21, 2026 at source commit `e9fbc41d3d0fcf17a5a9eeec5d9f2619203847df`:
+[Unicode/platform run 39665812338](https://github.com/Sl0oth/PaneLib/actions/runs/39665812338).
+The preceding portability-only [run 39664808951](https://github.com/Sl0oth/PaneLib/actions/runs/39664808951)
+also passed. No release or Modrinth upload was performed; beta.2 remains development source.
+
+| Hosted runner | Java unit tests | Release tooling | Fixture tooling | Independent consumer |
+| --- | --- | --- | --- | --- |
+| macOS 26 ARM64 | 1,265 passed | 61 passed | 21 passed | Built |
+| Windows Server 2025 x64 | 1,265 passed | 57 passed, 4 skipped | 21 passed | Built |
+| Ubuntu 24 x64 | 1,265 passed | 61 passed | 21 passed | Built and Minecraft smoke passed |
+
+The four Windows skips are explicitly POSIX process-group integration tests. Mocked Windows
+process handling is a separate check; these skips do not prove real Windows client-process cleanup.
+All ten Ubuntu Minecraft fixture steps passed under Xvfb/software rendering, including the expanded
+84-check Unicode editing fixture. Local macOS checks also passed that editing fixture and the
+independent binary consumer's editing, Save/persistence, Cancel, resize and reopen flow.
+
+The tested beta.2 runtime SHA-256 is `7f246d3e08d3df526873f99b4a506fcf3e551ca31ec5ee6f1d2c3ef753ff2938`
+on macOS/Linux and `4fae8c52b0980f5f5bbc898a6134d35b0ddb53b15850058781e97238fb86dc3a` on Windows.
+Do not claim cross-platform archive byte parity. A detailed comparison of the preceding beta.1
+baseline found all 159 compiled classes identical; only CRLF endings in LICENSE and mixin JSON
+changed the runtime archive. Source/Javadoc archives also had line-ending differences. The current
+matrix retains each platform's own hashes; release-byte reproducibility is a separate concern.
 
 ## Automated scope
 
