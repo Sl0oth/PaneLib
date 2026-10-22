@@ -20,6 +20,10 @@ In this checkout, the starter reads only the release version from the root `grad
 and selects `pane/build/libs/panelib-<version>.jar`. It does not depend on PaneLib's source project,
 Maven Local, or the demo module. An ignored old JAR in this starter's `libs/` cannot override it.
 
+**From a release download:** unpack the release's source code and run
+`./gradlew runClient -PpaneRepository=https://sl0oth.github.io/PaneLib/maven/` in `examples/first-screen`; it
+resolves the matching version from public Maven instead of building the library.
+
 **Unpacked standalone ZIP:** run `./gradlew runClient` inside `pane-first-screen/`. Keep the included
 `panelib-release.properties` and `libs/` JAR together. The descriptor supplies the packaged version;
 no repository checkout is needed. Do not mix source and JARs from different release bundles.

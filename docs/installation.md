@@ -23,16 +23,16 @@ dependencies {
 
 No GitHub login or token is needed. Install the matching runtime with your mod, or deliberately
 bundle it with Loom `include` as described below. Fabric API remains a separate dependency.
-Get the complete starter ZIP and runtime from the
-[GitHub beta release](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.1).
-For the extracted starter, Maven mode is:
+The runtime JAR is on the
+[GitHub beta release](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.1). To try the starter
+without building the library, download that release's source code, then run the starter against Maven:
 
 ```sh
+cd examples/first-screen
 ./gradlew runClient -PpaneRepository=https://sl0oth.github.io/PaneLib/maven/
 ```
 
-Its version descriptor selects the matching released version. The bundled file remains the
-starter's default when no repository is supplied.
+The checkout's root `gradle.properties` selects the matching released version.
 
 ## Fastest first screen
 
@@ -48,7 +48,8 @@ The starter reads the current version from root `gradle.properties` and selects 
 JAR. It shares release metadata only, not implementation sources or Gradle project dependencies.
 The ignored old convenience JAR in `examples/first-screen/libs/` is not selected in checkout mode.
 
-For an unpacked starter ZIP, run `./gradlew runClient` inside `pane-first-screen/`. Its included
+For a standalone starter ZIP (built locally by `prepareRelease`, and attached to the 0.9.9-beta.1
+release), run `./gradlew runClient` inside `pane-first-screen/`. Its included
 `panelib-release.properties` selects the exact bundled library version in `libs/`. Both modes open
 at the title screen; no world is needed. On a fresh normal profile, complete Minecraft's first-start
 accessibility screen before the starter opens. `-PsmokeTest` uses its own disposable profile.

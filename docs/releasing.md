@@ -57,6 +57,13 @@ versions still need their own evidence; byte identity across all operating syste
 
 ## Publication is a separate step
 
+A GitHub release attaches only three files from the verified candidate: the runtime JAR, the
+Maven ZIP and `SHA256SUMS`. The runtime is what players install; the Maven ZIP is what the
+public Maven repository is assembled from, so it must stay attached and unchanged; the checksums
+cover the whole candidate. Sources, Javadoc and the API reference reach developers through Maven,
+and the starter through `examples/first-screen` in the tagged source. The rest of the candidate,
+including its manifest and bundled notes, stays with the local verification record.
+
 The release-candidate workflow runs these checks and retains artifacts; it has read-only
 repository permissions and does not create a release. Public Maven hosting is live on GitHub
 Pages at `https://sl0oth.github.io/PaneLib/maven/`. The committed catalog pins the verified
