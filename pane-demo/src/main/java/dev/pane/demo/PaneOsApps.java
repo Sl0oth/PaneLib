@@ -38,6 +38,7 @@ final class PaneOsApps {
             case "maps" -> maps(ui, caches, look, f);
             case "compass" -> compass(ui, look, f);
             case "calendar" -> calendar(ui, look, f);
+            case "welcome" -> welcome(ui, look, f);
             default -> body(ui.canvas(), look, f, 18, 0);
         }
     }
@@ -955,6 +956,48 @@ final class PaneOsApps {
             + "Hovering a link repaints only that link, and the glass toolbar above re-reads the pixels behind it whenever they move. "
             + "Nothing here is an image: the hero is a gradient, the type is shaped at the exact pixel size of your window.";
         g.wrappedText(body, x, y + 256, w, 15, 24, look.text(), Font.PLAIN, PaneOsArt.FONT);
+    }
+
+    // ------------------------------------------------------------------ welcome
+
+    private static final String[][] WELCOME = {
+        {"globe", "Real liquid glass", "The dock, widgets and panels bend and frost whatever lies behind them."},
+        {"grid", "Apps that work", "Files, Notes, Calculator, Terminal, Music, Messages and Settings all respond."},
+        {"sidebar", "Windows that behave", "Drag, resize, zoom and minimize into the dock. Motion runs on the GPU."},
+        {"search", "Find anything", "⌘ Space opens Spotlight. The clock opens Notification Center."},
+        {"compose", "Drawn by PaneLib", "Every pixel is drawn in Java by the Pane library, inside Minecraft. No images, no web view."}};
+    private static final int[] WELCOME_TINTS = {PaneOsArt.TEAL, PaneOsArt.ORANGE, PaneOsArt.BLUE, PaneOsArt.INDIGO, PaneOsArt.GREEN};
+
+    /** The first-run sheet: what PaneOS is, what to try, and that it is a demo. */
+    private static void welcome(UiContext ui, Look look, UiRect f) {
+        UiCanvas g = ui.canvas();
+        body(g, look, f, 18, 0);
+        float cx = f.centerX(), y = f.y() + 46;
+        g.shadow(UiCanvas.alpha(look.accent(), 90), 18, 0, 8, cx - 38, y, 76, 76, 20);
+        PaneOsArt.squircle(g, cx - 38, y, 76).fillGradient(UiCanvas.lighten(look.accent(), .25F), UiCanvas.darken(look.accent(), .15F), 90);
+        PaneOsArt.mark(g, cx, y + 38, 38, 0xFFFFFFFF);
+        g.centeredText("Welcome to PaneOS", cx, y + 108, 26, look.text(), Font.BOLD, PaneOsArt.FONT);
+        g.centeredText("A demo of the PaneLib user interface library", cx, y + 138, 13.5F, look.secondary(), Font.PLAIN, PaneOsArt.FONT);
+        float rowX = f.x() + 54, rowY = y + 174, textX = rowX + 56, textW = f.right() - 54 - textX;
+        for (int i = 0; i < WELCOME.length; i++) {
+            String[] item = WELCOME[i];
+            float top = rowY + i * 60;
+            g.circle(UiCanvas.alpha(WELCOME_TINTS[i], 40), rowX + 20, top + 20, 20);
+            PaneOsArt.symbol(g, item[0], rowX + 20, top + 20, 20, WELCOME_TINTS[i]);
+            g.text(item[1], textX, top + 2, 14, look.text(), Font.BOLD, PaneOsArt.FONT);
+            g.wrappedText(item[2], textX, top + 21, textW, 12.5F, 17, look.secondary(), Font.PLAIN, PaneOsArt.FONT);
+        }
+        float noteY = rowY + WELCOME.length * 60 + 4;
+        g.line(look.separator(), .7F, f.x() + 40, noteY, f.right() - 40, noteY);
+        g.wrappedText("PaneOS is a demonstration, not an operating system. It is not affiliated with Apple, and nothing in it is real: "
+            + "there are no files, messages or network connections.", f.x() + 54, noteY + 14, f.width() - 108, 11.5F, 16, look.tertiary(), Font.PLAIN, PaneOsArt.FONT);
+        float bw = 200, bh = 36, bx = cx - bw / 2, by = Math.max(noteY + 70, f.bottom() - 60);
+        ui.paintedButton("welcome:continue", "Continue", "welcome", bx, by, bw, bh, bh / 2, true, (c, s) -> {
+            int fill = s.pressed() ? UiCanvas.darken(look.accent(), .12F) : s.hovered() ? UiCanvas.lighten(look.accent(), .08F) : look.accent();
+            c.shadow(UiCanvas.alpha(look.accent(), 70), 8, 0, 3, bx, by, bw, bh, bh / 2);
+            c.roundRect(fill, bx, by, bw, bh, bh / 2);
+            c.centeredText("Continue", cx, by + bh / 2, 14, 0xFFFFFFFF, Font.BOLD, PaneOsArt.FONT);
+        });
     }
 
     // ------------------------------------------------------------------ calendar

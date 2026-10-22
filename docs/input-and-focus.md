@@ -22,7 +22,7 @@ height; text and carets stay clipped when a control is shorter than its text. `U
 complements `textWidth` for custom layout. Public lengths and caret indices use UTF-16 units,
 but editing stops at extended grapheme boundaries: an accented letter, emoji with skin tone,
 flag or joined emoji sequence stays together during navigation, selection, deletion and truncation.
-This behavior is in **unreleased 0.9.9-beta.2 source**; the published beta.1 still uses codepoint
+This behavior is in **unreleased 1.0.0-beta.1 source**; the published beta.1 still uses codepoint
 boundaries. No consumer API change is needed. Segmentation follows Java 25's Unicode 16 rules;
 see [Unicode editing validation](audits/grapheme-editing-2026-10-21.md).
 
@@ -164,7 +164,7 @@ Slider rail/thumb colors follow the theme's raised surface and text colors.
 | --- | --- |
 | Buttons, toggles, radio/segmented choices | Tab focus and Enter/Space activation |
 | Sliders | Tab, arrows, Page Up/Down, Home/End |
-| Fields/textareas | Caret, selection, clipboard, undo/redo, Unicode 16 grapheme boundaries (unreleased beta.2) |
+| Fields/textareas | Caret, selection, clipboard, undo/redo, Unicode 16 grapheme boundaries (unreleased 1.0.0-beta.1) |
 | Custom painted/virtual list rows | Consumer supplies ids/actions and application selection policy |
 | Narrator roles, labels, values and announcements | Not implemented; keyboard support is not narrator support |
 | IME composition and visual bidi navigation | Not implemented; use cases requiring these need another input path |

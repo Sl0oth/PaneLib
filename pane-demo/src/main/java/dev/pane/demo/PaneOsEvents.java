@@ -75,6 +75,11 @@ final class PaneOsEvents {
                 screen.setValue("desk:shot", name);
                 PaneOsShowcase.notify(screen, "photos", "Screenshot", name + " was added to the Desktop.");
             }
+            case "welcome" -> {
+                close(screen, "welcome");
+                PaneOsShowcase.notify(screen, "launch", "Have a look around", "Right-click the desktop or the dock, or press ⌘ Space to search.");
+                screen.setValue("notice:at", (double) System.currentTimeMillis() + 900);
+            }
             case "about" -> {
                 if (arg.isEmpty()) { openApp(screen, "settings"); screen.setValue("settings:pane", 9); }
                 else PaneOsShowcase.notify(screen, arg, PaneOsShowcase.displayName(arg), "Version 26.2 · Drawn entirely with Pane.");
@@ -150,9 +155,10 @@ final class PaneOsEvents {
         screen.setValue("lock:pw", "");
         screen.clearFocus();
         if (!screen.booleanValue("welcomed", false)) {
+            // The first unlock opens the welcome window once the lock screen has lifted.
             screen.setValue("welcomed", true);
-            PaneOsShowcase.notify(screen, "settings", "Welcome to PaneOS", "Everything here is drawn by Pane. Press ⌘ Space to search.");
-            screen.setValue("notice:at", (double) System.currentTimeMillis() + 700);
+            openApp(screen, "welcome");
+            screen.setValue("win:welcome:shownAt", (double) System.currentTimeMillis() + PaneOsShowcase.UNLOCK_MILLIS - 120);
         }
     }
 

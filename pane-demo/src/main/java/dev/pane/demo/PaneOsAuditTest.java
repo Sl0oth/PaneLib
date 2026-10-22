@@ -205,6 +205,15 @@ final class PaneOsAuditTest {
                 check(!screen.booleanValue("locked", true), "Return unlocks");
             }
             case 69 -> capture(client, "paneos-unlocking");
+            case 92 -> {
+                capture(client, "paneos-welcome");
+                check(screen.booleanValue("open:welcome", false) && screen.regionBounds("welcome:continue").isPresent(),
+                    "the first unlock opens the welcome window");
+            }
+            case 96 -> {
+                click("welcome:continue");
+                check(!screen.booleanValue("open:welcome", true), "Continue closes the welcome window");
+            }
             default -> { }
         }
     }

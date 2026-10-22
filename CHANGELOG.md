@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased — liquid glass and live desktop input
+## 1.0.0-beta.1 — liquid glass, GPU motion and PaneOS
 
 - Added `UiCanvas.liquidGlass` with `UiGlass`: rim refraction along the edge normal, colour
   dispersion, frosted and tinted body, specular edge and an outside-only shadow. Lenses and

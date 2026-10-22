@@ -33,7 +33,8 @@ public final class PaneOsShowcase {
         new App("music", "Music", 920, 580, .54F, .49F),
         new App("calculator", "Calculator", 232, 372, .8F, .42F),
         new App("terminal", "Terminal", 680, 420, .4F, .6F),
-        new App("settings", "System Settings", 780, 560, .5F, .47F));
+        new App("settings", "System Settings", 780, 560, .5F, .47F),
+        new App("welcome", "Welcome to PaneOS", 580, 676, .5F, .5F));
     static final String[] DOCK = {"files", "launch", "compass", "messages", "mail", "maps", "photos", "calendar", "notes",
         "music", "calculator", "terminal", "settings", "wayfarer", "|", "downloads", "trash"};
     static final String[] DOCK_NAMES = {"Files", "Apps", "Compass", "Messages", "Mail", "Maps", "Photos", "Calendar", "Notes",
@@ -48,7 +49,8 @@ public final class PaneOsShowcase {
 
     static String displayName(String id) {
         for (int i = 0; i < DOCK.length; i++) if (DOCK[i].equals(id)) return DOCK_NAMES[i];
-        return "Files";
+        App app = app(id);
+        return app == null ? "Files" : id.equals("welcome") ? "PaneOS" : app.name();
     }
 
     /** Caches that outlive individual paints. */
@@ -233,7 +235,7 @@ public final class PaneOsShowcase {
 
     static float radius(App app) { return app.id().equals("calculator") ? 22 : 18; }
 
-    static boolean resizable(App app) { return !app.id().equals("calculator"); }
+    static boolean resizable(App app) { return !app.id().equals("calculator") && !app.id().equals("welcome"); }
 
     static final int UNLOCK_MILLIS = 620;
     static final int OPEN_MILLIS = 480, CLOSE_MILLIS = 200, MINIMIZE_MILLIS = 420;
@@ -262,6 +264,7 @@ public final class PaneOsShowcase {
             ui.refreshAfter((open ? MINIMIZE_MILLIS : CLOSE_MILLIS) - hidden + 20, bounds);
             return;
         }
+        if (shown < 0) { ui.refreshAfter(-shown, bounds); return; }
         if (shown < OPEN_MILLIS) {
             boolean fromDock = ui.booleanValue("win:" + id + ":fromDock", false);
             ui.gpuGroup("window:" + id, bounds, revision, fromDock ? genie : new UiTransform(0, 0, .88F, .88F, 0, 0), settled,
