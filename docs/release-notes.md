@@ -26,6 +26,8 @@ This candidate separates the current fixes from the preserved submitted 0.9.8 ar
 The starter ZIP includes its exact runtime JAR, build wrapper, source, license and version descriptor.
 Unpack it, install Java 25, then use its README. Runtime, source and Javadoc JARs have different roles;
 only the runtime belongs in Minecraft mods. The API ZIP opens as an offline reference.
+The demo JAR is a separate mod: install it next to the runtime and Fabric API; it opens on the
+title screen and H reopens it.
 The Maven ZIP is a candidate repository payload, not proof of public hosting or release publication.
 
 Local verification is macOS ARM64. Windows/Linux desktop behavior, narrator, IME and universal

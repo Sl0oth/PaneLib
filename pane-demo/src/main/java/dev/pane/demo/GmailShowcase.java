@@ -37,8 +37,8 @@ public final class GmailShowcase {
                 {"Linear","Your team’s weekly summary","12 issues completed, 3 projects moved forward. Here's the full picture.","Oct 19","Projects",""},
                 {"me, Alex 2","Dinner plans","Me: Sounds perfect. I'll book a table for seven. See you there!","Oct 18","Personal",""},
                 {"Google Drive","A document was shared with you","Maya Chen shared the document “Fall project notes” with you.","Oct 18","",""},
-                {"Oliver’s reading list","Something worth saving","A handful of interesting reads for a quiet Sunday morning.","Oct 18","",""},
-                {"Casey Lee","Quick question about the project","Hey Oliver, do you have a minute to look at the latest version?","Oct 17","Projects",""},
+                {"Sl0oth’s reading list","Something worth saving","A handful of interesting reads for a quiet Sunday morning.","Oct 18","",""},
+                {"Casey Lee","Quick question about the project","Hey Sl0oth, do you have a minute to look at the latest version?","Oct 17","Projects",""},
                 {"The Neighborhood","October community update","A few dates for your calendar, plus news from around the neighborhood.","Oct 17","",""},
                 {"Jordan Park","Re: Let’s catch up","It's been way too long. Next Tuesday works for me if you're around.","Oct 16","Personal",""},
                 {"Dropbox","Your files have synced","Everything is up to date. You can access your files from any device.","Oct 16","",""},
@@ -114,7 +114,7 @@ public final class GmailShowcase {
         ui.textField("search","query","Search mail",sx+46,12,sw-92,40,"",256,INPUT.font(FONT,16,Font.PLAIN));
         icon(g,"tune",sx+sw-34,22,MUTED);
         icon(g,"help",w-166,23,MUTED);icon(g,"settings",w-128,23,MUTED);icon(g,"apps",w-88,23,MUTED);
-        g.circle(0xFF38675A,w-30,32,17);text(g,"O",w-36,21,19,WHITE,false);
+        g.circle(0xFF38675A,w-30,32,17);text(g,"S",w-36,21,19,WHITE,false);
         ui.paintedButton("compose","Compose message","compose",12,80,narrow?48:142,56,16,true,(canvas,state)->{canvas.roundRect(0xFFC2E7FF,12,80,narrow?48:142,56,16);icon(canvas,"pen",27,97,INK);if(!narrow)text(canvas,"Compose",62,99,14,INK,true);});
         String[] folders={"Inbox","Starred","Snoozed","Sent","Drafts","All mail","Trash"};String[] icons={"inbox","star","clock","send","file","mail","trash"};
         for(int i=0;i<folders.length;i++){
@@ -185,7 +185,7 @@ public final class GmailShowcase {
         g.circle(0xFF7E57C2,left+30,234,19);text(g,m.sender.substring(0,1).toUpperCase(),left+24,223,19,WHITE,false);
         text(g,m.sender,left+65,218,14,INK,true);text(g,"<hello@example.com>",left+65+g.textWidth(m.sender,14,Font.BOLD,FONT)+10,219,12,MUTED,false);
         text(g,"to me",left+65,240,12,MUTED,false);text(g,m.time,right-90,220,12,MUTED,false);
-        g.wrappedText("Hi Oliver,\n\n"+m.preview+"\n\nThis is a local sample conversation for the PaneLib inbox.\n\nThanks,\n"+m.sender,left+65,290,right-left-110,14,24,INK,Font.PLAIN,FONT);
+        g.wrappedText("Hi Sl0oth,\n\n"+m.preview+"\n\nThis is a local sample conversation for the PaneLib inbox.\n\nThanks,\n"+m.sender,left+65,290,right-left-110,14,24,INK,Font.PLAIN,FONT);
         g.strokeRoundRect(0xFF747775,1,left+65,h-100,110,36,18);icon(g,"left",left+78,h-92,MUTED);text(g,"Reply",left+107,h-90,14,MUTED,false);hit(ui,"compose",left+65,h-100,110,36);
     }
     private static void composer(UiContext ui,Model m,float left,float right,float h){

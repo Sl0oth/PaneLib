@@ -2,8 +2,8 @@
   "schemaVersion": 1,
   "id": "pane_demo",
   "version": "${version}",
-  "name": "Pane Showcase",
-  "description": "Demonstration screens built with the Pane UI library.",
+  "name": "PaneLib Demo",
+  "description": "PaneOS and the other PaneLib demos. Opens on the title screen; press H to reopen it.",
   "authors": ["Sl0oth"],
   "license": "MIT",
   "environment": "client",
@@ -15,6 +15,6 @@
     "minecraft": "~26.2",
     "java": ">=25",
     "fabric-api": "*",
-    "panelib": "*"
+    "panelib": ">=${version}"
   }
 }

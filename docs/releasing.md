@@ -14,8 +14,10 @@ Maven metadata, filenames and release notes must agree. Update the current coord
 the root README when changing that version; the packaging check detects drift.
 
 The candidate contains runtime, source and Javadoc JARs, an offline API ZIP, a standalone
-starter ZIP, a local Maven repository ZIP, release notes, a manifest and SHA-256 checksums.
-The runtime JAR is the only library JAR players install. The starter includes the matching
+starter ZIP, a local Maven repository ZIP, the demo mod JAR, release notes, a manifest and SHA-256
+checksums. The runtime JAR is the only library JAR players install. The demo JAR
+(`panelib-demo-<version>.jar`) is a separate mod holding PaneOS and the other examples; packaging
+checks that it requires this PaneLib version and carries none of the library's classes. The starter includes the matching
 runtime, wrapper and source; it does not depend on the checkout.
 
 ## Verify what a developer downloads
@@ -34,6 +36,21 @@ the library with Loom `include`; verification compares the nested bytes to the c
 Logs and `verification.json` stay with the disposable projects. Omit `--smoke` for build-only
 checks; that does not establish Minecraft runtime behavior. Existing dependency caches can
 be reused, so this is not a proof of a first network download or public hosting.
+
+## Play the release files
+
+Run a clean production client, not the development one, holding only Fabric API and the jars in a
+directory, in a fresh game folder under `pane-demo/build/release-client/`:
+
+```sh
+python3 scripts/prepare_release.py --upload "build/release/<version>" "build/release/<version>-upload"
+./gradlew :pane-demo:releaseClient -PreleaseFiles="$PWD/build/release/<version>-upload"
+./gradlew :pane-demo:releaseClient -PreleaseFiles="$PWD/build/release/<version>-upload" -PreleaseFixture=paneOsTest
+```
+
+The first opens the game as a player would get it, with the demo launcher on the title screen. The second runs the
+PaneOS acceptance checks against the release jars and exits; it must end with
+`[PaneOsTest] complete PASS`. The checks simulate clicks, so keep the real pointer off the game window.
 
 ## Immutability and reproducibility
 
@@ -57,10 +74,11 @@ versions still need their own evidence; byte identity across all operating syste
 
 ## Publication is a separate step
 
-A GitHub release attaches only three files from the verified candidate: the runtime JAR, the
-Maven ZIP and `SHA256SUMS`. The runtime is what players install; the Maven ZIP is what the
-public Maven repository is assembled from, so it must stay attached and unchanged; the checksums
-cover the whole candidate. Sources, Javadoc and the API reference reach developers through Maven,
+A GitHub release attaches only the files `--upload` collects from the verified candidate: the
+runtime JAR, the demo JAR, the Maven ZIP and a `SHA256SUMS` covering exactly those three. The
+runtime is what players install; the demo is the optional mod for trying PaneLib; the Maven ZIP is
+what the public Maven repository is assembled from, so it must stay attached and unchanged. The
+candidate's own `SHA256SUMS` covers every file and stays with it. Sources, Javadoc and the API reference reach developers through Maven,
 and the starter through `examples/first-screen` in the tagged source. The rest of the candidate,
 including its manifest and bundled notes, stays with the local verification record.
 

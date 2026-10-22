@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Releases now include `panelib-demo-<version>.jar`, the examples as their own mod: install it
+  next to PaneLib and Fabric API; it opens on the title screen and H reopens it. `prepare_release.py --upload` collects the files to
+  attach, and `:pane-demo:releaseClient` plays them in a clean production client.
+- Packaging checks the README's coordinate instead of a line the README no longer has.
+
 ## 1.0.0-beta.1 — liquid glass, GPU motion and PaneOS
 
 - Added `UiCanvas.liquidGlass` with `UiGlass`: rim refraction along the edge normal, colour

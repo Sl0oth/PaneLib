@@ -25,7 +25,7 @@ class ReleaseFixture(unittest.TestCase):
         self.put('LICENSE', self.license)
         self.put('gradle.properties', f'version={self.version}\ngroup=dev.pane\nminecraft_version=26.2\n'
                  'loader_version=0.19.3\nfabric_api_version=0.157.0+26.2\n')
-        self.put('README.md', f'Current local candidate: `dev.pane:panelib:{self.version}`\n')
+        self.put('README.md', f'Use `dev.pane:panelib:{self.version}` from Maven.\n')
         self.put('build.gradle', '// synthetic build configuration\n')
         self.put('pane/build.gradle', '// synthetic library configuration\n')
         self.put('docs/release-notes.md', '# PaneLib {{version}}\nLocal candidate, not published.\n')
@@ -50,6 +50,11 @@ class ReleaseFixture(unittest.TestCase):
         self.names = release.artifact_names(self.version)
         for role, entries in self.archives.items():
             self.put('pane/build/libs/' + self.names[role], release.deterministic_zip(entries))
+        self.put('pane-demo/build.gradle', '// synthetic demo configuration\n')
+        self.put('pane-demo/src/main/java/dev/pane/demo/PaneDemoClient.java', b'package dev.pane.demo; class PaneDemoClient {}')
+        self.demo_meta = {'schemaVersion': 1, 'id': 'pane_demo', 'version': self.version, 'environment': 'client',
+                          'depends': {'panelib': '>=' + self.version}}
+        self.write_demo({})
         starter = 'examples/first-screen/'
         for name in release.STARTER_FILES:
             self.put(starter + name, b'fixture\n')
@@ -69,9 +74,15 @@ class ReleaseFixture(unittest.TestCase):
         target.write_bytes(data.encode() if isinstance(data, str) else data)
         return target
 
+    def write_demo(self, extra):
+        entries = {'dev/pane/demo/PaneDemoClient.class': b'synthetic demo bytecode', 'LICENSE': self.license,
+                   'fabric.mod.json': release.json_bytes(self.demo_meta),
+                   'assets/pane_demo/lang/en_us.json': b'{}', **extra}
+        self.put('pane-demo/build/libs/' + self.names['demo'], release.deterministic_zip(entries))
+
     def freshen(self):
         when = time.time_ns() + 1_000_000_000
-        for base in ('pane/build/classes', 'pane/build/libs'):
+        for base in ('pane/build/classes', 'pane/build/libs', 'pane-demo/build/libs'):
             for path in (self.root / base).rglob('*'):
                 if path.is_file():
                     os.utime(path, ns=(when, when))
@@ -139,6 +150,37 @@ class ReleaseFixture(unittest.TestCase):
         self.assertEqual(release.tree_files(original), old)
         self.assertNotEqual(release.tree_files(candidate), old)
 
+    def test_demo_ships_beside_the_library_without_bundling_it(self):
+        output = self.package()
+        self.assertTrue((output / self.names['demo']).is_file())
+        release.verify_directory(output)
+        for extra, message in (({'dev/pane/ui/UiScreen.class': b'copy'}, 'bundles a library class'),
+                               ({'secrets/.env': b'x'}, 'Unexpected demo content')):
+            with self.subTest(message=message):
+                self.write_demo(extra)
+                self.freshen()
+                with self.assertRaisesRegex(release.ReleaseError, message):
+                    release.assemble(self.root)
+        self.write_demo({})
+        self.demo_meta['depends'] = {'panelib': '*'}
+        self.write_demo({})
+        self.freshen()
+        with self.assertRaisesRegex(release.ReleaseError, 'require this PaneLib version'):
+            release.assemble(self.root)
+
+    def test_upload_set_holds_only_attached_files_and_their_checksums(self):
+        output = self.package()
+        upload = release.upload_set(output, self.root / 'upload')
+        attached = {self.names[role] for role in release.UPLOAD_ROLES}
+        self.assertEqual(set(release.tree_files(upload)), attached | {release.CHECKSUMS})
+        sums = (upload / release.CHECKSUMS).read_text().splitlines()
+        self.assertEqual(len(sums), len(attached))
+        for line in sums:
+            checksum, name = line.split('  ')
+            self.assertEqual(release.digest((output / name).read_bytes()), checksum)
+        with self.assertRaisesRegex(release.ReleaseError, 'must not exist'):
+            release.upload_set(output, upload)
+
     def test_starter_allowlist_descriptor_runtime_and_source_no_mutation(self):
         before = release.tree_files(self.root / 'examples/first-screen')
         output = self.package()
@@ -173,8 +215,8 @@ class ReleaseFixture(unittest.TestCase):
         self.assertFalse((self.root / 'build/release').exists())
 
     def test_readme_coordinate_drift_is_rejected(self):
-        self.put('README.md', 'Current local candidate: `dev.pane:panelib:old`\n')
-        with self.assertRaisesRegex(release.ReleaseError, 'README current local candidate'):
+        self.put('README.md', f'Use `dev.pane:panelib:{self.version}`, not `dev.pane:panelib:old`.\n')
+        with self.assertRaisesRegex(release.ReleaseError, 'README coordinate'):
             release.stage(self.root)
 
     def test_build_freshness_rejects_source_newer_than_compilation(self):

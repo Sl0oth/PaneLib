@@ -156,7 +156,12 @@ def artifact_names(version):
     return {'runtime': f'panelib-{version}.jar', 'sources': f'panelib-{version}-sources.jar',
             'javadoc': f'panelib-{version}-javadoc.jar', 'starter': f'panelib-{version}-starter.zip',
             'api-reference': f'panelib-{version}-api-reference.zip',
-            'maven-repository': f'panelib-{version}-maven.zip', 'release-notes': 'RELEASE_NOTES.md'}
+            'maven-repository': f'panelib-{version}-maven.zip', 'release-notes': 'RELEASE_NOTES.md',
+            'demo': f'panelib-demo-{version}.jar'}
+
+
+# The only files attached to a GitHub release; everything else stays local for verification.
+UPLOAD_ROLES = ('runtime', 'demo', 'maven-repository')
 
 
 def validate_library(archives, version, license_data):
@@ -185,6 +190,24 @@ def validate_library(archives, version, license_data):
     source_meta['version'] = version
     require(source_meta == metadata, 'Source/runtime metadata differs beyond the version template.')
     return metadata
+
+
+def validate_demo(entries, version, license_data, runtime):
+    """The demo is a separate mod that needs PaneLib installed; it never carries library classes."""
+    require(entries.get('LICENSE') == license_data, 'demo license mismatch.')
+    metadata = json.loads(entries.get('fabric.mod.json', b'{}'))
+    require(metadata.get('id') == 'pane_demo' and metadata.get('version') == version,
+            'Demo ID/version does not match root version.')
+    require(metadata.get('environment') == 'client', 'Demo must remain client-only.')
+    require(metadata.get('depends', {}).get('panelib') == '>=' + version, 'Demo must require this PaneLib version.')
+    require('dev/pane/demo/PaneDemoClient.class' in entries, 'Demo is missing its client entrypoint.')
+    for name in entries:
+        require(name in ('META-INF/MANIFEST.MF', 'LICENSE', 'fabric.mod.json')
+                or (name.startswith('dev/pane/') and name.endswith('.class'))
+                or name.startswith('assets/pane_demo/'), f'Unexpected demo content: {name}')
+        require(not name.startswith('dev/pane/mcef/'), f'Excluded package in demo: {name}')
+        require(name not in runtime or name in ('META-INF/MANIFEST.MF', 'LICENSE', 'fabric.mod.json'),
+                f'Demo bundles a library class: {name}')
 
 
 def check_exact(actual, expected, label, ignored=()):
@@ -362,9 +385,9 @@ def assemble(root):
     config = release_config(root)
     version = config['version']
     names = artifact_names(version)
-    coordinate_note = re.findall(rb'Current local candidate:\s*`([^`]+)`', plain_file(root / 'README.md'))
-    require(coordinate_note == [f'{config["group"]}:panelib:{version}'.encode()],
-            'README current local candidate coordinate differs from root version.')
+    coordinates = set(re.findall(rb'`(' + re.escape(config['group'].encode()) + rb':panelib:[^`]+)`', plain_file(root / 'README.md')))
+    require(coordinates == {f'{config["group"]}:panelib:{version}'.encode()},
+            'README coordinate differs from root version.')
     paths = {role: root / 'pane/build/libs' / names[role] for role in ('runtime', 'sources', 'javadoc')}
     payload = {names[role]: plain_file(path) for role, path in paths.items()}
     archives = {role: zip_entries(payload[names[role]], role) for role in paths}
@@ -378,6 +401,12 @@ def assemble(root):
     payload[names['starter']] = deterministic_zip(starter_entries(root, version, payload[names['runtime']]),
                                                    ('pane-first-screen/gradlew',))
     payload[names['api-reference']] = payload[names['javadoc']]
+    demo_path = root / 'pane-demo/build/libs' / names['demo']
+    payload[names['demo']] = plain_file(demo_path)
+    validate_demo(zip_entries(payload[names['demo']], 'demo'), version, plain_file(root / 'LICENSE'), archives['runtime'])
+    demo_inputs = [path for path in (root / 'pane-demo/src/main').rglob('*') if path.is_file()]
+    latest_demo = max(path.stat().st_mtime_ns for path in [*demo_inputs, root / 'pane-demo/build.gradle'])
+    require(demo_path.stat().st_mtime_ns >= latest_demo, 'Demo JAR predates current demo sources. Rebuild it.')
     notes = plain_file(root / 'docs/release-notes.md')
     require(b'{{version}}' in notes, 'Release notes template must contain {{version}}.')
     notes = notes.replace(b'{{version}}', version.encode())
@@ -430,6 +459,7 @@ def verify_directory(directory):
     license_data = archives['runtime'].get('LICENSE')
     require(bool(license_data), 'Runtime license absent.')
     metadata = validate_library(archives, version, license_data)
+    validate_demo(zip_entries(entries[names['demo']], 'demo'), version, license_data, archives['runtime'])
     require(manifest.get('requires') == metadata['depends'] and manifest.get('environment') == 'client'
             and manifest.get('license') == 'MIT' and manifest.get('status') == 'local-candidate-not-published',
             'Manifest runtime metadata mismatch.')
@@ -533,14 +563,33 @@ def stage(root=ROOT, output=None):
     return destination, True
 
 
+def upload_set(candidate, output):
+    """Copy the attached release files and a SHA256SUMS covering exactly them into a fresh directory."""
+    manifest = verify_directory(candidate)
+    names = artifact_names(manifest['version'])
+    output = Path(output).absolute()
+    require(not output.exists() and not output.is_symlink(), f'Upload directory must not exist yet: {output}')
+    output.mkdir(parents=True)
+    files = {names[role]: (candidate / names[role]).read_bytes() for role in UPLOAD_ROLES}
+    for name, data in files.items():
+        (output / name).write_bytes(data)
+    (output / CHECKSUMS).write_bytes(''.join(f'{digest(data)}  {name}\n' for name, data in sorted(files.items())).encode())
+    return output
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__, allow_abbrev=False)
     group = parser.add_mutually_exclusive_group()
     group.add_argument('--output', type=Path, help='Stage to a fresh dedicated candidate directory.')
     group.add_argument('--verify', type=Path, help='Verify an existing candidate without touching it or rebuilding.')
+    group.add_argument('--upload', nargs=2, type=Path, metavar=('CANDIDATE', 'OUTPUT'),
+                       help='Verify a candidate and copy only the files to attach to the release into OUTPUT.')
     options = parser.parse_args(argv)
     try:
-        if options.verify:
+        if options.upload:
+            path = upload_set(options.upload[0].absolute(), options.upload[1])
+            print(f'Release files ready to attach: {path} (not published)')
+        elif options.verify:
             manifest = verify_directory(options.verify.absolute())
             print(f'Verified PaneLib {manifest["version"]}: {options.verify} (not published)')
         else:

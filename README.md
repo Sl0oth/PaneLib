@@ -8,7 +8,8 @@ Latest beta: [`1.0.0-beta.1`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.
 0.19.3+, Fabric API and Java 25. It adds liquid glass, GPU-animated groups of controls, region-only
 repaints and the PaneOS showcase. Developers can use `dev.pane:panelib:1.0.0-beta.1` from the
 anonymous Maven repository at `https://sl0oth.github.io/PaneLib/maven/`, or download the runtime JAR
-from the release page. See [installation](docs/installation.md). The submitted 0.9.8 snapshot is preserved. GitHub releases
+from the release page. To try it, put the runtime JAR and the demo JAR from the release in your
+`mods` folder with Fabric API; the demos open on the title screen and H reopens them. See [installation](docs/installation.md). The submitted 0.9.8 snapshot is preserved. GitHub releases
 do not update Modrinth.
 
 ## First screen in your own mod

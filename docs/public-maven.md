@@ -51,7 +51,7 @@ do not replace an asset or edit the hash of a published coordinate.
    catalog. This bootstraps a live empty `maven/catalog.json`. A live 404 is accepted only when the
    proposed catalog is empty; an unavailable or invalid catalog otherwise blocks deployment.
 3. After release upload is authorized, upload that exact `panelib-<version>-maven.zip` as a public
-   asset on release `v<version>`, alongside the runtime JAR and `SHA256SUMS` and nothing else (see
+   asset on release `v<version>`, alongside the runtime JAR, the demo JAR and `SHA256SUMS` and nothing else (see
    [releasing](releasing.md)). A private draft asset is not an anonymous download source.
 4. Verify the public asset matches the reviewed hash and size, then append the approved entry to
    `distribution/maven/releases.json` on current `main`. Never delete older entries. This change

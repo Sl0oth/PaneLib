@@ -61,7 +61,7 @@ tasks.register('verifyReleaseTooling', Exec) {
 tasks.register('prepareRelease', Exec) {
     group = 'distribution'
     description = 'Build and verify an immutable local candidate with matching starter and Maven repository.'
-    dependsOn 'verifyReleaseTooling', ':pane:build', ':pane:publishMavenJavaPublicationToLocalBuildRepository'
+    dependsOn 'verifyReleaseTooling', ':pane:build', ':pane-demo:build', ':pane:publishMavenJavaPublicationToLocalBuildRepository'
     commandLine releasePython, 'scripts/prepare_release.py'
 }
 tasks.register('verifyRelease', Exec) {

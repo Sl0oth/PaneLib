@@ -4,6 +4,15 @@ PaneLib is a **client-side library**, separate from its example showcase. Instal
 adds no screen or key binding. Your mod supplies those. The target is Minecraft **26.2**, Fabric
 Loader **0.19.3 or newer**, **Java 25**, and **Fabric API**. Other versions/loaders are not claimed.
 
+## Try the demo
+
+To see what PaneLib can do without writing code, download both `panelib-1.0.0-beta.1.jar` and
+`panelib-demo-1.0.0-beta.1.jar` from the
+[release](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.1). Put them in your Minecraft
+26.2 `mods` folder with Fabric API and start the game: the demo launcher opens on the title screen,
+and **H** reopens it later, including in a world. The demo is its own mod; the library never adds a
+screen or key by itself.
+
 ## Public Maven dependency
 
 The latest beta is [`1.0.0-beta.1`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.1). Add this repository and dependency to your Minecraft 26.2

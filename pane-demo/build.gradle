@@ -1,5 +1,9 @@
 // Showcase mod. Consumes Pane exactly the way any other mod would.
 
+base {
+    archivesName = 'panelib-demo'
+}
+
 loom {
     runs {
         client {
@@ -137,5 +141,30 @@ if (project.hasProperty('exampleTest')) {
             if (!output.contains('[ExamplesTest] complete PASS') || output.contains('[ExamplesTest] FAIL'))
                 throw new GradleException('Example fixture failed or did not finish. See ' + log)
         }
+    }
+}
+
+// Plays release files the way a player would: a production client holding only Fabric API and the
+// given jars, in a fresh game folder. ./gradlew :pane-demo:releaseClient -PreleaseFiles=<dir> [-PreleaseFixture=paneOsTest]
+configurations {
+    releaseClientMods { transitive = false }
+}
+dependencies {
+    releaseClientMods "net.fabricmc.fabric-api:fabric-api:${rootProject.fabric_api_version}"
+}
+tasks.register('releaseClient', net.fabricmc.loom.task.prod.ClientProductionRunTask) {
+    group = 'verification'
+    description = 'Run a clean production client with Fabric API and the jars in -PreleaseFiles.'
+    def releaseFiles = providers.gradleProperty('releaseFiles')
+    def gameDir = layout.buildDirectory.dir('release-client')
+    mods.from(configurations.releaseClientMods)
+    mods.from(releaseFiles.map { fileTree(it) { include '*.jar' } })
+    runDir = gameDir
+    outputs.upToDateWhen { false }
+    def fixture = providers.gradleProperty('releaseFixture')
+    if (fixture.isPresent()) jvmArgs.add("-Dpane.demo.${fixture.get()}=true")
+    doFirst {
+        if (!releaseFiles.isPresent()) throw new GradleException('Pass -PreleaseFiles=<directory holding the release jars>.')
+        delete gameDir
     }
 }
