@@ -114,7 +114,7 @@ final class PaneOsWidgets {
 
     // ------------------------------------------------------------------ calendar, weather
 
-    private static void calendar(UiCanvas g, Look look, UiRect r) {
+    static void calendar(UiCanvas g, Look look, UiRect r) {
         plate(g, look, r);
         LocalDate today = LocalDate.now();
         float x = r.x() + 16;
@@ -128,7 +128,7 @@ final class PaneOsWidgets {
         g.text("Lunch with Ana", x + 10, r.y() + 131, 12.5F, ink(look), Font.BOLD, PaneOsArt.FONT);
     }
 
-    private static void weather(UiCanvas g, Look look, UiRect r) {
+    static void weather(UiCanvas g, Look look, UiRect r) {
         plate(g, look, r);
         float x = r.x() + 18;
         g.text("Lake Tahoe", x, r.y() + 14, 14, ink(look), Font.BOLD, PaneOsArt.FONT);
@@ -192,14 +192,17 @@ final class PaneOsWidgets {
         }
     }
 
-    private static void batteries(UiCanvas g, Look look, UiRect r) {
+    private static void batteries(UiCanvas g, Look look, UiRect r) { batteries(g, look, r, 4); }
+
+    /** The first {@code count} devices' charge rings. */
+    static void batteries(UiCanvas g, Look look, UiRect r, int count) {
         plate(g, look, r);
         String[] names = {"PaneBook", "Headphones", "Keyboard", "Mouse"};
         int[] levels = {84, 62, 91, 18};
         String[] glyphs = {"battery", "note", "grid", "person"};
-        float step = r.width() / names.length;
-        for (int i = 0; i < names.length; i++) {
-            float cx = r.x() + step * i + step / 2, cy = r.y() + 66, radius = 30;
+        float step = r.width() / count;
+        for (int i = 0; i < count; i++) {
+            float cx = r.x() + step * i + step / 2, cy = r.y() + 66, radius = Math.min(30, step / 2 - 12);
             int color = levels[i] <= 20 ? 0xFFFF453A : 0xFF30D158;
             g.strokeCircle(look.dark() ? 0x33FFFFFF : 0x1F000000, 5.5F, cx, cy, radius);
             g.path().arc(cx, cy, radius, -90, 360 * levels[i] / 100F).stroke(color, 5.5F);
@@ -211,16 +214,27 @@ final class PaneOsWidgets {
 
     // ------------------------------------------------------------------ desktop items
 
+    /** Desktop icons in a column down the right edge; each has its own context menu. */
     static void desktopItems(UiContext ui, Look look, float w, float h) {
+        var keys = new java.util.ArrayList<String>();
+        var names = new java.util.ArrayList<String>();
+        var kinds = new java.util.ArrayList<String>();
+        keys.add("projects"); names.add("Projects"); kinds.add("folder");
+        keys.add("notes"); names.add("Field Notes"); kinds.add("doc");
         String shot = ui.stringValue("desk:shot", "");
-        String[] names = shot.isEmpty() ? new String[] {"Projects", "Field Notes"} : new String[] {"Projects", "Field Notes", shot};
-        String[] kinds = shot.isEmpty() ? new String[] {"folder", "doc"} : new String[] {"folder", "doc", "photo"};
+        if (!shot.isEmpty()) { keys.add("shot"); names.add(shot); kinds.add("photo"); }
+        int folders = (int) ui.numberValue("desk:folders", 0);
+        for (int i = 1; i <= folders; i++) { keys.add("folder" + i); names.add(i == 1 ? "untitled folder" : "untitled folder " + i); kinds.add("folder"); }
         String selected = ui.stringValue("desk:sel", "");
-        for (int i = 0; i < names.length; i++) {
-            float x = w - 112, y = PaneOsShowcase.MENU_H + 18 + i * 106;
-            String id = "desk:item" + i, kind = kinds[i], name = names[i];
-            boolean isSelected = selected.equals(Integer.toString(i));
-            ui.paintedButton(id, name, "desk:" + i, x, y, 96, 96, 10, true, (c, s) -> {
+        var style = PaneOsShowcase.menuStyle(look);
+        int slot = 0;
+        for (int i = 0; i < keys.size(); i++) {
+            String key = keys.get(i), kind = kinds.get(i), name = names.get(i), id = "desk:item:" + key;
+            if (ui.booleanValue("desk:trashed:" + key, false)) continue;
+            float x = w - 112, y = PaneOsShowcase.MENU_H + 18 + slot++ * 106;
+            if (y + 96 > h - 110) break;
+            boolean isSelected = selected.equals(key);
+            ui.paintedButton(id, name, "desk:" + key, x, y, 96, 96, 10, true, (c, s) -> {
                 if (isSelected) c.roundRect(0x33000000, x + 18, y + 2, 60, 60, 10);
                 desktopIcon(c, kind, x + 22, y + 6, 52);
                 String label = c.ellipsize(name, 92, 12, Font.BOLD, PaneOsArt.FONT);
@@ -229,6 +243,11 @@ final class PaneOsWidgets {
                 c.text(label, x + 48 - tw / 2 + .6F, y + 67.6F, 12, 0x66000000, Font.BOLD, PaneOsArt.FONT);
                 c.text(label, x + 48 - tw / 2, y + 67, 12, 0xFFFFFFFF, Font.BOLD, PaneOsArt.FONT);
             });
+            ui.contextMenu(id, java.util.List.of(
+                new UiMenuItem("open", "Open", "desk:open:" + key).shortcut("⌘O"),
+                new UiMenuItem("info", "Get Info", "desk:info:" + key).shortcut("⌘I"),
+                new UiMenuItem("rename", "Rename", "desk:rename").enabled(false),
+                new UiMenuItem("trash", "Move to Trash", "desk:trash:" + key).shortcut("⌘⌫").startsGroup()), style);
         }
     }
 

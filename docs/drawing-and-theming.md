@@ -275,6 +275,23 @@ panel keeps refracting the desktop. Inside `cachedLayer` and `gpuLayer` painting
 that layer drew first; put the backdrop in the same cache when both are static, as PaneOS does with
 its wallpaper and widgets. Rotated or sheared drawing falls back to a blurred, tinted panel.
 
+## Menu rows and context menus
+
+Menu rows can show a right-aligned shortcut hint, be disabled, or start a new group with a divider:
+
+```java
+List.of(new UiMenuItem("new", "New Window", "new-window").shortcut("⌘N"),
+    new UiMenuItem("undo", "Undo", "undo").shortcut("⌘Z").enabled(false),
+    new UiMenuItem("close", "Close Window", "close").shortcut("⌘W").startsGroup());
+```
+
+Disabled rows are dimmed, take no pointer and are skipped by arrow keys. Shortcut text is a hint
+only; handle the keys themselves in your key handler.
+
+`ui.contextMenu(targetId, items, style)` attaches a menu to a control painted just before it, such
+as a desktop background, a file icon or a dock tile. Right-clicking opens it where the pointer is,
+sized to its rows; the topmost control under the pointer decides which context menu opens.
+
 ## Popup menu styling
 
 Both `menuButton` and `dropdown` accept an optional final `UiMenuStyle` argument.

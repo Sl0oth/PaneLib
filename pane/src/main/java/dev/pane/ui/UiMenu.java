@@ -4,6 +4,9 @@ import java.util.List;
 
 /** A pending native popup menu registered while a page is painted. */
 record UiMenu(String id, UiRect anchor, List<UiMenuItem> items, String selectedItemId, UiMenuStyle style) {
+    /** Menu ids for {@link UiContext#contextMenu}, which open at the pointer. */
+    static final String CONTEXT_PREFIX = "context:";
+
     UiMenu(String id, UiRect anchor, List<UiMenuItem> items) {
         this(id, anchor, items, null, UiMenuStyle.defaults());
     }

@@ -33,8 +33,8 @@ final class ExamplesAuditTest {
                 case 1 -> { capture(c,"example-shelf");check(c.level==null,"gallery needs no world");check(gallery.buttonState("wayfarer").orElseThrow().label().equals("Open Wayfarer menu"),"gallery exposes named keyboard targets");paints=gallery.paintCount();advance(900); }
                 case 2 -> {check(gallery.paintCount()==paints,"idle gallery does not repaint");click(gallery,"wayfarer");advance(1200);}
                 case 3 -> {var s=current(c);check(s.regionBounds("deploy").isPresent(),"Wayfarer opens from gallery");check(c.level==null,"player menu stays world-free");capture(c,"wayfarer-current");escape(s);advance(600);}
-                case 4 -> {check(c.gui.screen()==gallery,"Wayfarer restores gallery parent");click(gallery,"paneos");advance(1400);}
-                case 5 -> {var s=current(c);check(s.regionBounds("dock:files").isPresent(),"PaneOS opens from gallery");capture(c,"paneos-current");escape(s);advance(500);}
+                case 4 -> {check(c.gui.screen()==gallery,"Wayfarer restores gallery parent");click(gallery,"paneos");advance(2600);}
+                case 5 -> {var s=current(c);check(s.regionBounds("lock:avatar").isPresent(),"PaneOS boots to its lock screen from gallery");capture(c,"paneos-current");escape(s);advance(500);}
                 case 6 -> {check(c.gui.screen()==gallery,"PaneOS restores gallery parent");click(gallery,"mail");advance(900);}
                 case 7 -> {var s=current(c);check(s.regionBounds("compose").isPresent(),"Pane Mail opens from gallery");capture(c,"mail-current");escape(s);advance(500);}
                 case 8 -> {check(c.gui.screen()==gallery,"Pane Mail restores gallery parent");c.getWindow().setWindowed(860,600);advance(800);}

@@ -78,8 +78,8 @@ composition. Tooltip overlays remain independent.
   coordinates through translations and affine groups. Moving inside it, or leaving it, repaints only
   that region. PaneOS magnifies its dock toward the cursor this way.
 - `ui.refreshAfter(millis, bounds)` repaints `bounds` once after a delay. Call it on every paint that
-  should keep refreshing; the earliest request wins. A clock asks for the next second or minute and
-  an idle screen otherwise does nothing.
+  should keep refreshing; each request repaints only its own bounds when due. A clock asks for the
+  next second or minute and an idle screen otherwise does nothing.
 - `ui.dragArea(id, key, x, y, w, h, moves)` makes a title bar draggable. The travel accumulates in
   `key:x` and `key:y`; naming what the drag `moves` lets each step repaint only where the window was
   and where it goes instead of the page.

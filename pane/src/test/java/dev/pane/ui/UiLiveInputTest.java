@@ -50,18 +50,20 @@ class UiLiveInputTest {
     }
 
     @Test
-    void refreshKeepsTheEarliestRequestAndUnionsWhatItCovers() {
+    void eachRefreshKeepsItsOwnDeadlineAndBounds() {
         paint(ui -> {
             ui.refreshAfter(5000, new UiRect(0, 0, 10, 10));
             ui.withTranslation(50, 50, moved -> moved.refreshAfter(1000, new UiRect(0, 0, 10, 10)));
+            ui.refreshAfter(10, null);
         });
-        var live = interactions.live;
-        long remaining = (live.refreshAtNanos - System.nanoTime()) / 1_000_000;
-        assertTrue(remaining > 500 && remaining <= 1000, "earliest deadline wins (" + remaining + "ms)");
-        assertEquals(new UiRect(0, 0, 60, 60), live.refreshBounds);
-        assertFalse(live.refreshFull);
-        paint(ui -> ui.refreshAfter(10, null));
-        assertTrue(interactions.live.refreshFull, "null bounds asks for the page");
+        var refreshes = interactions.live.refreshes;
+        assertEquals(3, refreshes.size());
+        long first = (refreshes.get(0).atNanos() - System.nanoTime()) / 1_000_000, second = (refreshes.get(1).atNanos() - System.nanoTime()) / 1_000_000;
+        assertTrue(first > 4500 && first <= 5000, "first deadline " + first);
+        assertTrue(second > 500 && second <= 1000, "second deadline " + second);
+        assertEquals(new UiRect(0, 0, 10, 10), refreshes.get(0).bounds());
+        assertEquals(new UiRect(50, 50, 10, 10), refreshes.get(1).bounds(), "bounds follow translation");
+        assertNull(refreshes.get(2).bounds(), "null bounds asks for the page");
     }
 
     @Test

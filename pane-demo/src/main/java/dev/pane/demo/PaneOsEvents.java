@@ -26,6 +26,30 @@ final class PaneOsEvents {
             case "min" -> { if (!arg.isEmpty()) screen.setValue("min:" + arg, true); }
             case "zoom" -> { if (!arg.isEmpty()) screen.setValue("max:" + arg, !screen.booleanValue("max:" + arg, false)); }
             case "front" -> raise(screen, arg);
+            case "restore" -> { screen.setValue("min:" + arg, false); raise(screen, arg); }
+            case "hideothers" -> {
+                for (String id : PaneOsShowcase.stack(screen.stringValue("z", ""))) if (!id.equals(arg)) screen.setValue("min:" + id, true);
+            }
+            case "unlock" -> unlock(screen);
+            case "lock" -> {
+                screen.setValue("cc", false); screen.setValue("spot", false); screen.setValue("nc", false); screen.setValue("apps", false);
+                screen.setValue("lock:pw", "");
+                screen.setValue("locked", true);
+                screen.requestFocus("lock:field");
+            }
+            case "restart" -> {
+                screen.setValue("locked", true);
+                screen.setValue("lock:pw", "");
+                screen.setValue("boot:at", (double) System.currentTimeMillis());
+                screen.requestFocus("lock:field");
+            }
+            case "nc" -> {
+                if (arg.equals("clear")) screen.setValue("notice:history", "");
+                else { screen.setValue("nc", !screen.booleanValue("nc", false)); screen.setValue("cc", false); }
+            }
+            case "apps" -> { screen.setValue("apps", !screen.booleanValue("apps", false)); screen.setValue("spot", false); screen.setValue("cc", false); }
+            case "network" -> { screen.setValue("wifi:network", arg); screen.setValue("wifi", true); }
+            case "settings" -> { openApp(screen, "settings"); screen.setValue("settings:pane", Double.parseDouble(arg)); }
             case "cc" -> { screen.setValue("cc", !screen.booleanValue("cc", false)); screen.setValue("spot", false); }
             case "spot" -> toggleSpotlight(screen);
             case "wifi", "bt", "airdrop", "focus" -> {
@@ -57,12 +81,12 @@ final class PaneOsEvents {
             }
             case "help" -> PaneOsShowcase.notify(screen, "settings", "PaneOS Help",
                 "Drag windows by their title bar. ⌘ Space searches, ⌘ W closes, ⌘ M minimizes.");
-            case "go" -> { openApp(screen, "files"); screen.setValue("files:side", arg.equals("recents") ? 1 : 4); }
-            case "leave" -> screen.closeToParent();
-            case "desk" -> {
-                if (arg.startsWith("open:")) openApp(screen, "files");
-                else screen.setValue("desk:sel", arg);
+            case "go" -> {
+                openApp(screen, "files");
+                screen.setValue("files:side", switch (arg) { case "recents" -> 1; case "applications" -> 2; case "desktop" -> 3; default -> 4; });
             }
+            case "leave" -> screen.closeToParent();
+            case "desk" -> desk(screen, arg);
             case "rem" -> screen.setValue("rem:" + arg, !screen.booleanValue("rem:" + arg, arg.equals("2")));
             case "music" -> music(screen, arg);
             default -> PaneOsApps.action(screen, verb, arg);
@@ -72,11 +96,13 @@ final class PaneOsEvents {
     static void openApp(UiScreen screen, String id) {
         screen.setValue("spot", false);
         screen.setValue("cc", false);
+        screen.setValue("nc", false);
+        if (!id.equals("launch")) screen.setValue("apps", false);
         var client = PaneOsShowcase.client();
         switch (id) {
             case "mail" -> { client.gui.setScreen(GmailShowcase.createScreen(screen)); return; }
             case "wayfarer" -> { client.gui.setScreen(WayfarerShowcase.createScreen(screen)); return; }
-            case "launch" -> { toggleSpotlight(screen); return; }
+            case "launch" -> { screen.setValue("apps", !screen.booleanValue("apps", false)); return; }
             case "downloads" -> { id = "files"; screen.setValue("files:side", 5); }
             case "trash" -> { id = "files"; screen.setValue("files:side", 9); }
             default -> { }
@@ -89,6 +115,37 @@ final class PaneOsEvents {
         raise(screen, id);
         if (id.equals("notes")) screen.requestFocus("notes:editor");
         if (id.equals("terminal")) screen.requestFocus("terminal:input");
+    }
+
+    private static void unlock(UiScreen screen) {
+        if (!screen.booleanValue("locked", true)) return;
+        screen.setValue("locked", false);
+        screen.setValue("lock:pw", "");
+        screen.clearFocus();
+        if (!screen.booleanValue("welcomed", false)) {
+            screen.setValue("welcomed", true);
+            PaneOsShowcase.notify(screen, "settings", "Welcome to PaneOS", "Everything here is drawn by Pane. Press ⌘ Space to search.");
+            screen.setValue("notice:at", (double) System.currentTimeMillis() + 700);
+        }
+    }
+
+    private static void desk(UiScreen screen, String arg) {
+        int split = arg.indexOf(':');
+        String verb = split < 0 ? arg : arg.substring(0, split), key = split < 0 ? "" : arg.substring(split + 1);
+        switch (verb) {
+            case "none" -> screen.setValue("desk:sel", "");
+            case "open" -> { openApp(screen, key.equals("shot") ? "photos" : key.equals("notes") ? "notes" : "files"); }
+            case "info" -> PaneOsShowcase.notify(screen, "files", key.equals("desktop") ? "Desktop" : "Get Info",
+                key.equals("desktop") ? "248.6 GB available on PaneOS HD." : "Created today · Stored on PaneOS HD.");
+            case "trash" -> {
+                screen.setValue("desk:trashed:" + key, true);
+                screen.setValue("desk:sel", "");
+                PaneOsShowcase.notify(screen, "trash", "Moved to Trash", "You can find it in Trash until you empty it.");
+            }
+            case "newfolder" -> screen.setValue("desk:folders", screen.numberValue("desk:folders", 0) + 1);
+            case "wallpaper" -> { openApp(screen, "settings"); screen.setValue("settings:pane", 4D); }
+            default -> screen.setValue("desk:sel", verb);
+        }
     }
 
     static void raise(UiScreen screen, String id) {
@@ -110,6 +167,7 @@ final class PaneOsEvents {
 
     private static void submit(UiScreen screen, String key, String value) {
         switch (key) {
+            case "lock:pw" -> unlock(screen);
             case "spot:q" -> {
                 var results = PaneOsShowcase.results(value);
                 if (!results.isEmpty()) openApp(screen, results.getFirst().id());

@@ -83,13 +83,25 @@ final class UiPopupPainter {
                 UiMenuItem item = menu.items().get(i);
                 float rowY = viewport.y() + i * layout.rowHeight() - offset;
                 String itemId = "menu:" + menu.id() + ":" + item.id();
-                if (itemId.equals(hovered) || itemId.equals(focused)) canvas.roundRect(requireNonNullElse(style.highlight(), UiCanvas.fade(theme.accent(), .18F)),
-                    frame.x() + style.rowInset(), rowY, Math.max(0, frame.width() - style.rowInset() * 2 - gutter), layout.rowHeight(), style.rowRadius());
-                float textY = rowY + Math.max(0, (layout.rowHeight() - canvas.textHeight(style.textSize(), style.fontStyle(), family)) / 2);
-                canvas.withClip(frame.x(), rowY, Math.max(0, frame.width() - gutter), layout.rowHeight(), () ->
-                    canvas.text(item.label(), frame.x() + style.paddingX(), textY, style.textSize(),
-                        requireNonNullElse(style.text(), theme.text()), style.fontStyle(), family));
-                hits.add(new UiHitRegion(itemId, UiContext.internalAction(MENU_ITEM_PREFIX + item.action()),
+                boolean lit = item.enabled() && (itemId.equals(hovered) || itemId.equals(focused));
+                if (item.separated() && i > 0) canvas.fill(UiCanvas.fade(requireNonNullElse(style.text(), theme.text()), .14F),
+                    frame.x() + style.paddingX() - 2, rowY, Math.max(0, frame.width() - style.paddingX() * 2 + 4 - gutter), .8F);
+                float inset = item.separated() && i > 0 ? 2 : 0;
+                if (lit) canvas.roundRect(requireNonNullElse(style.highlight(), UiCanvas.fade(theme.accent(), .18F)),
+                    frame.x() + style.rowInset(), rowY + inset, Math.max(0, frame.width() - style.rowInset() * 2 - gutter), layout.rowHeight() - inset, style.rowRadius());
+                float textY = rowY + inset / 2 + Math.max(0, (layout.rowHeight() - canvas.textHeight(style.textSize(), style.fontStyle(), family)) / 2);
+                int ink = requireNonNullElse(style.text(), theme.text());
+                // A highlighted row on an accent fill reads in white; disabled rows are dimmed.
+                int color = !item.enabled() ? UiCanvas.fade(ink, .38F) : lit && style.highlight() != null && (style.highlight() >>> 24) > 200 ? 0xFFFFFFFF : ink;
+                canvas.withClip(frame.x(), rowY, Math.max(0, frame.width() - gutter), layout.rowHeight(), () -> {
+                    canvas.text(item.label(), frame.x() + style.paddingX(), textY, style.textSize(), color, style.fontStyle(), family);
+                    if (!item.shortcut().isEmpty()) {
+                        float width = canvas.textWidth(item.shortcut(), style.textSize(), style.fontStyle(), family);
+                        canvas.text(item.shortcut(), frame.right() - gutter - style.paddingX() - width, textY, style.textSize(),
+                            lit ? color : UiCanvas.fade(color, .55F), style.fontStyle(), family);
+                    }
+                });
+                if (item.enabled()) hits.add(new UiHitRegion(itemId, UiContext.internalAction(MENU_ITEM_PREFIX + item.action()),
                     hit.x(), hit.y(), Math.max(0, hit.width() - gutter), hit.height()));
             }
         });

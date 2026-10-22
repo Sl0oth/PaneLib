@@ -13,6 +13,8 @@
   (transitions for groups that contain editors, sliders and scrolls) and `paintedSlider`.
 - Added `UiScreen.requestFocus` for controls that appear in a later paint, `UiDocument` tooltip
   styling through `UiTooltipStyle`, and glass reuse diagnostics.
+- Added menu row shortcut hints, disabled rows and group dividers (`UiMenuItem.shortcut`,
+  `enabled`, `startsGroup`) and right-click context menus (`UiContext.contextMenu`).
 - Replaced the Beacon example with PaneOS, a Mac-like desktop showcase with a real-client fixture.
 
 ## 0.9.8 — opt-in Minecraft-formatted text

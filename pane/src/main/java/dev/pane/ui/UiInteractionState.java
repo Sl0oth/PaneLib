@@ -18,25 +18,21 @@ final class UiInteractionState {
     Live live = new Live();
 
     /** Everything here is in document layout units. */
+    record Refresh(long atNanos, UiRect bounds) { }
+
     static final class Live {
         /** Pointer position, NaN when unknown, and the areas painted from it. */
         float pointerX = Float.NaN, pointerY = Float.NaN;
         final List<UiRect> pointerAreas = new ArrayList<>();
         /** What each drag area moves, so a drag step repaints only that. */
         final Map<String, UiRect> dragBounds = new HashMap<>();
-        /** Earliest timed repaint any painter asked for, with the union of what it covers. */
-        long refreshAtNanos;
-        UiRect refreshBounds;
-        boolean refreshFull;
+        /** Timed repaints painters asked for; null bounds means the page. */
+        final List<Refresh> refreshes = new ArrayList<>();
 
-        void requestRefresh(long atNanos, UiRect bounds) {
-            refreshAtNanos = refreshAtNanos == 0 ? atNanos : Math.min(refreshAtNanos, atNanos);
-            if (bounds == null) refreshFull = true;
-            else refreshBounds = refreshBounds == null ? bounds : refreshBounds.union(bounds);
-        }
+        void requestRefresh(long atNanos, UiRect bounds) { refreshes.add(new Refresh(atNanos, bounds)); }
 
         void clear() {
-            pointerAreas.clear(); dragBounds.clear(); refreshAtNanos = 0; refreshBounds = null; refreshFull = false;
+            pointerAreas.clear(); dragBounds.clear(); refreshes.clear();
         }
     }
 

@@ -48,6 +48,9 @@ public class UiScreen extends Screen {
     private static final long FRAME_NANOS = 16_000_000L;
     private static final int VIRTUAL_ATLAS_GUTTER = 1;
     private static final String MENU_PREFIX = "menu:";
+
+    /** Pointer position a context menu opened at; null for menus anchored to their trigger. */
+    private UiRect contextAnchor;
     private static final String MENU_ITEM_PREFIX = UiPopupPainter.MENU_ITEM_PREFIX;
     private static final String DROPDOWN_ITEM_PREFIX = "dropdown:";
     private static final String DIALOG_PREFIX = "dialog:";
@@ -174,10 +177,8 @@ public class UiScreen extends Screen {
     /** What the drag moves as last painted, with the offsets it was painted at; null repaints the page. */
     private UiRect dragPainted;
     private double dragPaintedX, dragPaintedY;
-    /** Timed repaint requested by the latest paint. */
-    private long refreshAtNanos;
-    private UiRect refreshBounds;
-    private boolean refreshFull;
+    /** Timed repaints requested by the latest paint, each due on its own. */
+    private List<UiInteractionState.Refresh> refreshes = List.of();
     /** Device rectangles glass and backdrop blur read in the latest paint. */
     private List<java.awt.Rectangle> backdropReads = List.of();
     private final UiGlassCache glassCache = new UiGlassCache();
@@ -680,7 +681,7 @@ public class UiScreen extends Screen {
 
     private UiMenuItem menuItem(String id) {
         if (id == null || openMenuId == null || activeMenu == null) return null;
-        for (UiMenuItem item : activeMenu.items()) if (id.equals("menu:" + openMenuId + ":" + item.id())) return item;
+        for (UiMenuItem item : activeMenu.items()) if (id.equals("menu:" + openMenuId + ":" + item.id())) return item.enabled() ? item : null;
         return null;
     }
 
@@ -943,10 +944,15 @@ public class UiScreen extends Screen {
             }
         }
         if (customAnimationsActive && now - lastPaint >= FRAME_NANOS) requestCustomAnimationRepaint();
-        if (refreshAtNanos != 0 && now >= refreshAtNanos) {
-            refreshAtNanos = 0;
-            if (refreshFull || refreshBounds == null) requestFullRepaint();
-            else requestPartialRepaint(refreshBounds.expandAndClamp(surfaceLayoutWidth, surfaceLayoutHeight, 2));
+        if (!refreshes.isEmpty()) {
+            List<UiInteractionState.Refresh> waiting = null;
+            for (var refresh : refreshes) {
+                if (now < refresh.atNanos()) { if (waiting != null) waiting.add(refresh); continue; }
+                if (waiting == null) { waiting = new ArrayList<>(); for (var earlier : refreshes) { if (earlier == refresh) break; waiting.add(earlier); } }
+                if (refresh.bounds() == null) requestFullRepaint();
+                else requestPartialRepaint(refresh.bounds().expandAndClamp(surfaceLayoutWidth, surfaceLayoutHeight, 2));
+            }
+            if (waiting != null) refreshes = waiting;
         }
         if (virtual.active && now - lastCustomVirtualAnimationPaint >= FRAME_NANOS) {
             boolean any = false;
@@ -1141,6 +1147,17 @@ public class UiScreen extends Screen {
         if (openDialogId == null && openMenuId == null && focusScopes.isEmpty() && options.clickHandler().mouseClicked(this,
             new UiClickEvent(region == null ? null : region.id(), event, doubleClick, layoutX, layoutY))) {
             return true;
+        }
+        if (event.button() == GLFW.GLFW_MOUSE_BUTTON_RIGHT && openDialogId == null && focusScopes.isEmpty()) {
+            if (openMenuId != null) closeMenu(true);
+            UiHitRegion target = regionAt(layoutX, layoutY);
+            String menuId = target == null ? null : UiMenu.CONTEXT_PREFIX + target.id();
+            if (menuId != null && menus.stream().anyMatch(menu -> menu.id().equals(menuId))) {
+                contextAnchor = new UiRect(layoutX, layoutY - 5, 0, 0);
+                runAction(UiContext.internalAction(MENU_PREFIX + menuId), true);
+                return true;
+            }
+            return false;
         }
         if (event.button() != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
         if (region == null) {
@@ -1605,6 +1622,7 @@ public class UiScreen extends Screen {
         hitRegions = hitRegions.stream().filter(hit -> !hit.id().startsWith("menu:" + trigger + ":") && !hit.id().equals(menuBodyId())).toList();
         openMenuId = null; activeMenu = null; menuLayout = null; menuOffset = 0; revealMenuFocus = false; menuHitsStale = false;
         menuOpenedWithPointer = false;
+        if (trigger.startsWith(UiMenu.CONTEXT_PREFIX)) { contextAnchor = null; clearFocus = true; }
         if (clearFocus) focusedId = null;
         else focus(trigger);
         requestFullRepaint();
@@ -1764,6 +1782,12 @@ public class UiScreen extends Screen {
             : current < 0 ? (reverse ? items.size() - 1 : 0)
             : page ? Math.clamp(current + (reverse ? -step : step), 0, items.size() - 1)
             : Math.floorMod(current + (reverse ? -1 : 1), items.size());
+        // Disabled rows are skipped in the direction of travel; a menu with none enabled keeps focus.
+        boolean forward = !reverse || key == GLFW.GLFW_KEY_HOME;
+        if (key == GLFW.GLFW_KEY_END) forward = false;
+        for (int tries = 0; tries < items.size() && !items.get(next).enabled(); tries++)
+            next = Math.floorMod(next + (forward ? 1 : -1), items.size());
+        if (!items.get(next).enabled()) return true;
         menuOpenedWithPointer = false; menuNavigationFromHover = false;
         focus("menu:" + openMenuId + ":" + items.get(next).id());
         return true;
@@ -2218,7 +2242,7 @@ public class UiScreen extends Screen {
             glassCache.endPaint(!partial);
             canvas.glassCache = null;
             var live = interactions.live;
-            refreshAtNanos = live.refreshAtNanos; refreshBounds = live.refreshBounds; refreshFull = live.refreshFull;
+            refreshes = List.copyOf(live.refreshes);
             if (draggingKey != null) {
                 dragPainted = live.dragBounds.get(draggingId);
                 dragPaintedX = numberValue(draggingKey + ":x", 0); dragPaintedY = numberValue(draggingKey + ":y", 0);
@@ -2382,13 +2406,17 @@ public class UiScreen extends Screen {
         }
         UiMenuStyle style = menu.style();
         String family = style.fontFamily() == null ? document.theme().fontFamily() : style.fontFamily();
-        float widest = menu.anchor().width();
-        for (UiMenuItem item : menu.items())
-            widest = Math.max(widest, canvas.textWidth(item.label(), style.textSize(), style.fontStyle(), family) + style.paddingX() * 2);
+        // A context menu opens where the pointer pressed and sizes to its rows, not to the region that owns it.
+        UiRect anchor = contextAnchor != null && menu.id().startsWith(UiMenu.CONTEXT_PREFIX) ? contextAnchor : menu.anchor();
+        float widest = anchor.width();
+        for (UiMenuItem item : menu.items()) {
+            float shortcut = item.shortcut().isEmpty() ? 0 : canvas.textWidth(item.shortcut(), style.textSize(), style.fontStyle(), family) + style.textSize() * 2.5F;
+            widest = Math.max(widest, canvas.textWidth(item.label(), style.textSize(), style.fontStyle(), family) + shortcut + style.paddingX() * 2);
+        }
         UiPopupLayout previousLayout = menuLayout;
-        menuLayout = UiPopupLayout.menu(menu.anchor(), widest, menu.items().size(), layoutWidth, layoutHeight, style);
+        menuLayout = UiPopupLayout.menu(anchor, widest, menu.items().size(), layoutWidth, layoutHeight, style);
         if (menuLayout.maxOffset() > 0)
-            menuLayout = UiPopupLayout.menu(menu.anchor(), widest + 8, menu.items().size(), layoutWidth, layoutHeight, style);
+            menuLayout = UiPopupLayout.menu(anchor, widest + 8, menu.items().size(), layoutWidth, layoutHeight, style);
         menuOffset = menuLayout.clamp(menuOffset);
         if (revealMenuFocus || previousLayout == null || menuLayout.rowHeight() != previousLayout.rowHeight()
                 || menuLayout.viewport().height() != previousLayout.viewport().height()

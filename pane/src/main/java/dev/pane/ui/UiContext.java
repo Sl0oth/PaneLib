@@ -1393,7 +1393,8 @@ public final class UiContext {
     /**
      * Repaints {@code bounds}, or the whole page when null, once {@code delayMillis} have passed.
      * Call it on every paint that should keep refreshing, such as a clock asking for the next
-     * minute; the earliest request wins and idle screens otherwise cost nothing.
+     * second; each request repaints only its own bounds when it falls due, and idle screens
+     * otherwise cost nothing.
      */
     public void refreshAfter(long delayMillis, UiRect bounds) {
         interactions.live.requestRefresh(System.nanoTime() + Math.max(1, delayMillis) * 1_000_000L,
@@ -1451,6 +1452,23 @@ public final class UiContext {
 
     private int foreground(ButtonStyle style) {
         return style == ButtonStyle.PRIMARY ? theme.accentText() : style == ButtonStyle.DANGER ? 0xFFFFB9BD : theme.text();
+    }
+
+    /**
+     * Opens {@code items} at the pointer when the control already painted with {@code targetId} is
+     * right-clicked, such as a desktop background or a file icon. Call it after the control; the
+     * topmost control under the pointer decides which context menu opens.
+     */
+    public void contextMenu(String targetId, List<UiMenuItem> items, UiMenuStyle style) {
+        if (targetId == null || items == null || items.isEmpty() || style == null) return;
+        for (int i = hitRegions.size() - 1; i >= 0; i--) {
+            UiHitRegion region = hitRegions.get(i);
+            if (targetId.equals(region.id())) {
+                menus.add(new UiMenu(UiMenu.CONTEXT_PREFIX + targetId, new UiRect(region.x(), region.y(), region.width(), region.height()),
+                    items, null, style));
+                return;
+            }
+        }
     }
 
     /**

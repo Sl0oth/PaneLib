@@ -53,7 +53,7 @@ public final class PaneOsShowcase {
 
     /** Caches that outlive individual paints. */
     static final class Caches {
-        final UiLayer wallpaper = new UiLayer(), desk = new UiLayer(), photos = new UiLayer(), map = new UiLayer();
+        final UiLayer wallpaper = new UiLayer(), desk = new UiLayer(), photos = new UiLayer(), map = new UiLayer(), lock = new UiLayer();
         final UiLayer[] wallpaperThumbs = {new UiLayer(), new UiLayer(), new UiLayer()};
     }
 
@@ -74,10 +74,9 @@ public final class PaneOsShowcase {
             .onClick((screen, click) -> { pointerDown(screen, click.targetId(), click.doubleClick()); return false; })
             .onClose(PaneOsShowcase::escape).build();
         self[0] = UiScreen.create(doc, NativeOverlayRenderer.NONE, (screen, event) -> PaneOsEvents.handle(screen, event), options);
-        self[0].setValue("notice:at", System.currentTimeMillis() + 1200);
-        self[0].setValue("notice:app", "settings");
-        self[0].setValue("notice:title", "Welcome to PaneOS");
-        self[0].setValue("notice:body", "Everything here is drawn by Pane. Press ⌘ Space to search.");
+        self[0].setValue("boot:at", (double) System.currentTimeMillis());
+        self[0].setValue("locked", true);
+        self[0].requestFocus("lock:field");
         return self[0];
     }
 
@@ -87,6 +86,9 @@ public final class PaneOsShowcase {
     private static void pointerDown(UiScreen screen, String target, boolean doubleClick) {
         if (doubleClick && target != null && target.startsWith("desk:item")) PaneOsEvents.openApp(screen, "files");
         String owner = target == null ? "" : target.substring(0, Math.max(0, target.indexOf(':')));
+        // Double-clicking a title bar zooms the window, as on a Mac.
+        if (doubleClick && target != null && target.endsWith(":bar") && app(owner) != null) PaneOsEvents.handleAction(screen, "zoom:" + owner);
+        if (screen.booleanValue("nc", false) && !owner.equals("nc") && !"mb:clock".equals(target)) screen.setValue("nc", false);
         if (app(owner) != null && screen.booleanValue("open:" + owner, false)) PaneOsEvents.raise(screen, owner);
         if (screen.booleanValue("cc", false) && !owner.equals("cc") && !"mb:cc".equals(target)) screen.setValue("cc", false);
         if (screen.booleanValue("spot", false) && !owner.equals("spot") && !"mb:spot".equals(target)) screen.setValue("spot", false);
@@ -98,12 +100,17 @@ public final class PaneOsShowcase {
         if (command && event.key() == GLFW.GLFW_KEY_W) { PaneOsEvents.handleAction(screen, "close:" + frontApp(screen)); return true; }
         if (command && event.key() == GLFW.GLFW_KEY_M) { PaneOsEvents.handleAction(screen, "min:" + frontApp(screen)); return true; }
         if (command && event.key() == GLFW.GLFW_KEY_COMMA) { PaneOsEvents.openApp(screen, "settings"); return true; }
+        if (command && event.key() == GLFW.GLFW_KEY_N && !frontApp(screen).isEmpty()) { PaneOsEvents.openApp(screen, frontApp(screen)); return true; }
+        boolean controlCommand = (event.modifiers() & GLFW.GLFW_MOD_CONTROL) != 0 && (event.modifiers() & GLFW.GLFW_MOD_SUPER) != 0;
+        if (controlCommand && event.key() == GLFW.GLFW_KEY_Q) { PaneOsEvents.handleAction(screen, "lock"); return true; }
         return false;
     }
 
     private static boolean escape(UiScreen screen) {
         if (screen.booleanValue("spot", false)) { screen.setValue("spot", false); return true; }
         if (screen.booleanValue("cc", false)) { screen.setValue("cc", false); return true; }
+        if (screen.booleanValue("nc", false)) { screen.setValue("nc", false); return true; }
+        if (screen.booleanValue("apps", false)) { screen.setValue("apps", false); return true; }
         return false;
     }
 
@@ -146,10 +153,24 @@ public final class PaneOsShowcase {
         Object deskRevision = List.of(wallRevision, widgets, day, reminders, look.accent(),
             Math.round(ui.numberValue("refraction", 14) * 10), Math.round(ui.numberValue("frost", 6) * 10),
             ui.booleanValue("music:playing", false), (int) ui.numberValue("music:track", 0));
+        long sinceBoot = System.currentTimeMillis() - (long) ui.numberValue("boot:at", 0);
+        if (sinceBoot < PaneOsLock.BOOT_MILLIS) { PaneOsLock.boot(ui, w, h, sinceBoot); return; }
+        boolean locked = ui.booleanValue("locked", true);
+        float unlock = ui.animate("unlock", locked ? 0F : 1F, locked ? 260 : 620, UiEasing.EASE_IN_OUT, new UiRect(0, 0, w, h));
+        if (unlock <= 0) { PaneOsLock.lock(ui, caches.lock, caches.wallpaper, wallRevision, wallpaper, look, w, h); return; }
+
         g.cachedLayer(caches.desk, deskRevision, new UiRect(0, 0, w, h), c -> {
             c.cachedLayer(caches.wallpaper, wallRevision, new UiRect(0, 0, w, h), wc -> PaneOsArt.wallpaper(wc, wallpaper, look.dark(), w, h));
             if (widgets) PaneOsWidgets.paintStatic(c, ui, look, h);
         });
+        ui.hit("desk:bg", "desk:none", 0, MENU_H, w, h - MENU_H);
+        ui.contextMenu("desk:bg", List.of(
+            new UiMenuItem("folder", "New Folder", "desk:newfolder").shortcut("⇧⌘N"),
+            new UiMenuItem("info", "Get Info", "desk:info:desktop").shortcut("⌘I").startsGroup(),
+            new UiMenuItem("wallpaper", "Change Wallpaper…", "desk:wallpaper"),
+            new UiMenuItem("widgets", widgets ? "Hide Widgets" : "Show Widgets", "widgets"),
+            new UiMenuItem("view", "Show View Options", "desk:view").shortcut("⌘J").enabled(false).startsGroup(),
+            new UiMenuItem("sort", "Sort By", "desk:sort").enabled(false)), menuStyle(look));
         if (widgets) PaneOsWidgets.paintLive(ui, look, h);
         PaneOsWidgets.desktopItems(ui, look, w, h);
 
@@ -165,6 +186,13 @@ public final class PaneOsShowcase {
         controlCenter(ui, look, w);
         spotlight(ui, look, w, h);
         notification(ui, look, w);
+        PaneOsOverlays.notificationCenter(ui, look, w, h);
+        PaneOsOverlays.appsGrid(ui, look, w, h);
+        if (unlock < 1) {
+            float scale = 1 + .08F * unlock;
+            ui.withPresentation(new UiTransform(0, 0, scale, scale, 0, 1 - unlock), w / 2, h / 2,
+                lock -> PaneOsLock.lock(lock, caches.lock, caches.wallpaper, wallRevision, wallpaper, look, w, h));
+        }
         long shots = (long) ui.numberValue("shot:count", 0);
         float flash = shots == 0 ? 0 : ui.sequence("shot:flash", shots,
             UiTimeline.starting(0).to(.85F, 60, UiEasing.EASE_OUT).to(0, 420, UiEasing.EASE_IN), new UiRect(0, 0, w, h));
@@ -178,15 +206,23 @@ public final class PaneOsShowcase {
     static UiRect frame(UiContext ui, App app, float w, float h) {
         float top = MENU_H + 8, bottom = h - 96;
         if (ui.booleanValue("max:" + app.id(), false)) return new UiRect(8, top, w - 16, bottom - top);
-        float width = Math.min(app.width(), w - 40), height = Math.min(app.height(), bottom - top);
-        float x = w * app.centerX() - width / 2 + (float) ui.numberValue("win:" + app.id() + ":x", 0);
-        float y = top + (bottom - top) * app.centerY() - height / 2 + (float) ui.numberValue("win:" + app.id() + ":y", 0);
+        float baseW = Math.min(app.width(), w - 40), baseH = Math.min(app.height(), bottom - top);
+        // Resizing grows from the top-left corner, so the window's position comes from its default size.
+        String id = app.id();
+        float width = Math.max(resizable(app) ? 460 : baseW, Math.min(w - 40, baseW
+            + (float) (ui.numberValue("size:" + id + ":x", 0) + ui.numberValue("sizew:" + id + ":x", 0))));
+        float height = Math.max(resizable(app) ? 320 : baseH, Math.min(bottom - top, baseH
+            + (float) (ui.numberValue("size:" + id + ":y", 0) + ui.numberValue("sizeh:" + id + ":y", 0))));
+        float x = w * app.centerX() - baseW / 2 + (float) ui.numberValue("win:" + id + ":x", 0);
+        float y = top + (bottom - top) * app.centerY() - baseH / 2 + (float) ui.numberValue("win:" + id + ":y", 0);
         x = Math.max(80 - width, Math.min(w - 80, x));
         y = Math.max(top, Math.min(h - 60, y));
         return new UiRect(x, y, width, height);
     }
 
     static float radius(App app) { return app.id().equals("calculator") ? 22 : 18; }
+
+    static boolean resizable(App app) { return !app.id().equals("calculator"); }
 
     private static void window(UiContext ui, Caches caches, Look look, App app, boolean active, DockLayout dock, float w, float h) {
         String id = app.id();
@@ -224,6 +260,13 @@ public final class PaneOsShowcase {
         PaneOsApps.paint(ui, caches, look, app, f, active);
         trafficLights(ui, look, id, f.x() + 20, f.y() + (id.equals("calculator") ? 16 : 22), active);
         g.strokeRoundRect(look.dark() ? 0x40FFFFFF : 0x24000000, .8F, f.x(), f.y(), f.width(), f.height(), r);
+        if (interactive && resizable(app) && !ui.booleanValue("max:" + id, false)) {
+            // Edges and the corner straddle the outline, as a Mac's resize zones do.
+            UiRect moves = f.inset(-80);
+            ui.dragArea(id + ":resize-right", "sizew:" + id, f.right() - 4, f.y() + 24, 8, f.height() - 44, moves);
+            ui.dragArea(id + ":resize-bottom", "sizeh:" + id, f.x() + 24, f.bottom() - 4, f.width() - 44, 8, moves);
+            ui.dragArea(id + ":resize", "size:" + id, f.right() - 16, f.bottom() - 16, 22, 22, moves);
+        }
     }
 
     private static void trafficLights(UiContext ui, Look look, String id, float x, float cy, boolean active) {
@@ -318,6 +361,13 @@ public final class PaneOsShowcase {
                 if (state.pressed()) PaneOsArt.squircle(c, ix, iy, iconSize).fill(0x40000000);
             });
             boolean running = id.equals("mail") || id.equals("wayfarer") ? false : ui.booleanValue("open:" + id, false);
+            var options = new ArrayList<UiMenuItem>();
+            if (running) options.add(new UiMenuItem("window", name, "restore:" + id));
+            options.add(new UiMenuItem("open", running ? "New Window" : "Open", "open:" + id).startsGroup());
+            options.add(new UiMenuItem("keep", "Keep in Dock", "dock").enabled(false).startsGroup());
+            options.add(new UiMenuItem("show", "Show in Files", "go:applications"));
+            if (running) options.add(new UiMenuItem("quit", "Quit", "close:" + id).startsGroup());
+            if (!id.equals("trash") && !id.equals("downloads")) ui.contextMenu("dock:" + id, options, menuStyle(look));
             if (running) g.circle(look.dark() ? 0xE6FFFFFF : 0xCC1D1D1F, cursor + s / 2, y + height - pad * .42F, 2.2F);
             cursor += s + gap;
         }
@@ -331,38 +381,68 @@ public final class PaneOsShowcase {
         int ink = lightTop ? 0xFF1D1D1F : 0xFFFFFFFF;
         int hover = lightTop ? 0x1A000000 : 0x2EFFFFFF;
         g.gradientRect(lightTop ? 0x14FFFFFF : 0x1F000000, 0x00000000, 90, 0, 0, w, MENU_H + 8, 0);
-        var menuStyle = UiMenuStyle.builder().textSize(13).fontFamily(PaneOsArt.FONT).rowHeight(24).padding(12, 5)
-            .radius(12).rowRadius(6).rowInset(5).borderWidth(.6F)
-            .background(look.dark() ? 0xF22C2C2F : 0xF5F6F6F8).text(look.text()).border(look.dark() ? 0x33FFFFFF : 0x1F000000)
-            .highlight(look.accent()).build();
+        var menuStyle = menuStyle(look);
         String appName = front.isEmpty() ? "Files" : displayName(front);
         String target = front.isEmpty() ? "files" : front;
+        boolean hasWindow = !front.isEmpty();
         float x = 12;
         x = menu(ui, "mb:mark", "PaneOS", x, 34, ink, hover, menuStyle, List.of(
             new UiMenuItem("about", "About PaneOS", "about"),
-            new UiMenuItem("settings", "System Settings…", "open:settings"),
-            new UiMenuItem("appearance", look.dark() ? "Light Appearance" : "Dark Appearance", "darkmode"),
-            new UiMenuItem("leave", "Leave PaneOS", "leave")), (c, cx, cy) -> PaneOsArt.mark(c, cx, cy, 14, ink));
+            new UiMenuItem("settings", "System Settings…", "open:settings").shortcut("⌘,").startsGroup(),
+            new UiMenuItem("apps", "App Store…", "apps"),
+            new UiMenuItem("recent", "Recent Items", "recent").enabled(false).startsGroup(),
+            new UiMenuItem("force", "Force Quit…", "force").shortcut("⌥⌘⎋").enabled(false).startsGroup(),
+            new UiMenuItem("sleep", "Sleep", "lock").startsGroup(),
+            new UiMenuItem("restart", "Restart…", "restart"),
+            new UiMenuItem("shutdown", "Shut Down…", "leave"),
+            new UiMenuItem("lock", "Lock Screen", "lock").shortcut("⌃⌘Q").startsGroup(),
+            new UiMenuItem("logout", "Log Out Sl0oth…", "lock").shortcut("⇧⌘Q")), (c, cx, cy) -> PaneOsArt.mark(c, cx, cy, 14, ink));
         float nameWidth = g.textWidth(appName, 13.5F, Font.BOLD, PaneOsArt.FONT) + 20;
         x = menu(ui, "mb:app", appName, x, nameWidth, ink, hover, menuStyle, List.of(
             new UiMenuItem("about", "About " + appName, "about:" + target),
-            new UiMenuItem("settings", "Settings…", "open:settings"),
-            new UiMenuItem("hide", "Hide " + appName, "min:" + target),
-            new UiMenuItem("quit", "Quit " + appName, "close:" + target)),
+            new UiMenuItem("settings", "Settings…", "open:settings").shortcut("⌘,").startsGroup(),
+            new UiMenuItem("hide", "Hide " + appName, "min:" + target).enabled(hasWindow).startsGroup(),
+            new UiMenuItem("others", "Hide Others", "hideothers:" + target).enabled(hasWindow),
+            new UiMenuItem("quit", "Quit " + appName, "close:" + target).enabled(hasWindow).startsGroup()),
             (c, cx, cy) -> c.centeredText(appName, cx, cy, 13.5F, ink, Font.BOLD, PaneOsArt.FONT));
-        String[][] menus = {
-            {"File", "New Window", "open:" + target, "Close Window", "close:" + target},
-            {"Edit", "Undo", "edit", "Cut", "edit", "Copy", "edit", "Paste", "edit", "Select All", "edit"},
-            {"View", "Enter Full Screen", "zoom:" + target, "Show Widgets", "widgets"},
-            {"Go", "Recents", "go:recents", "Documents", "go:documents", "Downloads", "open:downloads", "Applications", "spot"},
-            {"Window", "Minimize", "min:" + target, "Zoom", "zoom:" + target, "Bring All to Front", "front:" + target},
-            {"Help", "PaneOS Help", "help"}};
-        for (String[] menu : menus) {
-            var items = new ArrayList<UiMenuItem>();
-            for (int i = 1; i + 1 < menu.length; i += 2) items.add(new UiMenuItem("m" + i, menu[i], menu[i + 1]));
-            String label = menu[0];
+        var windows = new ArrayList<UiMenuItem>(List.of(
+            new UiMenuItem("min", "Minimize", "min:" + target).enabled(hasWindow),
+            new UiMenuItem("zoom", "Zoom", "zoom:" + target).enabled(hasWindow),
+            new UiMenuItem("front", "Bring All to Front", "front:" + target).enabled(hasWindow).startsGroup()));
+        boolean first = true;
+        for (String id : stack(ui.stringValue("z", ""))) {
+            if (!ui.booleanValue("open:" + id, false) || app(id) == null) continue;
+            var item = new UiMenuItem("w-" + id, (id.equals(front) ? "✓  " : "     ") + app(id).name(), "restore:" + id);
+            windows.add(first ? item.startsGroup() : item);
+            first = false;
+        }
+        var menus = List.of(
+            List.of(new UiMenuItem("new", "New Window", "open:" + target).shortcut("⌘N"),
+                new UiMenuItem("tab", "New Tab", "compass:").shortcut("⌘T").enabled(front.equals("compass")),
+                new UiMenuItem("open", "Open…", "open:files").shortcut("⌘O"),
+                new UiMenuItem("close", "Close Window", "close:" + target).shortcut("⌘W").enabled(hasWindow).startsGroup()),
+            List.of(new UiMenuItem("undo", "Undo", "edit").shortcut("⌘Z").enabled(false),
+                new UiMenuItem("redo", "Redo", "edit").shortcut("⇧⌘Z").enabled(false),
+                new UiMenuItem("cut", "Cut", "edit").shortcut("⌘X").enabled(false).startsGroup(),
+                new UiMenuItem("copy", "Copy", "edit").shortcut("⌘C").enabled(false),
+                new UiMenuItem("paste", "Paste", "edit").shortcut("⌘V").enabled(false),
+                new UiMenuItem("all", "Select All", "edit").shortcut("⌘A").enabled(false),
+                new UiMenuItem("emoji", "Emoji & Symbols", "edit").shortcut("fn E").enabled(false).startsGroup()),
+            List.of(new UiMenuItem("full", "Enter Full Screen", "zoom:" + target).shortcut("⌃⌘F").enabled(hasWindow),
+                new UiMenuItem("widgets", ui.booleanValue("widgets", true) ? "Hide Widgets" : "Show Widgets", "widgets").startsGroup()),
+            List.of(new UiMenuItem("recents", "Recents", "go:recents").shortcut("⇧⌘F"),
+                new UiMenuItem("documents", "Documents", "go:documents").shortcut("⇧⌘O"),
+                new UiMenuItem("desktop", "Desktop", "go:desktop").shortcut("⇧⌘D"),
+                new UiMenuItem("downloads", "Downloads", "open:downloads").shortcut("⌥⌘L"),
+                new UiMenuItem("applications", "Applications", "apps").shortcut("⇧⌘A"),
+                new UiMenuItem("folder", "Go to Folder…", "go").shortcut("⇧⌘G").enabled(false).startsGroup()),
+            windows,
+            List.of(new UiMenuItem("help", "PaneOS Help", "help")));
+        String[] titles = {"File", "Edit", "View", "Go", "Window", "Help"};
+        for (int i = 0; i < titles.length; i++) {
+            String label = titles[i];
             float width = g.textWidth(label, 13.5F, Font.PLAIN, PaneOsArt.FONT) + 20;
-            x = menu(ui, "mb:" + label.toLowerCase(Locale.ROOT), label, x, width, ink, hover, menuStyle, items,
+            x = menu(ui, "mb:" + label.toLowerCase(Locale.ROOT), label, x, width, ink, hover, menuStyle, menus.get(i),
                 (c, cx, cy) -> c.centeredText(label, cx, cy, 13.5F, ink, Font.PLAIN, PaneOsArt.FONT));
         }
 
@@ -371,15 +451,33 @@ public final class PaneOsShowcase {
         String clock = now.format(DateTimeFormatter.ofPattern("EEE MMM d  h:mm a", Locale.ENGLISH));
         float clockWidth = g.textWidth(clock, 13.5F, Font.PLAIN, PaneOsArt.FONT) + 16;
         float right = w - 10 - clockWidth;
-        UiRect clockRect = new UiRect(right, 2, clockWidth, MENU_H - 4);
-        g.centeredText(clock, clockRect.centerX(), MENU_H / 2, 13.5F, ink, Font.PLAIN, PaneOsArt.FONT);
+        UiRect clockRect = new UiRect(right, 3, clockWidth, MENU_H - 6);
+        boolean centerOpen = ui.booleanValue("nc", false);
+        ui.paintedButton("mb:clock", "Notification Center", "nc", clockRect.x(), clockRect.y(), clockRect.width(), clockRect.height(), 6, true, (c, s) -> {
+            if (centerOpen || s.hovered() || s.pressed()) c.roundRect(centerOpen ? UiCanvas.alpha(hover, 90) : hover, clockRect.x(), clockRect.y(), clockRect.width(), clockRect.height(), 6);
+            c.centeredText(clock, clockRect.centerX(), MENU_H / 2, 13.5F, ink, Font.PLAIN, PaneOsArt.FONT);
+        });
         ui.refreshAfter(60_000 - (System.currentTimeMillis() % 60_000) + 20, clockRect);
         right = status(ui, "mb:cc", "Control Center", "cc", right - 34, ink, hover, ui.booleanValue("cc", false), (c, cx, cy) -> PaneOsArt.symbol(c, "control", cx, cy, 15, ink));
         right = status(ui, "mb:spot", "Spotlight", "spot", right - 32, ink, hover, ui.booleanValue("spot", false), (c, cx, cy) -> PaneOsArt.symbol(c, "search", cx, cy, 15, ink));
         boolean wifi = ui.booleanValue("wifi", true);
-        right = status(ui, "mb:wifi", wifi ? "Wi-Fi: Home" : "Wi-Fi: Off", "wifi", right - 32, ink, hover, false,
+        String network = ui.stringValue("wifi:network", "Home");
+        var networks = new ArrayList<UiMenuItem>();
+        networks.add(new UiMenuItem("toggle", wifi ? "Turn Wi-Fi Off" : "Turn Wi-Fi On", "wifi"));
+        if (wifi) for (String name : new String[] {"Home", "Lakeside Cabin", "Pane Labs 5G", "Coffee Bar Guest"}) {
+            var item = new UiMenuItem("n-" + name, (name.equals(network) ? "✓  " : "     ") + name, "network:" + name);
+            networks.add(networks.size() == 1 ? item.startsGroup() : item);
+        }
+        networks.add(new UiMenuItem("settings", "Wi-Fi Settings…", "settings:0").startsGroup());
+        right -= 32;
+        menu(ui, "mb:wifi", wifi ? "Wi-Fi: " + network : "Wi-Fi: Off", right, 30, ink, hover, menuStyle, networks,
             (c, cx, cy) -> PaneOsArt.symbol(c, "wifi", cx, cy - 1, 16, wifi ? ink : UiCanvas.alpha(ink, 90)));
-        right = status(ui, "mb:battery", "Battery 84%", "cc", right - 34, ink, hover, false, (c, cx, cy) -> PaneOsArt.symbol(c, "battery", cx, cy, 22, ink));
+        right -= 34;
+        menu(ui, "mb:battery", "Battery 84%", right, 30, ink, hover, menuStyle, List.of(
+            new UiMenuItem("level", "Battery  84%", "settings:2").enabled(false),
+            new UiMenuItem("source", "Power Source: Battery", "settings:2").enabled(false),
+            new UiMenuItem("settings", "Battery Settings…", "settings:2").startsGroup()),
+            (c, cx, cy) -> PaneOsArt.symbol(c, "battery", cx, cy, 22, ink));
         long timerEnd = (long) ui.numberValue("timer:end", 0);
         long remaining = timerEnd - System.currentTimeMillis();
         if (remaining > 0) {
@@ -393,6 +491,14 @@ public final class PaneOsShowcase {
     }
 
     interface Glyph { void draw(UiCanvas canvas, float centerX, float centerY); }
+
+    /** Menus, context menus and status menus share the system menu look. */
+    static UiMenuStyle menuStyle(Look look) {
+        return UiMenuStyle.builder().textSize(13).fontFamily(PaneOsArt.FONT).rowHeight(23).padding(12, 5)
+            .radius(12).rowRadius(6).rowInset(5).borderWidth(.6F)
+            .background(look.dark() ? 0xF02A2A2D : 0xF2F6F6F8).text(look.text()).border(look.dark() ? 0x33FFFFFF : 0x1F000000)
+            .highlight(look.accent()).build();
+    }
 
     private static float menu(UiContext ui, String id, String label, float x, float width, int ink, int hover,
                               UiMenuStyle style, List<UiMenuItem> items, Glyph glyph) {
@@ -510,6 +616,12 @@ public final class PaneOsShowcase {
     }
 
     static void notify(UiScreen screen, String app, String title, String body) {
+        String history = screen.stringValue("notice:history", "");
+        String line = title.replace('\t', ' ').replace('\n', ' ') + "\t" + body.replace('\t', ' ').replace('\n', ' ') + "\t" + app + "\t" + System.currentTimeMillis();
+        var lines = new ArrayList<>(history.isEmpty() ? List.<String>of() : List.of(history.split("\n")));
+        lines.add(line);
+        while (lines.size() > 8) lines.removeFirst();
+        screen.setValue("notice:history", String.join("\n", lines));
         screen.setValue("notice:app", app);
         screen.setValue("notice:title", title);
         screen.setValue("notice:body", body);
