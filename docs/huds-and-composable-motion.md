@@ -86,6 +86,29 @@ and clipping of the surrounding canvas apply when the cache is drawn, not when i
 Bounds size should stay stable. Register interactive targets every paint outside this drawing-only
 cache. Never use a mutable object as a revision and expect mutations to invalidate it.
 
+### GPU-composited layers
+
+`cachedLayer` still repaints the page on every animation frame; only the group's own content is
+reused. When a group moves, scales, rotates or fades as a whole, `ui.gpuLayer` lets the GPU do it:
+
+```java
+boolean open = ui.booleanValue("details", false);
+ui.gpuLayer("details-card", new UiRect(46, 56, 208, 120), detailsRevision,
+    open ? new UiTransform(0, 0, 1, 1, 0, 1) : new UiTransform(0, 24, .96F, .96F, 0, 0),
+    260, UiEasing.EASE_OUT, card -> {
+        card.shadow(0x60000000, 10, 0, 3, 60, 70, 180, 90, 12);
+        card.roundRect(0xFF5B9BE3, 60, 70, 180, 90, 12);
+    });
+```
+
+The painter runs into the layer's own texture only when the revision, size or raster quality
+changes. A different target on a later paint starts a new animation from the transform on screen,
+and every frame of it is composited by the GPU with no page repaint or upload. Transforms pivot on
+the centre of the bounds, so include shadows and a small transparent margin in them. Layers are
+drawing-only (register controls outside them) and sit above the page and virtual lists, below
+native item slots and popups. In HUDs, virtual-list rows, affine groups or under a manual canvas
+transform the group is simply drawn in place at its target.
+
 Call `clear()` when discarding a long-lived cache. `withLayer` remains an uncached group compositor;
 use a separate `UiLayer` for each purpose. CPU bitmap transformation still has a cost; it is not a
 GPU-only scene graph.

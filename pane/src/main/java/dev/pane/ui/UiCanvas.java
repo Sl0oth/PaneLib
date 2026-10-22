@@ -218,6 +218,9 @@ public final class UiCanvas {
         graphics.fill(shape);
     }
 
+    /** Current device transform; GPU layers accept only plain context translations. */
+    AffineTransform transform() { return graphics.getTransform(); }
+
     /** A free-form shape built from lines and curves. */
     public UiPath path() {
         return new UiPath(graphics);

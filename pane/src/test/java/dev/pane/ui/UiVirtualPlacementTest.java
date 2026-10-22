@@ -17,9 +17,9 @@ final class UiVirtualPlacementTest {
         float expectedStride = request.stride() / SCALE;
         for (float offset = 0; offset < request.stride(); offset += .37F) {
             float offsetGui = offset / SCALE;
-            float previous = UiScreen.virtualRowGuiRect(request, 0, SCALE).y() - offsetGui;
+            float previous = UiVirtualLists.rowGuiRect(request, 0, SCALE).y() - offsetGui;
             for (int index = 1; index < 40; index++) {
-                float current = UiScreen.virtualRowGuiRect(request, index, SCALE).y() - offsetGui;
+                float current = UiVirtualLists.rowGuiRect(request, index, SCALE).y() - offsetGui;
                 assertEquals(expectedStride, current - previous, .0001F,
                     "adjacent row spacing must not change with scroll phase");
                 previous = current;
@@ -40,8 +40,8 @@ final class UiVirtualPlacementTest {
         assertTrue(legacyRoundedSpacings.size() > 1,
             "the former per-row rounding path should reproduce alternating row spacing");
 
-        float first = UiScreen.virtualRowGuiRect(request, 0, SCALE).y() - offset / SCALE;
-        float last = UiScreen.virtualRowGuiRect(request, 39, SCALE).y() - offset / SCALE;
+        float first = UiVirtualLists.rowGuiRect(request, 0, SCALE).y() - offset / SCALE;
+        float last = UiVirtualLists.rowGuiRect(request, 39, SCALE).y() - offset / SCALE;
         assertEquals(39 * request.stride() / SCALE, last - first, .001F);
     }
 

@@ -85,3 +85,7 @@ The [October 21 cleanup and paint-cost pass](audits/cleanup-and-paint-2026-10-21
 shadows in one blend instead of up to fourteen antialiased rings, limits caret and selection
 updates to their editor, and removes duplicated surface and control code. A full-page CPU
 repaint benchmark halved; it is a raster workload, not a frame-rate claim.
+
+The [screen split and GPU layers pass](audits/screen-split-and-gpu-layers-2026-10-21.md) adds
+`ui.gpuLayer`, which animates a cached group's transform and opacity on the GPU with zero page
+repaints per frame, and moves toasts, tooltips, popups and virtual lists out of `UiScreen`.

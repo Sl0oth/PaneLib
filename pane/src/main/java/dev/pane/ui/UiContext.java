@@ -297,6 +297,29 @@ public final class UiContext {
         canvas.withTranslation(x, y, () -> painter.accept(translated));
     }
 
+    /**
+     * Paints a group once into its own texture and lets the GPU move, scale, rotate and fade it
+     * toward {@code target} on every frame, without repainting the page. Change {@code revision}
+     * whenever the content changes; a new {@code target} on a later paint starts a fresh animation
+     * from the transform currently on screen. Transforms pivot on the centre of {@code bounds}.
+     * Bounds must include shadows plus a small transparent margin, which also keeps rotated edges
+     * antialiased; anything painted outside them is cut off.
+     * Drawing only: register interactive targets outside the layer. Inside HUDs, virtual-list rows,
+     * affine groups and manual canvas transforms the group is drawn in place at {@code target}.
+     */
+    public void gpuLayer(String id, UiRect bounds, Object revision, UiTransform target, int durationMillis,
+                         UiEasing easing, Consumer<UiCanvas> painter) {
+        if (id == null || id.isBlank() || bounds == null || target == null || painter == null
+                || bounds.width() <= 0 || bounds.height() <= 0) return;
+        var collector = interactions.gpuLayers;
+        if (collector != null && collector.accepts(canvas, offsetX, offsetY)) {
+            collector.requests.add(new UiGpuLayers.Request(id, bounds, bounds.translate(offsetX, offsetY), revision,
+                target, durationMillis, easing, inputClip, painter));
+            return;
+        }
+        canvas.withTransform(target, bounds.centerX(), bounds.centerY(), () -> painter.accept(canvas));
+    }
+
     /** True group fade with shared input/layout state. A fully transparent group has no hit targets. */
     public void withLayer(UiLayer layer, float opacity, UiRect bounds, Consumer<UiContext> painter) {
         if (painter == null) return;
@@ -371,7 +394,7 @@ public final class UiContext {
         UiRect bounds = new UiRect(x + offsetX, y + offsetY, width, height);
         // Native overlays render after the cached surface and cannot be clipped by AWT. Hide a
         // partially scrolled slot rather than letting an item or entity escape its viewport.
-        if (inputClip != null && !contains(inputClip, bounds)) return;
+        if (inputClip != null && !inputClip.contains(bounds)) return;
         nativeBounds.put(id, new NativeBounds(bounds.x() * nativeScale, bounds.y() * nativeScale,
             bounds.width() * nativeScale, bounds.height() * nativeScale));
     }
@@ -602,19 +625,9 @@ public final class UiContext {
     }
 
 
+    /** Either rectangle may be an absent clip. */
     private static UiRect intersect(UiRect first, UiRect second) {
-        if (first == null) return second;
-        if (second == null) return first;
-        float left = Math.max(first.x(), second.x());
-        float top = Math.max(first.y(), second.y());
-        float right = Math.min(first.right(), second.right());
-        float bottom = Math.min(first.bottom(), second.bottom());
-        return new UiRect(left, top, right - left, bottom - top);
-    }
-
-    private static boolean contains(UiRect outer, UiRect inner) {
-        return inner.x() >= outer.x() && inner.y() >= outer.y()
-            && inner.right() <= outer.right() && inner.bottom() <= outer.bottom();
+        return first == null ? second : second == null ? first : first.intersection(second);
     }
 
     public void card(float x, float y, float width, float height) {

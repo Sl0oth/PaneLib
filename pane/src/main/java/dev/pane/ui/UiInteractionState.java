@@ -12,6 +12,8 @@ final class UiInteractionState {
     final LinkedHashMap<String, Target> targets = new LinkedHashMap<>();
     final Map<String, UiInputRegion> inputs = new HashMap<>();
     final Deque<UiScrollRegion> ancestors = new ArrayDeque<>();
+    /** Present only while a screen's page paint can hand groups to the GPU compositor. */
+    UiGpuLayers.Collector gpuLayers;
     UiInteractionState() { this(new HashMap<>()); }
     UiInteractionState(Map<String, Double> offsets) { this(offsets,new HashMap<>(),new UiTextLayoutCache()); }
     UiInteractionState(Map<String, Double> offsets,Map<String,UiEditorViewport> editors,UiTextLayoutCache layouts) {
