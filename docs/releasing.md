@@ -60,7 +60,7 @@ versions still need their own evidence; byte identity across all operating syste
 The release-candidate workflow runs these checks and retains artifacts; it has read-only
 repository permissions and does not create a release. Public Maven hosting is live on GitHub
 Pages at `https://sl0oth.github.io/PaneLib/maven/`. The committed catalog pins the verified
-`0.9.9-beta.1` release. Future staged catalogs under `build/publication/` remain review artifacts
+`0.9.9-beta.1` and `1.0.0-beta.1` releases. Future staged catalogs under `build/publication/` remain review artifacts
 until their release and deployment gates pass.
 Before publication, check the actual destination's version history, choose an unused release
 identity, validate that exact candidate, and record its hashes and platform evidence. Never

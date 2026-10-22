@@ -1,8 +1,9 @@
 # PaneLib source status — October 22, 2026
 
 PaneLib [`1.0.0-beta.1`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.1) is the latest beta, published on GitHub Releases on October 22,
-2026 from the verified local candidate: both extracted consumers built against it and passed their
-Minecraft smoke checks on macOS ARM64. It is not yet in the Maven catalog.
+2026, and on the [anonymous Maven repository](public-maven.md). All 25 of its Maven files downloaded
+anonymously over HTTPS matched the verified candidate; file and public Maven consumers built against it,
+matched the nested runtime bytes and passed their Minecraft smoke checks on macOS ARM64.
 
 The previous beta, `0.9.9-beta.1`, is published on
 [GitHub Releases](https://github.com/Sl0oth/PaneLib/releases/tag/v0.9.9-beta.1) and the

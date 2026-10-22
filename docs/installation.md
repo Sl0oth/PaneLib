@@ -4,15 +4,9 @@ PaneLib is a **client-side library**, separate from its example showcase. Instal
 adds no screen or key binding. Your mod supplies those. The target is Minecraft **26.2**, Fabric
 Loader **0.19.3 or newer**, **Java 25**, and **Fabric API**. Other versions/loaders are not claimed.
 
-## Latest beta download
-
-The latest beta is [`1.0.0-beta.1`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.1). Download `panelib-1.0.0-beta.1.jar` (the runtime) or the
-starter ZIP from that release page and depend on the JAR as a file, as the starter does. Check it against
-the release's `SHA256SUMS`. It is not yet served by the Maven repository below.
-
 ## Public Maven dependency
 
-The newest beta on Maven is `0.9.9-beta.1`. Add this repository and dependency to your Minecraft 26.2
+The latest beta is [`1.0.0-beta.1`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.1). Add this repository and dependency to your Minecraft 26.2
 Fabric mod's `build.gradle`:
 
 ```groovy
@@ -23,14 +17,14 @@ repositories {
     }
 }
 dependencies {
-    implementation 'dev.pane:panelib:0.9.9-beta.1'
+    implementation 'dev.pane:panelib:1.0.0-beta.1'
 }
 ```
 
 No GitHub login or token is needed. Install the matching runtime with your mod, or deliberately
 bundle it with Loom `include` as described below. Fabric API remains a separate dependency.
 Get the complete starter ZIP and runtime from the
-[GitHub beta release](https://github.com/Sl0oth/PaneLib/releases/tag/v0.9.9-beta.1).
+[GitHub beta release](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.1).
 For the extracted starter, Maven mode is:
 
 ```sh
