@@ -13,15 +13,16 @@ public final class ExampleGallery {
     private static final Identifier LANDSCAPE=Identifier.fromNamespaceAndPath("pane_demo","textures/wayfarer/mountain-lookout.png");
 
     public static UiScreen createScreen(Screen parent) {
+        var preview=new UiLayer();
         var doc=UiDocument.builder("PaneLib / Examples").shell(UiShell.NONE)
             .theme(UiTheme.light()).scaling(UiScaling.fixed().reference(1000,700).adaptivity(1).range(.25F,8)).renderSettings(UiRenderSettings.typography())
-            .page(new UiPage("examples","Examples","",GOLD,ExampleGallery::paint)).build();
+            .page(new UiPage("examples","Examples","",GOLD,ui->paint(ui,preview))).build();
         return UiScreen.create(doc,NativeOverlayRenderer.NONE,(s,event)->{
             var type=event.type(); var key=event.key(); var value=event.value();
             if(type!=UiEventType.ACTION)return;
             var client=Minecraft.getInstance();
             switch(key){
-                case "beacon" -> client.gui.setScreen(BeaconShowcase.createScreen(s));
+                case "paneos" -> client.gui.setScreen(PaneOsShowcase.createScreen(s));
                 case "wayfarer" -> client.gui.setScreen(WayfarerShowcase.createScreen(s));
                 case "mail" -> client.gui.setScreen(GmailShowcase.createScreen(s));
                 case "wayfarer-hud", "vanilla-hud" -> {
@@ -35,7 +36,7 @@ public final class ExampleGallery {
         },UiScreenOptions.builder().parent(parent).backdrop(UiBackdrop.NONE).build());
     }
 
-    private static void paint(UiContext ui) {
+    private static void paint(UiContext ui, UiLayer preview) {
         var g=ui.canvas();
         float w=ui.width(), h=ui.height(), m=Math.max(18,Math.min(w,h)*.045F);
         // Fine print-stock rules and a strong editorial hierarchy, rather than a generic dashboard.
@@ -50,14 +51,14 @@ public final class ExampleGallery {
         float y=top+77, bottom=h-m-102;
         float heroW=(w-2*m)*.55F, gap=20, right=m+heroW+gap, rightW=w-m-right;
         float heroH=bottom-y;
-        ui.paintedButton("beacon","Open Beacon","beacon",m,y,heroW,heroH,0,true,(c,state)->{
-            c.withClip(m,y,heroW,heroH,()->BeaconShowcase.paintPreview(c,new UiRect(m,y,heroW,heroH)));
-            c.gradientRect(0x00060A11,0xE6060A11,90,m,y+heroH*.45F,heroW,heroH*.55F,0);
-            text(c,"01 / BEACON",m+20,y+21,12,0xFFFFB347,true);
-            text(c,"Plan the climb.",m+20,y+heroH-112,32,0xFFF5F6F0,true);
-            text(c,"Light the beacon.",m+20,y+heroH-76,32,0xFFF5F6F0,true);
-            text(c,"CUSTOM SHAPES  /  MOTION  /  GPU LAYERS",m+20,y+heroH-27,10,0xFFFFB347,true);
-            if(state.hovered()||state.focused())c.strokeRoundRect(0xFFFFB347,3,m,y,heroW,heroH,0);
+        ui.paintedButton("paneos","Open PaneOS","paneos",m,y,heroW,heroH,0,true,(c,state)->{
+            c.withClip(m,y,heroW,heroH,()->PaneOsShowcase.paintPreview(c,preview,new UiRect(m,y,heroW,heroH)));
+            c.gradientRect(0x00061433,0xD9061433,90,m,y+heroH*.42F,heroW,heroH*.58F,0);
+            text(c,"01 / PANEOS",m+20,y+42,12,0xFFFFFFFF,true);
+            text(c,"A whole desktop.",m+20,y+heroH-150,32,0xFFFFFFFF,true);
+            text(c,"Drawn in code.",m+20,y+heroH-114,32,0xFFFFFFFF,true);
+            text(c,"LIQUID GLASS  /  WINDOWS  /  WIDGETS",m+20,y+heroH-65,10,0xFFBFDDF8,true);
+            if(state.hovered()||state.focused())c.strokeRoundRect(0xFFFFFFFF,3,m,y,heroW,heroH,0);
         });
         float rowH=(heroH-gap)/2;
         ui.paintedButton("wayfarer","Open Wayfarer menu","wayfarer",right,y,rightW,rowH,0,true,(c,state)->{

@@ -72,6 +72,24 @@ toast schedules no frames. While a menu/dialog is open, toast visuals/input are 
 continue expiring. Menus and dialogs still use the older page path and temporarily suspend atlas
 composition. Tooltip overlays remain independent.
 
-The Beacon example (`./gradlew :pane-demo:runExamples`, then Beacon) combines staged entrance,
-spring retargeting, count-up values, crossfaded cached art and a GPU-composited sheet.
-`-Pisolated -PbeaconTest` checks shape targets, the GPU slide and settled idle in a real client.
+## Pointer, time and drag driven painting
+
+- `ui.pointer(x, y, w, h)` returns where the pointer is over a region painted from it, in local
+  coordinates through translations and affine groups. Moving inside it, or leaving it, repaints only
+  that region. PaneOS magnifies its dock toward the cursor this way.
+- `ui.refreshAfter(millis, bounds)` repaints `bounds` once after a delay. Call it on every paint that
+  should keep refreshing; the earliest request wins. A clock asks for the next second or minute and
+  an idle screen otherwise does nothing.
+- `ui.dragArea(id, key, x, y, w, h, moves)` makes a title bar draggable. The travel accumulates in
+  `key:x` and `key:y`; naming what the drag `moves` lets each step repaint only where the window was
+  and where it goes instead of the page.
+- `ui.withPresentation(transform, pivotX, pivotY, painter)` paints any group through a transform,
+  editors, sliders and scroll viewports included, for an open, close or minimize effect. Nothing
+  inside takes input while presented; paint the group normally once the transition settles.
+- `screen.requestFocus(id)` focuses a control as soon as a paint registers it, such as a search
+  field in a panel the same event opened or an editor still animating in.
+
+PaneOS (`./gradlew :pane-demo:runExamples`, then PaneOS) opens windows with a spring presentation,
+minimizes them into the dock, and drags them with bounded repaints.
+`-Pisolated -PpaneOsTest` checks windows, drag cost, Control Center, Spotlight, the apps, dock
+magnification and settled idle in a real client.

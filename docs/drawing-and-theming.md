@@ -248,8 +248,32 @@ ui.shapedButton("map", "World map", "open-map", hex, true, (g, state) -> {
 UiPath wedge = ui.canvas().path().arc(cx, cy, 100, -118, 56).arc(cx, cy, 50, -62, -56).close();
 ```
 
-The Beacon example (open `runExamples`, then Beacon) combines hexagon, slanted, chamfered, chevron, notched,
-circular and ring-segment buttons with entrance, hover, count-up and GPU-layer motion.
+PaneOS (open `runExamples`, then PaneOS) uses circular traffic lights, round calculator keys and
+circular Control Center buttons whose empty corners never take the pointer.
+
+## Liquid glass
+
+`canvas.liquidGlass(x, y, width, height, radius, UiGlass)` turns a rounded rectangle into glass over
+whatever was painted before it. The rim refracts the backdrop along the edge normal, strongest at
+the edge and with slight colour separation; the body is frosted and lifted toward a tint; a
+specular edge catches light from above and an optional shadow falls only outside the shape.
+
+```java
+UiGlass dock = UiGlass.regular().withTint(0x40FFFFFF);   // refraction, rim, blur, tint, dispersion, highlight, shadow
+g.liquidGlass(x, y, width, 70, 26, dock);
+UiGlass control = UiGlass.clear();                       // thinner rim, almost no frost, for small controls
+```
+
+Paint glass after what it should bend. It reads the surface itself, so it costs work only when the
+page repaints, and Pane keeps each lens between paints: a lens whose geometry, appearance and every
+backdrop pixel are unchanged is reused instead of recomputed, and frost is blurred at half resolution.
+`backdropBlur` gets the same reuse. A partial repaint that touches what a lens or blur reads grows to
+cover all of it, so a hovered dock icon never leaves the glass sampling its own stale output.
+
+Inside a `withLayer` group, glass sees the group composited over everything behind it, so a fading
+panel keeps refracting the desktop. Inside `cachedLayer` and `gpuLayer` painting it sees only what
+that layer drew first; put the backdrop in the same cache when both are static, as PaneOS does with
+its wallpaper and widgets. Rotated or sheared drawing falls back to a blurred, tinted panel.
 
 ## Popup menu styling
 

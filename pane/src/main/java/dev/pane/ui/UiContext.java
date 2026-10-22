@@ -17,6 +17,8 @@ public final class UiContext {
     private UiInteractionState interactions = new UiInteractionState();
     private UiRect focusClip;
     private java.awt.Shape affineFocusClip;
+    /** Local-to-document mapping inside affine groups (after this context's offset); null when only translated. */
+    private java.awt.geom.AffineTransform documentMatrix;
     private final UiCanvas canvas;
     private final UiTheme theme;
     private final int width;
@@ -113,6 +115,7 @@ public final class UiContext {
             inputRegions, textInput, tooltips, menus, dialogs, animationClock, nativeScale,
             offsetX, offsetY, inputClip, virtualLists);
         child.interactions = interactions; child.focusClip = focusClip; child.affineFocusClip = affineFocusClip;
+        child.documentMatrix = documentMatrix;
         return child;
     }
 
@@ -199,6 +202,20 @@ public final class UiContext {
      * Compose with withLayer for one group opacity rather than per-operation opacity.
      */
     public void withTransform(UiTransform transform, float pivotX, float pivotY, Consumer<UiContext> painter) {
+        transformed(transform, pivotX, pivotY, painter, true);
+    }
+
+    /**
+     * Paints any group through a transform for an entrance, exit or minimize effect: text editors,
+     * sliders and scroll viewports included, exactly as they look untransformed. Unlike
+     * {@link #withTransform} nothing inside takes pointer or keyboard input while presented, and
+     * native slots are hidden; paint the group normally once the transition settles.
+     */
+    public void withPresentation(UiTransform transform, float pivotX, float pivotY, Consumer<UiContext> painter) {
+        transformed(transform, pivotX, pivotY, painter, false);
+    }
+
+    private void transformed(UiTransform transform, float pivotX, float pivotY, Consumer<UiContext> painter, boolean interactive) {
         if (transform == null || painter == null || transform.opacity() <= 0) return;
         var hits = new java.util.ArrayList<UiHitRegion>();
         var natives = new java.util.LinkedHashMap<String, NativeBounds>();
@@ -212,6 +229,10 @@ public final class UiContext {
         UiContext child = new UiContext(canvas, theme, width, height, accent, content, hoveredId, pressedId,
             motion, interactionMotion, animating, paintCount, state, hits, natives, covers, bounds, scrolls,
             inputs, tips, textInput, nextMenus, nextDialogs, animationClock, nativeScale, null);
+        child.interactions.live = interactions.live;
+        child.documentMatrix = java.awt.geom.AffineTransform.getTranslateInstance(offsetX, offsetY);
+        child.documentMatrix.concatenate(transform.matrix(pivotX, pivotY));
+        if (documentMatrix != null) child.documentMatrix.preConcatenate(documentMatrix);
         java.awt.Shape ringClip = focusRingClip();
         if (ringClip != null) {
             try {
@@ -221,11 +242,14 @@ public final class UiContext {
             }
         }
         canvas.withTransform(transform, pivotX, pivotY, () -> painter.accept(child));
-        if (!inputs.isEmpty() || !scrolls.isEmpty() || !natives.isEmpty() || !covers.isEmpty()
-                || hits.stream().anyMatch(hit -> hit.action().startsWith(INTERNAL_ACTION_PREFIX + "slider:")))
-            throw new IllegalArgumentException("Affine groups support drawing/buttons; keep editors, sliders, scrolls and native slots outside");
         var matrix = java.awt.geom.AffineTransform.getTranslateInstance(offsetX, offsetY);
         matrix.concatenate(transform.matrix(pivotX, pivotY));
+        // Bounds supplied inside the group are transformed back to document coordinates.
+        for (var entry : bounds.entrySet()) animationBounds.put(entry.getKey(), transformedRect(matrix, entry.getValue()));
+        if (!interactive) return;
+        if (!inputs.isEmpty() || !scrolls.isEmpty() || !natives.isEmpty() || !covers.isEmpty()
+                || hits.stream().anyMatch(hit -> hit.action().startsWith(INTERNAL_ACTION_PREFIX + "slider:")))
+            throw new IllegalArgumentException("Affine groups support drawing/buttons; keep editors, sliders, scrolls and native slots outside, or use withPresentation");
         for (UiHitRegion hit : hits) {
             java.awt.Shape shape = hit.hitShape() == null
                 ? new java.awt.geom.Rectangle2D.Float(hit.x(), hit.y(), hit.width(), hit.height()) : hit.hitShape();
@@ -251,8 +275,6 @@ public final class UiContext {
         }
         interactions.buttons.putAll(child.interactions.buttons);
         dialogs.addAll(nextDialogs);
-        // Bounds supplied inside the group are transformed back to document coordinates.
-        for (var entry : bounds.entrySet()) animationBounds.put(entry.getKey(), transformedRect(matrix, entry.getValue()));
     }
 
     private static UiRect transformedRect(java.awt.geom.AffineTransform matrix, UiRect source) {
@@ -872,6 +894,28 @@ public final class UiContext {
         return stored;
     }
 
+    /**
+     * Slider drawn entirely by {@code painter}, such as a thick pill with an icon. The whole
+     * rectangle is the pointer target and its width is the track: pointer, drag and keyboard
+     * steps behave exactly as {@link #slider}. Returns the stored value.
+     */
+    public double paintedSlider(String id, String key, float x, float y, float width, float height,
+                                double minimum, double maximum, double fallback,
+                                BiConsumer<UiCanvas, UiSliderState> painter) {
+        java.util.Objects.requireNonNull(painter, "painter");
+        if (!Double.isFinite(minimum) || !Double.isFinite(maximum) || !Double.isFinite(maximum - minimum) || maximum <= minimum)
+            throw new IllegalArgumentException("maximum must be greater than minimum");
+        requireConsumerInteractionId(id);
+        double current = numberValue(key, fallback);
+        double stored = Double.isFinite(current) ? Math.max(minimum, Math.min(maximum, current)) : minimum;
+        state.putIfAbsent(key, stored);
+        float position = (float) ((stored - minimum) / (maximum - minimum));
+        painter.accept(canvas, new UiSliderState(position, stored, hovered(id), pressed(id), focused(id)));
+        if (focused(id)) drawFocusRing(accent, x - 2, y - 2, width + 4, height + 4, Math.min(height / 2 + 2, 12));
+        hitTracked(id, internalAction("slider:" + key + ":" + minimum + ":" + maximum), x, y, width, height, x, width);
+        return stored;
+    }
+
     private void paintSlider(String id, String key, float x, float y, float width, float value,
                              double minimum, double maximum) {
         canvas.roundRect(theme.raisedSurface(), x, y + 6, width, 4, 2);
@@ -1302,6 +1346,63 @@ public final class UiContext {
         addInput(id, key, x, y, width, height, maxLength, true, caretXs, caretYs,
             offset == 0 ? visualLines : visualLines.stream().map(line -> line.translate(0, -offset)).toList(), false);
         return value;
+    }
+
+    /**
+     * Pointer-draggable region, such as a window title bar. Pressing and moving adds the pointer's
+     * travel, in layout units, to the numbers {@code key + ":x"} and {@code key + ":y"} (zero until
+     * first dragged); paint whatever moves at those offsets. Each step repaints like setValue.
+     * A raw click handler can still react to the press, for example to raise a window.
+     */
+    public void dragArea(String id, String key, float x, float y, float width, float height) {
+        internalHit(id, "drag:" + UiValueKey.encode(key), x, y, width, height);
+    }
+
+    /**
+     * {@link #dragArea(String, String, float, float, float, float)} that names what the drag moves,
+     * such as the whole window, so each drag step repaints only where it was and where it goes
+     * instead of the page. Include shadows in {@code moves}; paint it at the dragged offsets.
+     */
+    public void dragArea(String id, String key, float x, float y, float width, float height, UiRect moves) {
+        dragArea(id, key, x, y, width, height);
+        if (moves != null) interactions.live.dragBounds.put(id, documentRect(moves));
+    }
+
+    /**
+     * Where the pointer is over a region painted from it, such as a dock that magnifies toward the
+     * cursor. Moving inside the region, or leaving it, repaints only the region. Coordinates are local
+     * to this context through translations and affine groups, and report the pointer whatever is
+     * painted above the region. Outside, or inside virtual-list rows and HUDs, it reports
+     * {@link UiPointer#OUTSIDE}.
+     */
+    public UiPointer pointer(float x, float y, float width, float height) {
+        UiRect area = documentRect(new UiRect(x, y, width, height));
+        if (inputClip != null) area = intersect(area, inputClip);
+        if (area.width() <= 0 || area.height() <= 0) return UiPointer.OUTSIDE;
+        var live = interactions.live;
+        live.pointerAreas.add(area);
+        if (!area.contains(live.pointerX, live.pointerY)) return UiPointer.OUTSIDE;
+        var point = new java.awt.geom.Point2D.Float(live.pointerX, live.pointerY);
+        if (documentMatrix != null) {
+            try { documentMatrix.inverseTransform(point, point); }
+            catch (java.awt.geom.NoninvertibleTransformException exception) { return UiPointer.OUTSIDE; }
+        }
+        return new UiPointer(true, point.x - offsetX, point.y - offsetY);
+    }
+
+    /**
+     * Repaints {@code bounds}, or the whole page when null, once {@code delayMillis} have passed.
+     * Call it on every paint that should keep refreshing, such as a clock asking for the next
+     * minute; the earliest request wins and idle screens otherwise cost nothing.
+     */
+    public void refreshAfter(long delayMillis, UiRect bounds) {
+        interactions.live.requestRefresh(System.nanoTime() + Math.max(1, delayMillis) * 1_000_000L,
+            bounds == null ? null : documentRect(bounds));
+    }
+
+    private UiRect documentRect(UiRect local) {
+        UiRect moved = local.translate(offsetX, offsetY);
+        return documentMatrix == null ? moved : transformedRect(documentMatrix, moved);
     }
 
     /** Makes a custom-painted region switch to another page without reserving an action name. */

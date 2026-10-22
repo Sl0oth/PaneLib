@@ -26,7 +26,7 @@ remain native overlays. The library alone intentionally adds no screen, command,
 ```
 
 This opens the showcase launcher at the title screen, the one place to reach every example:
-Beacon (custom-shaped controls, motion and GPU layers), Wayfarer's game menu, and Pane Mail's inbox,
+PaneOS (a whole Mac-like desktop with liquid glass and working apps), Wayfarer's game menu, and Pane Mail's inbox,
 plus the Wayfarer and vanilla HUD recipes. Esc returns to the launcher from each; H reopens it and
 J toggles the selected HUD after you create or join a world. It needs an installed Java 25, but no
 Python launcher, private save, or Mac-specific Java path. See the [example index](examples/README.md).
@@ -125,7 +125,7 @@ Open the curated example shelf with Java 25:
 ./gradlew :pane-demo:runExamples
 ```
 
-Beacon, Wayfarer and Pane Mail have distinct visual styles and all open from that one launcher. See the [example index](examples/README.md). It needs no private save, Python launcher or Mac-specific Java path. H opens the launcher; J toggles the selected HUD.
+PaneOS, Wayfarer and Pane Mail have distinct visual styles and all open from that one launcher. See the [example index](examples/README.md). It needs no private save, Python launcher or Mac-specific Java path. H opens the launcher; J toggles the selected HUD.
 
 The [independent starter](examples/first-screen/README.md) compiles against the packaged library and is the smallest place to begin your own mod.
 
@@ -134,12 +134,12 @@ Developer verification is separate:
 ```sh
 ./gradlew :pane:build :pane-demo:build
 ./gradlew :pane-demo:runExamples -PexampleTest
-./gradlew :pane-demo:runClient -Pisolated -PbeaconTest
+./gradlew :pane-demo:runClient -Pisolated -PpaneOsTest
 ./gradlew :pane-demo:runClient -Pisolated -PgmailTest
 ```
 
 The examples fixture creates a fresh disposable world. Focused `-Pisolated` fixtures (API, review,
-popup, animation, editing, editor, dialog, GPU layer, Beacon, idle/toast performance and more)
+popup, animation, editing, editor, dialog, GPU layer, PaneOS, idle/toast performance and more)
 exercise the library in a real client; see [performance](docs/performance.md) and
 [layered UI and motion](docs/layered-ui-and-motion.md).
 

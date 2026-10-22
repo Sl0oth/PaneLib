@@ -145,6 +145,8 @@ public class UiScreen extends Screen {
     private String focusedId;
     private final java.util.ArrayDeque<FocusScope> focusScopes = new java.util.ArrayDeque<>();
     private FocusRestore pendingFocus, dialogRestore;
+    /** Control that should take focus once a paint registers it, such as a field still animating in. */
+    private String requestedFocus;
     private record FocusRestore(String id, int cursor, int anchor) { }
     private record FocusScope(String id, Set<String> controls, FocusRestore restore, Runnable onEscape) { }
     private final Map<String, UiTextHistory> textHistories = new java.util.LinkedHashMap<>(16, .75F, true) {
@@ -165,6 +167,20 @@ public class UiScreen extends Screen {
     private String visibleTooltipId;
     private long tooltipRevealAt;
     private UiHitRegion draggingSlider;
+    /** Drag area being moved, with the pointer and stored offsets at the press. */
+    private String draggingKey, draggingId;
+    private float dragStartX, dragStartY;
+    private double dragOriginX, dragOriginY;
+    /** What the drag moves as last painted, with the offsets it was painted at; null repaints the page. */
+    private UiRect dragPainted;
+    private double dragPaintedX, dragPaintedY;
+    /** Timed repaint requested by the latest paint. */
+    private long refreshAtNanos;
+    private UiRect refreshBounds;
+    private boolean refreshFull;
+    /** Device rectangles glass and backdrop blur read in the latest paint. */
+    private List<java.awt.Rectangle> backdropReads = List.of();
+    private final UiGlassCache glassCache = new UiGlassCache();
     private UiInputRegion draggingTextInput;
     private int textCursor;
     private boolean textUpstream;
@@ -327,7 +343,7 @@ public class UiScreen extends Screen {
         FocusRestore restore = new FocusRestore(focusedId, textCursor, textAnchor);
         closeMenu(false);
         focusScopes.addLast(new FocusScope(id, allowed, restore, onEscape == null ? () -> { } : onEscape));
-        pressedId = null; draggingSlider = null; draggingTextInput = null;
+        pressedId = null; draggingSlider = null; draggingTextInput = null; draggingKey = null;
         focus(null);
         pendingFocus = new FocusRestore(initialFocus == null ? controls.getFirst() : initialFocus, -1, -1);
         requestFullRepaint();
@@ -340,7 +356,7 @@ public class UiScreen extends Screen {
         if (openDialogId != null) throw new IllegalStateException("Close the built-in dialog before closing its custom scope");
         if (focusScopes.isEmpty() || !focusScopes.peekLast().id().equals(id)) throw new IllegalStateException("Close focus scopes in reverse order");
         FocusScope scope = focusScopes.removeLast();
-        closeMenu(false); pressedId = null; draggingSlider = null; draggingTextInput = null;
+        closeMenu(false); pressedId = null; draggingSlider = null; draggingTextInput = null; draggingKey = null;
         focus(null); pendingFocus = scope.restore(); resolvePendingFocus(); requestFullRepaint();
     }
     public Optional<String> focusScopeId() { return focusScopes.isEmpty() ? Optional.empty() : Optional.of(focusScopes.peekLast().id()); }
@@ -489,6 +505,10 @@ public class UiScreen extends Screen {
 
     /** GPU layer contents rasterized since this screen opened; animation frames add none. */
     public long gpuLayerRasterCount() { return gpuLayers.rasterCount; }
+
+    /** Liquid glass lenses reused because nothing behind them changed, and lenses computed. Diagnostics. */
+    public long glassLensReuseCount() { return glassCache.hits; }
+    public long glassLensRenderCount() { return glassCache.misses; }
 
     /** Virtual-list GPU atlases allocated since this screen opened. */
     public long virtualAtlasAllocationCount() { return virtual.atlasAllocations; }
@@ -698,6 +718,7 @@ public class UiScreen extends Screen {
         focusedId = null;
         draggingSlider = null;
         draggingTextInput = null;
+        draggingKey = null;
         nativeBounds.clear();
         nativeText.clear(); lastNativeTextCount = 0;
         nativeOverlayLayers.clear();
@@ -832,7 +853,7 @@ public class UiScreen extends Screen {
         }
         if (changed) {
             layoutHitsStale=true;
-            draggingSlider=null;draggingTextInput=null;pressedId=null;
+            draggingSlider=null;draggingTextInput=null;draggingKey=null;pressedId=null;
             if (openDialogId != null) dialogHitsStale = true;
             if (openMenuId != null) {
                 hitRegions = hitRegions.stream().filter(hit -> !hit.id().startsWith("menu:" + openMenuId + ":")).toList();
@@ -885,8 +906,11 @@ public class UiScreen extends Screen {
             popupDirty = toastOverlay.dirty = tooltipOverlay.dirty = true;
         }
         synchronizeViewport(graphics);
+        boolean pointerMoved = this.mouseX != mouseX || this.mouseY != mouseY;
         this.mouseX = mouseX;
         this.mouseY = mouseY;
+        // Minecraft reports the cursor every frame; follow it even when no move event arrived.
+        if (pointerMoved) trackPointer(mouseX * eventLayoutScale(), mouseY * eventLayoutScale());
         long now = System.nanoTime();
         dialogBlurScratch.releaseIfIdle(now);
         if (transitionEnd > 0) {
@@ -919,6 +943,11 @@ public class UiScreen extends Screen {
             }
         }
         if (customAnimationsActive && now - lastPaint >= FRAME_NANOS) requestCustomAnimationRepaint();
+        if (refreshAtNanos != 0 && now >= refreshAtNanos) {
+            refreshAtNanos = 0;
+            if (refreshFull || refreshBounds == null) requestFullRepaint();
+            else requestPartialRepaint(refreshBounds.expandAndClamp(surfaceLayoutWidth, surfaceLayoutHeight, 2));
+        }
         if (virtual.active && now - lastCustomVirtualAnimationPaint >= FRAME_NANOS) {
             boolean any = false;
             for (UiVirtualLists.Layer layer : virtual.layers.values()) for (UiVirtualLists.Row row : layer.rows.values()) {
@@ -1082,7 +1111,18 @@ public class UiScreen extends Screen {
         this.mouseX = (int) mouseX;
         this.mouseY = (int) mouseY;
         float scale = eventLayoutScale();
+        trackPointer((float) (mouseX * scale), (float) (mouseY * scale));
         updateHover(mouseX * scale, mouseY * scale, true);
+    }
+
+    /** Repaints the pointer areas the pointer moves within, enters or leaves. */
+    private void trackPointer(float layoutX, float layoutY) {
+        var live = interactions.live;
+        float oldX = live.pointerX, oldY = live.pointerY;
+        if (oldX == layoutX && oldY == layoutY) return;
+        live.pointerX = layoutX; live.pointerY = layoutY;
+        for (UiRect area : live.pointerAreas)
+            if (area.contains(layoutX, layoutY) || area.contains(oldX, oldY)) requestPartialRepaint(area);
     }
 
     @Override
@@ -1143,6 +1183,14 @@ public class UiScreen extends Screen {
             draggingSlider = region;
             updateSlider(region, event.x() * scale);
         }
+        if (internalBody(region.action()).startsWith("drag:")) {
+            draggingKey = UiValueKey.decode(internalBody(region.action()).substring(5));
+            draggingId = region.id();
+            dragStartX = layoutX; dragStartY = layoutY;
+            dragOriginX = numberValue(draggingKey + ":x", 0); dragOriginY = numberValue(draggingKey + ":y", 0);
+            dragPainted = interactions.live.dragBounds.get(draggingId);
+            dragPaintedX = dragOriginX; dragPaintedY = dragOriginY;
+        }
         if(popupTarget(region.id()))popupDirty=true;
         else startInteraction(100);
         return true;
@@ -1150,11 +1198,12 @@ public class UiScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
-        if(layoutHitsStale){pressedId=null;draggingSlider=null;draggingTextInput=null;return true;}
-        if(openDialogId!=null&&dialogHitsStale){pressedId=null;draggingSlider=null;draggingTextInput=null;return true;}
-        if (openMenuId != null && menuHitsStale) { pressedId = null; draggingSlider = null; draggingTextInput = null; return true; }
+        if(layoutHitsStale){pressedId=null;draggingSlider=null;draggingTextInput=null;draggingKey=null;return true;}
+        if(openDialogId!=null&&dialogHitsStale){pressedId=null;draggingSlider=null;draggingTextInput=null;draggingKey=null;return true;}
+        if (openMenuId != null && menuHitsStale) { pressedId = null; draggingSlider = null; draggingTextInput = null; draggingKey = null; return true; }
         if (event.button() != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
         boolean wasInteracting = pressedId != null || draggingSlider != null || draggingTextInput != null;
+        draggingKey = null;
         String releasedId = pressedId;
         float scale = eventLayoutScale();
         UiHitRegion region = regionAt(event.x() * scale, event.y() * scale);
@@ -1173,6 +1222,19 @@ public class UiScreen extends Screen {
         this.mouseX = (int) event.x();
         this.mouseY = (int) event.y();
         float scale = eventLayoutScale();
+        trackPointer((float) (event.x() * scale), (float) (event.y() * scale));
+        if (draggingKey != null) {
+            if (event.button() != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
+            double x = dragOriginX + event.x() * scale - dragStartX, y = dragOriginY + event.y() * scale - dragStartY;
+            state.put(draggingKey + ":x", x);
+            state.put(draggingKey + ":y", y);
+            hoverDirty = true;
+            // Repaint where the dragged content was painted and where the step takes it.
+            if (dragPainted == null) requestFullRepaint();
+            else requestPartialRepaint(dragPainted.union(dragPainted.translate((float) (x - dragPaintedX), (float) (y - dragPaintedY)))
+                .expandAndClamp(surfaceLayoutWidth, surfaceLayoutHeight, 2));
+            return true;
+        }
         if (draggingSlider != null) {
             if (event.button() != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
             reconcileSliderDrag();
@@ -1327,7 +1389,7 @@ public class UiScreen extends Screen {
             return;
         }
         action = internalBody(action);
-        if (action.startsWith("input:")) return;
+        if (action.startsWith("input:") || action.startsWith("drag:")) return;
         if (action.startsWith(DIALOG_PREFIX)) {
             dialogRestore = new FocusRestore(focusedId, textCursor, textAnchor);
             openDialogId = action.substring(DIALOG_PREFIX.length());
@@ -1599,6 +1661,16 @@ public class UiScreen extends Screen {
         return false;
     }
 
+    /**
+     * Focuses {@code id} now, or as soon as a paint registers it, such as a search field in a panel
+     * the same event just opened or an editor still animating in. Any other focus change cancels it.
+     */
+    public void requestFocus(String id) {
+        if (id == null || focus(id)) return;
+        requestedFocus = id;
+        requestFullRepaint();
+    }
+
     /** Focuses a registered, scope-eligible control, revealing it through ordinary scroll ancestors. */
     public boolean focus(String id) {
         if (id != null && (!focusAllowed(id) || (region(id).isEmpty() && !interactions.targets.containsKey(id) && menuItem(id) == null)
@@ -1610,6 +1682,7 @@ public class UiScreen extends Screen {
         }
         if (menuItem(id) != null) { revealMenuFocus = true; popupDirty = true; }
         pendingFocus = null;
+        requestedFocus = null;
         if (Objects.equals(focusedId, id)) return true;
         String previous = focusedId;
         focusedId = id;
@@ -2085,6 +2158,7 @@ public class UiScreen extends Screen {
             && surfaceWidth == pixelWidth && surfaceHeight == pixelHeight;
         if (!ensureSurface(pixelWidth, pixelHeight)) return;
 
+        if (partial) requestedPartial = UiGlassCache.cover(requestedPartial, backdropReads, qualityScale);
         UiRect repaintRegion = partial ? requestedPartial.expandAndClamp(layoutWidth, layoutHeight, 2) : null;
         PixelRect pixelRegion = partial ? toPixelRect(repaintRegion, qualityScale, pixelWidth, pixelHeight) : null;
         lastDirtyPixels = partial ? pixelRegion.width() * pixelRegion.height() : pixelWidth * pixelHeight;
@@ -2102,6 +2176,8 @@ public class UiScreen extends Screen {
                     pixelRegion.height() / qualityScale));
             }
             UiCanvas canvas = new UiCanvas(graphics, surface.image);
+            canvas.backdropReads = new ArrayList<>();
+            canvas.glassCache = glassCache;
             List<UiHitRegion> nextHits = new ArrayList<>();
             Map<String, NativeBounds> nextNativeBounds = new LinkedHashMap<>();
             Map<String, UiRect> nextNativeOverlayLayers = new LinkedHashMap<>();
@@ -2138,6 +2214,15 @@ public class UiScreen extends Screen {
                 canvas.withClip(clip.x(), clip.y(), clip.width(), clip.height(),
                     () -> page.painter().paint(pageContext));
             } finally { interactions.gpuLayers = null; }
+            backdropReads = List.copyOf(canvas.backdropReads);
+            glassCache.endPaint(!partial);
+            canvas.glassCache = null;
+            var live = interactions.live;
+            refreshAtNanos = live.refreshAtNanos; refreshBounds = live.refreshBounds; refreshFull = live.refreshFull;
+            if (draggingKey != null) {
+                dragPainted = live.dragBounds.get(draggingId);
+                dragPaintedX = numberValue(draggingKey + ":x", 0); dragPaintedY = numberValue(draggingKey + ":y", 0);
+            }
             gpuLayers.reconcile(gpuCollector.requests, qualityScale, motionScale(), now);
             for (String id : interactions.scrollEnds.takeResolved()) scrollMotions.remove(id);
             rootAnimationIds=animationClock.usedIds();
@@ -2176,6 +2261,10 @@ public class UiScreen extends Screen {
             layoutHitsStale=false;
             resolvePendingFocus();
             pendingFocus = null;
+            if (requestedFocus != null) {
+                String requested = requestedFocus;
+                if (!focus(requested)) requestedFocus = requested;
+            }
             nativeBounds.clear();
             nativeBounds.putAll(nextNativeBounds);
             nativeOverlayLayers.clear();
@@ -2425,7 +2514,7 @@ public class UiScreen extends Screen {
         UiTooltip tooltip = hoveredTooltip();
         boolean shown = tooltipRevealAt == 0 && tooltip != null && surfaceLayoutWidth > 0 && surfaceLayoutHeight > 0
             && tooltipOverlay.render(graphics, surfaceSampler, tooltip, surface == null ? null : surface.image,
-                surfaceQualityScale, surfaceLayoutWidth, surfaceLayoutHeight, layoutScale, document.theme());
+                surfaceQualityScale, surfaceLayoutWidth, surfaceLayoutHeight, layoutScale, document.theme(), document.tooltipStyle());
         visibleTooltipId = shown ? tooltip.id() : null;
     }
 
@@ -2575,6 +2664,7 @@ public class UiScreen extends Screen {
 
     private void closeSurface() {
         dialogBlurScratch.clear();
+        glassCache.clear();
         closePopupSurface();
         toastOverlay.close();
         closeVirtualLayers();
@@ -2602,7 +2692,7 @@ public class UiScreen extends Screen {
 
     @Override
     public void removed() {
-        pressedId = null; draggingSlider = null; draggingTextInput = null;
+        pressedId = null; draggingSlider = null; draggingTextInput = null; draggingKey = null;
         nativeText.clear(); lastNativeTextCount = 0;
         interactions.scrollEnds.cancelPending();
         animations.clear();rootAnimationIds=Set.of();customAnimationsActive=false;

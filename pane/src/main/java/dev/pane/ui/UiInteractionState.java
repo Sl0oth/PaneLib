@@ -14,6 +14,32 @@ final class UiInteractionState {
     final Deque<UiScrollRegion> ancestors = new ArrayDeque<>();
     /** Present only while a screen's page paint can hand groups to the GPU compositor. */
     UiGpuLayers.Collector gpuLayers;
+    /** Pointer, drag and timer requests; affine child contexts share the parent's instance. */
+    Live live = new Live();
+
+    /** Everything here is in document layout units. */
+    static final class Live {
+        /** Pointer position, NaN when unknown, and the areas painted from it. */
+        float pointerX = Float.NaN, pointerY = Float.NaN;
+        final List<UiRect> pointerAreas = new ArrayList<>();
+        /** What each drag area moves, so a drag step repaints only that. */
+        final Map<String, UiRect> dragBounds = new HashMap<>();
+        /** Earliest timed repaint any painter asked for, with the union of what it covers. */
+        long refreshAtNanos;
+        UiRect refreshBounds;
+        boolean refreshFull;
+
+        void requestRefresh(long atNanos, UiRect bounds) {
+            refreshAtNanos = refreshAtNanos == 0 ? atNanos : Math.min(refreshAtNanos, atNanos);
+            if (bounds == null) refreshFull = true;
+            else refreshBounds = refreshBounds == null ? bounds : refreshBounds.union(bounds);
+        }
+
+        void clear() {
+            pointerAreas.clear(); dragBounds.clear(); refreshAtNanos = 0; refreshBounds = null; refreshFull = false;
+        }
+    }
+
     UiInteractionState() { this(new HashMap<>()); }
     UiInteractionState(Map<String, Double> offsets) { this(offsets,new HashMap<>(),new UiTextLayoutCache()); }
     UiInteractionState(Map<String, Double> offsets,Map<String,UiEditorViewport> editors,UiTextLayoutCache layouts) {
@@ -22,7 +48,10 @@ final class UiInteractionState {
     UiInteractionState(Map<String, Double> offsets,Map<String,UiEditorViewport> editors,UiTextLayoutCache layouts, UiScrollEndState scrollEnds) {
         this.offsets=offsets;this.editors=editors;this.textLayouts=layouts;this.scrollEnds=scrollEnds;
     }
-    void beginPaint() { buttons.clear(); targets.clear(); inputs.clear(); ancestors.clear(); }
+    void beginPaint() {
+        buttons.clear(); targets.clear(); inputs.clear(); ancestors.clear();
+        live.clear();
+    }
     void register(UiHitRegion hit) {
         List<Ancestor> chain = ancestors.isEmpty() ? List.of()
             : ancestors.stream().map(region -> new Ancestor(region, offsets.getOrDefault(region.id(), 0D))).toList();

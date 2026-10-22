@@ -114,7 +114,7 @@ ui.canvas().text("A matching heading", x, y, 18, ui.theme().text(), Font.BOLD,
 ```
 
 If loading fails, Pane safely falls back to its normal sans-serif font. Include the font's license
-next to the resource when you redistribute it. Beacon, Pane Mail, and Wayfarer share the bundled
+next to the resource when you redistribute it. Pane Mail and Wayfarer share the bundled
 Roboto family under the SIL Open Font License.
 
 ## Minecraft-formatted text
@@ -479,7 +479,14 @@ button groups and retained virtual rows use the existing shared input/compositio
 
 These APIs add no polling loop or independent textures. Painter callbacks run when their retained
 page/row needs painting, not once per game frame. Keep painters side-effect-free and reuse styles
-when their values do not change. See Wayfarer's deploy button and Beacon's styled difficulty picker for examples.
+when their values do not change. See Wayfarer's deploy button and the PaneOS Control Center for examples.
+
+`paintedSlider(id, key, x, y, w, h, min, max, fallback, painter)` is a slider drawn entirely by
+your painter from a `UiSliderState` (0..1 position, value, hover, press, focus). The whole rectangle
+is the pointer target and its width is the track; pointer, drag and keyboard steps match `slider`.
+
+`UiDocument.builder(...).tooltipStyle(UiTooltipStyle.defaults().background(...).font(12, Font.PLAIN)
+.shape(26, 8).preferAbove(true))` restyles native tooltips for a document.
 
 ## Dropdowns
 

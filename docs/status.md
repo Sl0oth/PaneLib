@@ -19,7 +19,8 @@ separates hosted build/client checks from pending Windows desktop validation.
 
 `./gradlew :pane-demo:runExamples` opens the one showcase launcher at the title screen:
 
-- Beacon: an expedition planner built from custom-shaped controls, staged motion and GPU layers.
+- PaneOS: a desktop in the spirit of a modern Mac, with liquid glass dock, widgets, Control Center,
+  Spotlight and eleven working windowed apps, all drawn in code.
 - Wayfarer: an authored game menu with a native player preview, plus a textured gameplay HUD.
 - Pane Mail: a light, dense inbox with search, local message actions, and composition.
 - Vanilla HUD: native Minecraft font labels, items, and vanilla texture treatment.

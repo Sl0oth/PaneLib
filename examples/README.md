@@ -13,7 +13,7 @@ accessibility screen if shown.
 
 | Example | What it demonstrates |
 | --- | --- |
-| Beacon | Custom-shaped controls with exact hit areas, staged motion, count-up values, GPU-composited sheet |
+| PaneOS | A Mac-like desktop: liquid glass dock, widgets, Control Center, Spotlight and working windowed apps |
 | [Wayfarer menu](wayfarer/README.md) | World-free player preview, photo fitting, coordinated scaling, styled dialogs |
 | [Pane Mail](gmail-inbox/README.md) | Light inbox, selection, search and local compose flow |
 | [Wayfarer HUD](wayfarer-hud/README.md) | Textured gameplay UI, native equipment, scrolling compass, vanilla restoration |
