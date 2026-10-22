@@ -6,5 +6,4 @@ record UiTextInputState(String focusedId, int cursor, int anchor, boolean upstre
     boolean focused(String id) { return id != null && id.equals(focusedId); }
     int selectionStart() { return Math.min(cursor, anchor); }
     int selectionEnd() { return Math.max(cursor, anchor); }
-    boolean hasSelection() { return cursor != anchor; }
 }

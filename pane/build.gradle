@@ -136,3 +136,15 @@ tasks.register('pixelTransferBenchmark', JavaExec) {
         : sourceSets.test.runtimeClasspath
     mainClass = 'dev.pane.ui.PixelTransferBenchmark'
 }
+
+// Full-page retained repaint timing and pixel fingerprint; development comparison only, no timing gate.
+tasks.register('pagePaintBenchmark', JavaExec) {
+    dependsOn tasks.named('testClasses')
+    classpath = project.hasProperty('pageBaselineJar')
+        ? files(rootProject.file(project.property('pageBaselineJar')), sourceSets.test.runtimeClasspath)
+        : sourceSets.test.runtimeClasspath
+    mainClass = 'dev.pane.ui.PagePaintBenchmark'
+    systemProperty 'java.awt.headless', 'true'
+    if (project.hasProperty('pageProfile')) jvmArgs "-XX:StartFlightRecording=filename=${project.property('pageProfile')},settings=profile"
+    args project.findProperty('pageBenchmarkWarmup') ?: '40', project.findProperty('pageBenchmarkSamples') ?: '60'
+}

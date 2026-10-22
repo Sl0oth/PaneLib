@@ -2,7 +2,6 @@ package dev.pane.ui;
 
 /** Bounded popup geometry, independent of pointer/keyboard state. */
 record UiPopupLayout(UiRect frame, UiRect viewport, float contentHeight, float rowHeight) {
-    static final float ROW_HEIGHT = 27;
     static UiPopupLayout menu(UiRect anchor, float desiredWidth, int itemCount, float screenWidth, float screenHeight) {
         return menu(anchor, desiredWidth, itemCount, screenWidth, screenHeight, UiMenuStyle.defaults());
     }

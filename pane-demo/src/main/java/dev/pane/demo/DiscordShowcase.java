@@ -13,7 +13,6 @@ public final class DiscordShowcase {
     private static final UiInputStyle INPUT=new UiInputStyle(15,Font.PLAIN,FONT,12,7,22);
     private static final String[] PEOPLE={"Rowan","Mira","Theo","Jules","Sage","Finn"};
     private static final int[] COLORS={0xFF65C5A0,0xFFE4A6B8,0xFF6C9CEF,0xFFE4BF68,0xFFA49ADD,0xFF86B5A9};
-    private static final String[] CHANNELS={"welcome","announcements","general","showcase","ideas-and-feedback"};
     private static final String[] SETTING_TABS={"Overview","Roles","Members","Notifications","Appearance"};
     static final class Message {
         final int author;final String body,time;final boolean attachment;int likes;boolean reacted;
@@ -91,8 +90,6 @@ public final class DiscordShowcase {
         GatherAvatars.draw(g,person,x,y,size);
         if(online){g.circle(SIDE,x+size-4,y+size-4,7);g.circle(GREEN,x+size-4,y+size-4,4.5F);}
     }
-    private static void hash(UiCanvas g,float x,float y,int c){g.line(c,2,x+7,y,x+3,y+20);g.line(c,2,x+16,y,x+12,y+20);g.line(c,2,x,y+6,x+20,y+6);g.line(c,2,x-1,y+14,x+19,y+14);}
-    private static void gear(UiCanvas g,float x,float y,int c){g.strokeCircle(c,1.8F,x+10,y+10,6);g.strokeCircle(c,1.5F,x+10,y+10,2.5F);for(int i=0;i<8;i++){double a=i*Math.PI/4;g.line(c,2.5F,x+10+(float)Math.cos(a)*6,y+10+(float)Math.sin(a)*6,x+10+(float)Math.cos(a)*9,y+10+(float)Math.sin(a)*9);}}
     private static void landscape(UiCanvas g,float x,float y,float w,float h){
         g.withClip(x,y,w,h,()->{g.fill(0xFF172A35,x,y,w,h);g.circle(0xFFE9D8A1,x+w*.79F,y+h*.22F,h*.085F);
             g.polygon(0xFF254352,x,y+h*.7F,x+w*.2F,y+h*.2F,x+w*.45F,y+h*.66F,x+w*.69F,y+h*.29F,x+w,y+h*.62F,x+w,y+h,x,y+h);

@@ -586,22 +586,6 @@ public final class NativeDemoShowcase {
         });
     }
 
-    private static void projectCard(UiContext ui, String id, String icon, String name, String subtitle, String meta,
-                                    float x, float y, float w, float h, int iconBg, int iconFg, boolean installed) {
-        UiCanvas g = ui.canvas(); UiTheme t = ui.theme();
-        int fill = ui.hovered(id) ? UiCanvas.mix(t.surface(), t.raisedSurface(), .45F * ui.interactionMotion()) : t.surface();
-        ui.card(x, y, w, h, t.mediumRadius(), fill);
-        float mid = y + h / 2;
-        projectIcon(g, icon, x + 9, mid - 18, 37, iconBg, iconFg, t);
-        g.textMedium(name, x + 55, mid - 18, 8.5F, t.text());
-        g.text(subtitle, x + 55, mid - 3, 6.5F, t.mutedText());
-        g.text(meta, x + 55, mid + 11, 6, 0xFF68716B);
-        boolean on = ui.booleanValue("installed-" + id, installed);
-        ui.toggleButton(id + "-button", "installed-" + id, "Install", "Installed",
-            x + w - 55, mid - 12, 46, 25, installed, PRIMARY, SECONDARY, ROUNDED);
-        ui.hit(id, "open-" + id, x, y, w - 60, h);
-    }
-
     private static void projectIcon(UiCanvas g, String letter, float x, float y, float size, int bg, int fg, UiTheme t) {
         g.roundRect(bg, x, y, size, size, Math.min(10, size / 4));
         g.strokeRoundRect(UiCanvas.mix(bg, t.border(), .5F), .7F, x, y, size, size, Math.min(10, size / 4));

@@ -36,7 +36,6 @@ final class WayfarerHudShowcase {
     private HudQualityAuditTest qualityAudit;
     private NativeTextAuditTest fontAudit;
     private HudEfficiencyAuditTest efficiencyAudit;
-    private float requestedHudScale=1;
     UiHud belt(){return belt;}
     UiHud compassHud(){return compass;}
     void init(){
@@ -155,7 +154,6 @@ final class WayfarerHudShowcase {
     }
     void setHudScale(float value){
         if(!Float.isFinite(value)||value<.5F||value>2)throw new IllegalArgumentException("HUD scale must be .5..2");
-        requestedHudScale=value;
         String[] names={"location","journal","vitals","belt","compass","badge","crosshair"};
         var widgets=huds();
         for(int i=0;i<names.length;i++){
@@ -163,7 +161,6 @@ final class WayfarerHudShowcase {
             widgets.get(i).setPlacementPolicy(viewport->WayfarerHudLayout.placement(name,viewport,value));
         }
     }
-    float hudScale(){return requestedHudScale;}
     private void sample(Minecraft c){
         compass.setValue("heading", (double)c.player.getYRot()+180);
         if(ticks++%5!=0)return;var p=c.player;var at=p.blockPosition();

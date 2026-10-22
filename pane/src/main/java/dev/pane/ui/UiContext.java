@@ -104,16 +104,21 @@ public final class UiContext {
     }
 
     UiContext withInteractions(UiInteractionState shared) { interactions = shared; return this; }
-    private UiContext inherit(UiContext child) {
-        child.interactions = interactions; child.focusClip = focusClip; child.affineFocusClip = affineFocusClip; return child;
+
+    /** Child sharing every output list and the retained interaction/focus state. */
+    private UiContext derive(UiCanvas canvas, UiRect content, float offsetX, float offsetY, UiRect inputClip,
+                             List<UiVirtualListRequest> virtualLists) {
+        var child = new UiContext(canvas, theme, width, height, accent, content, hoveredId, pressedId,
+            motion, interactionMotion, animating, paintCount, state, hitRegions, nativeBounds, nativeOverlayLayers, animationBounds, scrollRegions,
+            inputRegions, textInput, tooltips, menus, dialogs, animationClock, nativeScale,
+            offsetX, offsetY, inputClip, virtualLists);
+        child.interactions = interactions; child.focusClip = focusClip; child.affineFocusClip = affineFocusClip;
+        return child;
     }
 
     /** Same drawing surface and state, re-aimed at a different content rectangle. */
     UiContext withContent(UiRect newContent) {
-        return inherit(new UiContext(canvas, theme, width, height, accent, newContent, hoveredId, pressedId,
-            motion, interactionMotion, animating, paintCount, state, hitRegions, nativeBounds, nativeOverlayLayers, animationBounds, scrollRegions,
-            inputRegions, textInput, tooltips, menus, dialogs, animationClock, nativeScale,
-            offsetX, offsetY, inputClip, virtualLists));
+        return derive(canvas, newContent, offsetX, offsetY, inputClip, virtualLists);
     }
 
     public UiCanvas canvas() { return canvas; }
@@ -288,10 +293,7 @@ public final class UiContext {
      */
     public void withTranslation(float x, float y, Consumer<UiContext> painter) {
         if (painter == null) return;
-        UiContext translated = inherit(new UiContext(canvas, theme, width, height, accent, content,
-            hoveredId, pressedId, motion, interactionMotion, animating, paintCount, state, hitRegions,
-            nativeBounds, nativeOverlayLayers, animationBounds, scrollRegions, inputRegions, textInput, tooltips, menus, dialogs,
-            animationClock, nativeScale, offsetX + x, offsetY + y, inputClip, virtualLists));
+        UiContext translated = derive(canvas, content, offsetX + x, offsetY + y, inputClip, virtualLists);
         canvas.withTranslation(x, y, () -> painter.accept(translated));
     }
 
@@ -299,11 +301,7 @@ public final class UiContext {
     public void withLayer(UiLayer layer, float opacity, UiRect bounds, Consumer<UiContext> painter) {
         if (painter == null) return;
         canvas.withLayer(layer, opacity, bounds, group -> {
-            UiContext child = inherit(new UiContext(group, theme, width, height, accent, content,
-                hoveredId, pressedId, motion, interactionMotion, animating, paintCount, state, hitRegions,
-                nativeBounds, nativeOverlayLayers, animationBounds, scrollRegions, inputRegions, textInput,
-                tooltips, menus, dialogs, animationClock, nativeScale, offsetX, offsetY,
-                intersect(inputClip, bounds.translate(offsetX, offsetY)), null));
+            UiContext child = derive(group, content, offsetX, offsetY, intersect(inputClip, bounds.translate(offsetX, offsetY)), null);
             child.focusClip = intersect(focusClip, bounds.translate(offsetX, offsetY));
             painter.accept(child);
         });
@@ -434,11 +432,8 @@ public final class UiContext {
         UiRect visibleViewport = intersect(inputClip, actualViewport);
         scrollRegions.add(new UiScrollRegion(id, actualViewport, contentHeight, visibleViewport));
 
-        UiContext scrolled = inherit(new UiContext(canvas, theme, width, height, accent,
-            new UiRect(viewport.x(), viewport.y(), viewport.width(), contentHeight), hoveredId, pressedId,
-            motion, interactionMotion, animating, paintCount, state, hitRegions, nativeBounds, nativeOverlayLayers, animationBounds, scrollRegions,
-            inputRegions, textInput, tooltips, menus, dialogs, animationClock, nativeScale,
-            offsetX, offsetY - offset, visibleViewport, virtualLists));
+        UiContext scrolled = derive(canvas, new UiRect(viewport.x(), viewport.y(), viewport.width(), contentHeight),
+            offsetX, offsetY - offset, visibleViewport, virtualLists);
         canvas.withClip(viewport.x(), viewport.y(), viewport.width(), viewport.height(), () ->
             canvas.withTranslation(0, -offset, () -> interactions.inScroll(
                 new UiScrollRegion(id, actualViewport, contentHeight, visibleViewport), () -> painter.accept(scrolled))));
@@ -482,11 +477,8 @@ public final class UiContext {
 
         int first = Math.max(0, (int) Math.floor(offset / stride) - 1);
         int last = Math.min(itemCount, (int) Math.ceil((offset + viewport.height()) / stride) + 1);
-        UiContext scrolled = inherit(new UiContext(canvas, theme, width, height, accent,
-            new UiRect(viewport.x(), viewport.y(), viewport.width(), contentHeight), hoveredId, pressedId,
-            motion, interactionMotion, animating, paintCount, state, hitRegions, nativeBounds, nativeOverlayLayers, animationBounds, scrollRegions,
-            inputRegions, textInput, tooltips, menus, dialogs, animationClock, nativeScale,
-            offsetX, offsetY - offset, intersect(inputClip, actualViewport), null));
+        UiContext scrolled = derive(canvas, new UiRect(viewport.x(), viewport.y(), viewport.width(), contentHeight),
+            offsetX, offsetY - offset, intersect(inputClip, actualViewport), null);
         float finalRowHeight = rowHeight;
         canvas.withClip(viewport.x(), viewport.y(), viewport.width(), viewport.height(), () ->
             canvas.withTranslation(0, -offset, () -> {
@@ -576,16 +568,6 @@ public final class UiContext {
     }
 
     private void addInput(String id, String key, float x, float y, float width, float height,
-                          int maxLength, boolean multiline, float[] caretXs, float[] caretYs) {
-        addInput(id, key, x, y, width, height, maxLength, multiline, caretXs, caretYs, List.of());
-    }
-
-    private void addInput(String id, String key, float x, float y, float width, float height,
-                          int maxLength, boolean multiline, float[] caretXs, float[] caretYs, List<UiTextLine> lines) {
-        addInput(id, key, x, y, width, height, maxLength, multiline, caretXs, caretYs, lines, false);
-    }
-
-    private void addInput(String id, String key, float x, float y, float width, float height,
                           int maxLength, boolean multiline, float[] caretXs, float[] caretYs, List<UiTextLine> lines, boolean masked) {
         UiRect bounds = new UiRect(x + offsetX, y + offsetY, width, height);
         // UiInputRegion owns defensive copies. Only allocate a translated intermediate when needed.
@@ -646,37 +628,7 @@ public final class UiContext {
 
     public void button(String id, String label, String action, float x, float y, float width, float height,
                        ButtonStyle style, Shape shape) {
-        boolean hover = hovered(id);
-        boolean down = pressed(id);
-        UiRect repaintBounds = controlRepaintBounds(x, y, width, height, 4);
-        float hoverAmount = animate("button:" + id + ":hover", hover, 120, UiEasing.PAPER, repaintBounds);
-        float pressAmount = animate("button:" + id + ":press", down, 90, UiEasing.PAPER, repaintBounds);
-        float radius = switch (shape) {
-            case SQUARE -> 2;
-            case ROUNDED -> theme.smallRadius();
-            case SOFT -> theme.mediumRadius();
-            case PILL -> height / 2;
-        };
-        int fill = switch (style) {
-            case PRIMARY -> accent;
-            case SECONDARY -> theme.raisedSurface();
-            case GHOST -> UiCanvas.alpha(theme.background(), 0);
-            case DANGER -> 0xFF3A1D20;
-        };
-        int border = switch (style) {
-            case PRIMARY -> UiCanvas.mix(accent, 0xFFFFFFFF, .15F);
-            case DANGER -> 0xFF7B3439;
-            default -> theme.border();
-        };
-        if (hoverAmount > 0) fill = UiCanvas.mix(fill, 0xFFFFFFFF,
-            (style == ButtonStyle.GHOST ? .05F : .08F) * hoverAmount);
-        if (pressAmount > 0) fill = UiCanvas.mix(fill, 0xFF000000, .12F * pressAmount);
-        canvas.roundRect(fill, x, y, width, height, radius);
-        canvas.strokeRoundRect(border, .8F, x, y, width, height, radius);
-        if (focused(id)) drawFocusRing(accent, x - 2, y - 2, width + 4, height + 4, radius + 2);
-        int textColor = style == ButtonStyle.PRIMARY ? theme.accentText()
-            : style == ButtonStyle.DANGER ? 0xFFFFB9BD : theme.text();
-        canvas.centeredText(label, x + width / 2, y + height / 2, 9, textColor, Font.BOLD, theme.fontFamily());
+        drawDefaultButton(id, label, x, y, width, height, style, shape);
         hit(id, action, x, y, width, height);
     }
 
@@ -749,22 +701,10 @@ public final class UiContext {
         UiRect repaintBounds = controlRepaintBounds(x, y, size, size, 4);
         float hoverAmount = animate("icon-button:" + id + ":hover", hover, 120, UiEasing.PAPER, repaintBounds);
         float pressAmount = animate("icon-button:" + id + ":press", down, 90, UiEasing.PAPER, repaintBounds);
-        float radius = switch (shape) {
-            case SQUARE -> 2;
-            case ROUNDED -> theme.smallRadius();
-            case SOFT -> theme.mediumRadius();
-            case PILL -> size / 2;
-        };
-        int fill = switch (style) {
-            case PRIMARY -> accent;
-            case SECONDARY -> theme.raisedSurface();
-            case GHOST -> UiCanvas.alpha(theme.background(), 0);
-            case DANGER -> 0xFF3A1D20;
-        };
-        fill = UiCanvas.mix(fill, 0xFFFFFFFF, (style == ButtonStyle.GHOST ? .06F : .08F) * hoverAmount);
+        float radius = radius(shape, size);
+        int fill = UiCanvas.mix(fill(style), 0xFFFFFFFF, (style == ButtonStyle.GHOST ? .06F : .08F) * hoverAmount);
         fill = UiCanvas.mix(fill, 0xFF000000, .12F * pressAmount);
-        int iconColor = style == ButtonStyle.PRIMARY ? theme.accentText()
-            : style == ButtonStyle.DANGER ? 0xFFFFB9BD : theme.text();
+        int iconColor = foreground(style);
         canvas.roundRect(fill, x, y, size, size, radius);
         if (style != ButtonStyle.GHOST) canvas.strokeRoundRect(theme.border(), .8F, x, y, size, size, radius);
         if (icon != null) icon.draw(canvas, iconColor, x + size * .25F, y + size * .25F, size * .5F, 1.6F);
@@ -1319,7 +1259,7 @@ public final class UiContext {
         });
         internalHit(id, "input:" + key, x, y, width, height);
         addInput(id, key, x, y, width, height, maxLength, true, caretXs, caretYs,
-            offset == 0 ? visualLines : visualLines.stream().map(line -> line.translate(0, -offset)).toList());
+            offset == 0 ? visualLines : visualLines.stream().map(line -> line.translate(0, -offset)).toList(), false);
         return value;
     }
 
@@ -1335,31 +1275,40 @@ public final class UiContext {
         UiRect repaintBounds = controlRepaintBounds(x, y, width, height, 4);
         float hoverAmount = animate("button:" + id + ":hover", hover, 120, UiEasing.PAPER, repaintBounds);
         float pressAmount = animate("button:" + id + ":press", down, 90, UiEasing.PAPER, repaintBounds);
-        float radius = switch (shape) {
-            case SQUARE -> 2;
-            case ROUNDED -> theme.smallRadius();
-            case SOFT -> theme.mediumRadius();
-            case PILL -> height / 2;
-        };
-        int fill = switch (style) {
-            case PRIMARY -> accent;
-            case SECONDARY -> theme.raisedSurface();
-            case GHOST -> UiCanvas.alpha(theme.background(), 0);
-            case DANGER -> 0xFF3A1D20;
-        };
+        float radius = radius(shape, height);
         int border = switch (style) {
             case PRIMARY -> UiCanvas.mix(accent, 0xFFFFFFFF, .15F);
             case DANGER -> 0xFF7B3439;
             default -> theme.border();
         };
-        fill = UiCanvas.mix(fill, 0xFFFFFFFF, (style == ButtonStyle.GHOST ? .05F : .08F) * hoverAmount);
+        int fill = UiCanvas.mix(fill(style), 0xFFFFFFFF, (style == ButtonStyle.GHOST ? .05F : .08F) * hoverAmount);
         fill = UiCanvas.mix(fill, 0xFF000000, .12F * pressAmount);
         canvas.roundRect(fill, x, y, width, height, radius);
         canvas.strokeRoundRect(border, .8F, x, y, width, height, radius);
         if (focused(id)) drawFocusRing(accent, x - 2, y - 2, width + 4, height + 4, radius + 2);
-        int textColor = style == ButtonStyle.PRIMARY ? theme.accentText()
-            : style == ButtonStyle.DANGER ? 0xFFFFB9BD : theme.text();
-        canvas.centeredText(label, x + width / 2, y + height / 2, 9, textColor, Font.BOLD, theme.fontFamily());
+        canvas.centeredText(label, x + width / 2, y + height / 2, 9, foreground(style), Font.BOLD, theme.fontFamily());
+    }
+
+    private float radius(Shape shape, float height) {
+        return switch (shape) {
+            case SQUARE -> 2;
+            case ROUNDED -> theme.smallRadius();
+            case SOFT -> theme.mediumRadius();
+            case PILL -> height / 2;
+        };
+    }
+
+    private int fill(ButtonStyle style) {
+        return switch (style) {
+            case PRIMARY -> accent;
+            case SECONDARY -> theme.raisedSurface();
+            case GHOST -> UiCanvas.alpha(theme.background(), 0);
+            case DANGER -> 0xFF3A1D20;
+        };
+    }
+
+    private int foreground(ButtonStyle style) {
+        return style == ButtonStyle.PRIMARY ? theme.accentText() : style == ButtonStyle.DANGER ? 0xFFFFB9BD : theme.text();
     }
 
     /**
@@ -1390,6 +1339,4 @@ public final class UiContext {
         if (anchor.width() <= 0 || anchor.height() <= 0) return;
         tooltips.add(new UiTooltip(id, text, anchor));
     }
-
-    private static int clampIndex(int index, int length) { return Math.max(0, Math.min(length, index)); }
 }

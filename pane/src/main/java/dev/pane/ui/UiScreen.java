@@ -1,6 +1,5 @@
 package dev.pane.ui;
 
-import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.platform.Window;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.FilterMode;
@@ -96,9 +95,7 @@ public class UiScreen extends Screen {
     /** Temporary blur image allocations; separate from GPU texture allocations. */
     public long dialogBlurAllocations() { return dialogBlurScratch.allocations; }
     public long dialogBlurRetainedPixels() { return dialogBlurScratch.retainedPixels(); }
-    private DynamicTexture popupSurface;
-    private BufferedImage popupImage;
-    private int[] popupPixels;
+    private RetainedTexture popupSurface;
     private UiRect popupLayoutBounds;
     private int popupBackdrop;
     private long popupUploadPixels;
@@ -132,11 +129,9 @@ public class UiScreen extends Screen {
     /** Pixels uploaded by cropped menu/dialog surfaces since this screen opened. */
     public long popupUploadPixels() { return popupUploadPixels; }
     /** Current cropped popup backing area; zero after cleanup. */
-    public long popupRetainedPixels() { return popupImage == null ? 0 : (long) popupImage.getWidth() * popupImage.getHeight(); }
+    public long popupRetainedPixels() { return popupSurface == null ? 0 : popupSurface.pixels.length; }
 
-    private DynamicTexture toastSurface;
-    private BufferedImage toastImage;
-    private int[] toastPixels;
+    private RetainedTexture toastSurface;
     private UiRect toastLayoutBounds;
     private boolean toastSurfaceDirty = true;
     private long lastToastPaint;
@@ -146,18 +141,11 @@ public class UiScreen extends Screen {
     /** Pixels uploaded by the independent toast overlay since this screen opened. */
     public long toastUploadPixels() { return toastUploadPixels; }
 
-    private DynamicTexture surface;
+    private RetainedTexture surface;
     private GpuSampler surfaceSampler;
-    private BufferedImage surfaceImage;
-    private int[] surfacePixels;
     private int surfaceWidth;
     private int surfaceHeight;
-    private DynamicTexture tooltipSurface;
-    private GpuSampler tooltipSampler;
-    private BufferedImage tooltipImage;
-    private int[] tooltipPixels;
-    private int tooltipPixelWidth;
-    private int tooltipPixelHeight;
+    private RetainedTexture tooltipSurface;
     private UiRect tooltipLayoutBounds;
     private boolean tooltipSurfaceDirty = true;
     private float surfaceQualityScale = 1;
@@ -984,7 +972,7 @@ public class UiScreen extends Screen {
             return;
         }
         long compositeStarted = System.nanoTime();
-        graphics.blit(surface.getTextureView(), surfaceSampler, 0, 0, width, height, 0, 1, 0, 1);
+        graphics.blit(surface.texture.getTextureView(), surfaceSampler, 0, 0, width, height, 0, 1, 0, 1);
         if (virtualCompositeActive && !virtualLayers.isEmpty()) {
             graphics.nextStratum();
             renderVirtualLayers(graphics, now);
@@ -1062,7 +1050,7 @@ public class UiScreen extends Screen {
             int bottom = (int) guiBounds.bottom();
             if (right <= x || bottom <= y) continue;
             graphics.enableScissor(x, y, right, bottom);
-            graphics.blit(surface.getTextureView(), surfaceSampler, 0, 0, width, height, 0, 1, 0, 1);
+            graphics.blit(surface.texture.getTextureView(), surfaceSampler, 0, 0, width, height, 0, 1, 0, 1);
             graphics.disableScissor();
         }
     }
@@ -1168,7 +1156,7 @@ public class UiScreen extends Screen {
                 textCursor = caret;
             }
             draggingTextInput = clickedInput;
-            requestFullRepaint();
+            repaintTextInput(clickedInput);
         }
         pressedId = region.id();
         if (internalBody(region.action()).startsWith("slider:")) {
@@ -1221,7 +1209,7 @@ public class UiScreen extends Screen {
             preferredCaretX = Float.NaN;
             var position = draggingTextInput.caretPositionAt((float) (event.x() * scale), (float) (event.y() * scale));
             textCursor = position.index(); textUpstream = position.upstream();
-            requestFullRepaint();
+            repaintTextInput(draggingTextInput);
             return true;
         }
         return false;
@@ -1253,11 +1241,7 @@ public class UiScreen extends Screen {
         UiInputRegion input=hit==null?null:inputRegion(hit.id());
         UiEditorViewport editor=input==null?null:interactions.editors.get(input.id());
         if(editor!=null && input.multiline() && editor.maximum>0 && vertical!=0) {
-            if(editor.scroll(vertical)) {
-                VirtualRowKey key=virtualRow(input.id());
-                if(key!=null)invalidateVirtualItem(key.listId(),key.index());
-                else requestPartialRepaint(input.bounds());
-            }
+            if(editor.scroll(vertical))repaintTextInput(input);
             return true;
         }
         UiScrollRegion region = scrollAt(mouseX * scale, mouseY * scale);
@@ -1678,7 +1662,9 @@ public class UiScreen extends Screen {
                 if (!requestVirtualRows(previous)) requestPartialRepaint(interactionBounds(previous));
             }
         } else if (popupTarget(id) && popupTarget(previous)) popupDirty = true;
-        else if (!requestVirtualRows(id)) requestFullRepaint();
+        // Painters may react to focus anywhere on the page, so only a row-to-row move stays local;
+        // both rows repaint, or the previous row would keep its focus ring.
+        else if (!requestVirtualRows(previous, id)) requestFullRepaint();
         return true;
     }
 
@@ -1793,7 +1779,7 @@ public class UiScreen extends Screen {
             revealEditorCaret(input.id());
             textAnchor = 0;
             textCursor = length;
-            requestFullRepaint();
+            repaintTextInput(input);
             return true;
         }
         if (shortcut && event.key() == GLFW.GLFW_KEY_C) {
@@ -1884,7 +1870,14 @@ public class UiScreen extends Screen {
         textCursor = next;
         textUpstream = false;
         if (!extend) textAnchor = next;
-        requestFullRepaint();
+        repaintTextInput(inputRegion(focusedId));
+    }
+
+    /** Caret and selection are painted only inside their editor and are not visible to painters. */
+    private void repaintTextInput(UiInputRegion input) {
+        VirtualRowKey key = input == null ? null : virtualRow(input.id());
+        if (key != null) invalidateVirtualItem(key.listId(), key.index());
+        else requestPartialRepaint(input == null ? null : input.bounds());
     }
 
     private void copySelection(String value) {
@@ -1929,8 +1922,6 @@ public class UiScreen extends Screen {
         if (value == null || value.isEmpty()) return "";
         return value.replace("\r\n", "\n").replace('\r', '\n').replace('\t', ' ');
     }
-
-    private static int clampIndex(int index, int length) { return Math.max(0, Math.min(length, index)); }
 
     private UiScrollRegion scrollAt(double x, double y) {
         for (int i = scrollRegions.size() - 1; i >= 0; i--) {
@@ -2141,8 +2132,8 @@ public class UiScreen extends Screen {
         PixelRect pixelRegion = partial ? toPixelRect(repaintRegion, qualityScale, pixelWidth, pixelHeight) : null;
         lastDirtyPixels = partial ? pixelRegion.width() * pixelRegion.height() : pixelWidth * pixelHeight;
         if (partial) clearPixels(pixelRegion);
-        else Arrays.fill(surfacePixels, 0);
-        Graphics2D graphics = surfaceImage.createGraphics();
+        else surface.clear();
+        Graphics2D graphics = surface.image.createGraphics();
         try {
             graphics.scale(qualityScale, qualityScale);
             if (partial) {
@@ -2153,7 +2144,7 @@ public class UiScreen extends Screen {
                     pixelRegion.y() / qualityScale, pixelRegion.width() / qualityScale,
                     pixelRegion.height() / qualityScale));
             }
-            UiCanvas canvas = new UiCanvas(graphics, surfaceImage);
+            UiCanvas canvas = new UiCanvas(graphics, surface.image);
             List<UiHitRegion> nextHits = new ArrayList<>();
             Map<String, NativeBounds> nextNativeBounds = new LinkedHashMap<>();
             Map<String, UiRect> nextNativeOverlayLayers = new LinkedHashMap<>();
@@ -2275,7 +2266,7 @@ public class UiScreen extends Screen {
     private void clearPixels(PixelRect region) {
         for (int y = region.y(); y < region.bottom(); y++) {
             int start = y * surfaceWidth + region.x();
-            Arrays.fill(surfacePixels, start, start + region.width(), 0);
+            Arrays.fill(surface.pixels, start, start + region.width(), 0);
         }
     }
 
@@ -2459,7 +2450,7 @@ public class UiScreen extends Screen {
         if(!next.equals(dialogLayoutKey)) {
             if(canvas!=null)dialogLayout=UiDialogLayout.measure(canvas,request.dialog(),document.theme().fontFamily(),width,height);
             else {
-                Graphics2D measure=surfaceImage.createGraphics();
+                Graphics2D measure=surface.image.createGraphics();
                 try {measure.scale(surfaceQualityScale,surfaceQualityScale);dialogLayout=UiDialogLayout.measure(new UiCanvas(measure),request.dialog(),document.theme().fontFamily(),width,height);}
                 finally {measure.dispose();}
             }
@@ -2551,7 +2542,7 @@ public class UiScreen extends Screen {
                                      int layoutWidth, int layoutHeight) {
         if (baseCanvas != null) layoutMenu(baseCanvas, nextMenus, layoutWidth, layoutHeight);
         else {
-            Graphics2D measure = surfaceImage.createGraphics();
+            Graphics2D measure = surface.image.createGraphics();
             try {
                 measure.scale(surfaceQualityScale, surfaceQualityScale);
                 layoutMenu(new UiCanvas(measure), nextMenus, layoutWidth, layoutHeight);
@@ -2587,24 +2578,20 @@ public class UiScreen extends Screen {
         }
         int w = Math.max(1, Math.round(bounds.width() * surfaceQualityScale));
         int h = Math.max(1, Math.round(bounds.height() * surfaceQualityScale));
-        if (popupImage == null || popupImage.getWidth() != w || popupImage.getHeight() != h) {
+        if (popupSurface == null || !popupSurface.matches(w, h)) {
             closePopupSurface();
-            popupSurface = new DynamicTexture(() -> "pane-popup-overlay", w, h, true);
+            popupSurface = new RetainedTexture("pane-popup-overlay", w, h);
             retainedTextureAllocationCount++;
-            popupImage = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-            popupPixels = ((DataBufferInt) popupImage.getRaster().getDataBuffer()).getData();
-        } else Arrays.fill(popupPixels, 0);
+        } else popupSurface.clear();
         int hitStart = hits.size();
-        Graphics2D painter = popupImage.createGraphics();
+        Graphics2D painter = popupSurface.image.createGraphics();
         try {
             painter.scale(surfaceQualityScale, surfaceQualityScale);
             painter.translate(-bounds.x(), -bounds.y());
-            UiCanvas canvas = new UiCanvas(painter, popupImage);
+            UiCanvas canvas = new UiCanvas(painter, popupSurface.image);
             drawMenu(canvas, hits);
             drawDialog(canvas, nextDialogs, hits, layoutWidth, layoutHeight);
         } finally { painter.dispose(); }
-        var target = popupSurface.getPixels().getPixelBytes().order(ByteOrder.nativeOrder()).asIntBuffer();
-        UiPixelTransfer.copy(popupPixels, target, w, 0, 0, w, h);
         popupSurface.upload();
         popupUploadPixels += (long) w * h;
         popupLayoutBounds = bounds;
@@ -2613,7 +2600,7 @@ public class UiScreen extends Screen {
     }
 
     private void renderPopupOverlay(GuiGraphicsExtractor graphics) {
-        if (popupDirty && surfaceImage != null) {
+        if (popupDirty && surface != null) {
             var hits = new ArrayList<>(hitRegions);
             hits.removeAll(popupHits);
             rebuildPopupSurface(null, menus, dialogs, hits, surfaceLayoutWidth, surfaceLayoutHeight);
@@ -2626,7 +2613,7 @@ public class UiScreen extends Screen {
             graphics.fill(0, 0, width, height, popupBackdrop);
             graphics.nextStratum();
         }
-        graphics.blit(popupSurface.getTextureView(), surfaceSampler,
+        graphics.blit(popupSurface.texture.getTextureView(), surfaceSampler,
             Math.round(popupLayoutBounds.x() / layoutScale), Math.round(popupLayoutBounds.y() / layoutScale),
             Math.round(popupLayoutBounds.right() / layoutScale), Math.round(popupLayoutBounds.bottom() / layoutScale),
             0, 1, 0, 1);
@@ -2634,7 +2621,7 @@ public class UiScreen extends Screen {
 
     private void closePopupSurface() {
         if (popupSurface != null) popupSurface.close();
-        popupSurface = null; popupImage = null; popupPixels = null; popupLayoutBounds = null;
+        popupSurface = null; popupLayoutBounds = null;
         popupBackdrop = 0; popupDirty = false; popupPaintState = null; popupHits = List.of();
     }
 
@@ -2654,7 +2641,7 @@ public class UiScreen extends Screen {
         int y = Math.round(toastLayoutBounds.y() / layoutScale);
         int right = Math.round(toastLayoutBounds.right() / layoutScale);
         int bottom = Math.round(toastLayoutBounds.bottom() / layoutScale);
-        extractor.blit(toastSurface.getTextureView(), surfaceSampler, x, y, right, bottom, 0, 1, 0, 1);
+        extractor.blit(toastSurface.texture.getTextureView(), surfaceSampler, x, y, right, bottom, 0, 1, 0, 1);
     }
 
     private boolean hasToastHit(String id) {
@@ -2666,11 +2653,11 @@ public class UiScreen extends Screen {
         toastSurfaceDirty = false;
         lastToastPaint = now;
         toastHitRegions = List.of();
-        if (toasts.isEmpty() || surfaceImage == null) { toastLayoutBounds = null; return; }
+        if (toasts.isEmpty() || surface == null) { toastLayoutBounds = null; return; }
         var hits = new ArrayList<>(hitRegions);
         hits.addAll(virtualHitRegions);
         // Layout uses text metrics and protected-control bounds, not a full-page paint.
-        Graphics2D measure = surfaceImage.createGraphics();
+        Graphics2D measure = surface.image.createGraphics();
         try {
             measure.setClip(0, 0, 0, 0);
             drawToasts(new UiCanvas(measure), hits, surfaceLayoutWidth, surfaceLayoutHeight, now);
@@ -2681,25 +2668,21 @@ public class UiScreen extends Screen {
         UiRect bounds = expandAndClamp(union, surfaceLayoutWidth, surfaceLayoutHeight, 14);
         int w = Math.max(1, (int) Math.ceil(bounds.width() * surfaceQualityScale));
         int h = Math.max(1, (int) Math.ceil(bounds.height() * surfaceQualityScale));
-        if (toastImage == null || toastImage.getWidth() != w || toastImage.getHeight() != h) {
+        if (toastSurface == null || !toastSurface.matches(w, h)) {
             closeToastSurface();
-            toastSurface = new DynamicTexture(() -> "pane-toast-overlay", w, h, true);
+            toastSurface = new RetainedTexture("pane-toast-overlay", w, h);
             retainedTextureAllocationCount++;
-            toastImage = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
-            toastPixels = ((DataBufferInt) toastImage.getRaster().getDataBuffer()).getData();
-        } else Arrays.fill(toastPixels, 0);
+        } else toastSurface.clear();
         hits = new ArrayList<>(hitRegions);
         hits.addAll(virtualHitRegions);
         int baseHits = hits.size();
-        Graphics2D painter = toastImage.createGraphics();
+        Graphics2D painter = toastSurface.image.createGraphics();
         try {
             painter.scale(surfaceQualityScale, surfaceQualityScale);
             painter.translate(-bounds.x(), -bounds.y());
-            drawToasts(new UiCanvas(painter, toastImage), hits, surfaceLayoutWidth, surfaceLayoutHeight, now);
+            drawToasts(new UiCanvas(painter, toastSurface.image), hits, surfaceLayoutWidth, surfaceLayoutHeight, now);
         } finally { painter.dispose(); }
         toastHitRegions = List.copyOf(hits.subList(baseHits, hits.size()));
-        var target = toastSurface.getPixels().getPixelBytes().order(ByteOrder.nativeOrder()).asIntBuffer();
-        UiPixelTransfer.copy(toastPixels, target, w, 0, 0, w, h);
         toastSurface.upload();
         toastUploadPixels += (long) w * h;
         toastLayoutBounds = new UiRect(bounds.x(), bounds.y(), w / surfaceQualityScale, h / surfaceQualityScale);
@@ -2708,7 +2691,7 @@ public class UiScreen extends Screen {
 
     private void closeToastSurface() {
         if (toastSurface != null) toastSurface.close();
-        toastSurface = null; toastImage = null; toastPixels = null; toastLayoutBounds = null;
+        toastSurface = null; toastLayoutBounds = null;
         toastHitRegions = List.of(); toastSurfaceDirty = true;
     }
 
@@ -2724,7 +2707,7 @@ public class UiScreen extends Screen {
             return;
         }
         if (tooltipSurfaceDirty || tooltipSurface == null) rebuildTooltipSurface(tooltip);
-        if (tooltipSurface == null || tooltipSampler == null || tooltipLayoutBounds == null) {
+        if (tooltipSurface == null || tooltipLayoutBounds == null) {
             visibleTooltipId = null;
             return;
         }
@@ -2733,7 +2716,7 @@ public class UiScreen extends Screen {
         int x1 = Math.round(tooltipLayoutBounds.right() / layoutScale);
         int y1 = Math.round(tooltipLayoutBounds.bottom() / layoutScale);
         graphics.nextStratum();
-        graphics.blit(tooltipSurface.getTextureView(), tooltipSampler,
+        graphics.blit(tooltipSurface.texture.getTextureView(), surfaceSampler,
             x0, y0, x1, y1, 0, 1, 0, 1);
         visibleTooltipId = tooltip.id();
     }
@@ -2756,11 +2739,11 @@ public class UiScreen extends Screen {
         // Do not leave stale bounds drawable if measuring or allocating the replacement fails.
         tooltipLayoutBounds = null;
         float width;
-        Graphics2D measure = surfaceImage == null ? null : surfaceImage.createGraphics();
+        Graphics2D measure = surface == null ? null : surface.image.createGraphics();
         if (measure == null) return;
         try {
             measure.scale(surfaceQualityScale, surfaceQualityScale);
-            UiCanvas canvas = new UiCanvas(measure, surfaceImage);
+            UiCanvas canvas = new UiCanvas(measure, surface.image);
             width = Math.min(Math.max(54, canvas.textWidth(tooltip.text(), 8,
                 java.awt.Font.PLAIN, document.theme().fontFamily()) + padX * 2),
                 Math.max(54, surfaceLayoutWidth - 12));
@@ -2777,13 +2760,15 @@ public class UiScreen extends Screen {
         float textureHeight = height + outerPad * 2;
         int pixelWidth = Math.max(1, Math.round(textureWidth * surfaceQualityScale));
         int pixelHeight = Math.max(1, Math.round(textureHeight * surfaceQualityScale));
-        ensureTooltipSurface(pixelWidth, pixelHeight);
-        if (tooltipSurface == null) return;
-        Arrays.fill(tooltipPixels, 0);
-        Graphics2D painter = tooltipImage.createGraphics();
+        if (tooltipSurface == null || !tooltipSurface.matches(pixelWidth, pixelHeight)) {
+            closeTooltipSurface();
+            tooltipSurface = new RetainedTexture("pane-tooltip-surface", pixelWidth, pixelHeight);
+            retainedTextureAllocationCount++;
+        } else tooltipSurface.clear();
+        Graphics2D painter = tooltipSurface.image.createGraphics();
         try {
             painter.scale(surfaceQualityScale, surfaceQualityScale);
-            UiCanvas canvas = new UiCanvas(painter, tooltipImage);
+            UiCanvas canvas = new UiCanvas(painter, tooltipSurface.image);
             canvas.shadow(0x72000000, 5, 0, 2, outerPad, outerPad, width, height, 6);
             canvas.roundRect(0xFF111419, outerPad, outerPad, width, height, 6);
             canvas.strokeRoundRect(document.theme().border(), .8F,
@@ -2793,39 +2778,14 @@ public class UiScreen extends Screen {
         } finally {
             painter.dispose();
         }
-        NativeImage nativeImage = tooltipSurface.getPixels();
-        var target = nativeImage.getPixelBytes().order(ByteOrder.nativeOrder()).asIntBuffer();
-        for (int i = 0; i < tooltipPixels.length; i++) {
-            int argb = tooltipPixels[i];
-            target.put(i, argb & 0xFF00FF00 | argb >>> 16 & 0xFF | (argb & 0xFF) << 16);
-        }
         tooltipSurface.upload();
         tooltipLayoutBounds = new UiRect(x - outerPad, y - outerPad, textureWidth, textureHeight);
         tooltipSurfaceDirty = false;
     }
 
-    private void ensureTooltipSurface(int pixelWidth, int pixelHeight) {
-        if (tooltipSurface != null && tooltipPixelWidth == pixelWidth
-            && tooltipPixelHeight == pixelHeight) return;
-        closeTooltipSurface();
-        tooltipSurface = new DynamicTexture(() -> "pane-tooltip-surface",
-            pixelWidth, pixelHeight, true);
-        retainedTextureAllocationCount++;
-        tooltipSampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
-        tooltipImage = new BufferedImage(pixelWidth, pixelHeight, BufferedImage.TYPE_INT_ARGB);
-        tooltipPixels = ((DataBufferInt) tooltipImage.getRaster().getDataBuffer()).getData();
-        tooltipPixelWidth = pixelWidth;
-        tooltipPixelHeight = pixelHeight;
-    }
-
     private void closeTooltipSurface() {
         if (tooltipSurface != null) tooltipSurface.close();
         tooltipSurface = null;
-        tooltipSampler = null;
-        tooltipImage = null;
-        tooltipPixels = null;
-        tooltipPixelWidth = 0;
-        tooltipPixelHeight = 0;
         tooltipLayoutBounds = null;
         tooltipSurfaceDirty = true;
     }
@@ -2834,35 +2794,27 @@ public class UiScreen extends Screen {
         if (surface != null && surfaceWidth == pixelWidth && surfaceHeight == pixelHeight) return true;
         closeSurface();
         try {
-            surface = new DynamicTexture(() -> "pane-ui-surface", pixelWidth, pixelHeight, true);
+            surface = new RetainedTexture("pane-ui-surface", pixelWidth, pixelHeight);
             retainedTextureAllocationCount++;
         } catch (RuntimeException e) {
             return false;
         }
         surfaceSampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
-        surfaceImage = new BufferedImage(pixelWidth, pixelHeight, BufferedImage.TYPE_INT_ARGB);
-        // Taking the backing array once lets every repaint reuse it instead of allocating a
-        // fresh int[] per paint, and skips BufferedImage.getRGB's per-pixel ColorModel path.
-        surfacePixels = ((DataBufferInt) surfaceImage.getRaster().getDataBuffer()).getData();
         surfaceWidth = pixelWidth;
         surfaceHeight = pixelHeight;
         return true;
     }
 
     private void upload() {
-        if (surface == null || surfacePixels == null) return;
-        NativeImage nativeImage = surface.getPixels();
-        var target = nativeImage.getPixelBytes().order(ByteOrder.nativeOrder()).asIntBuffer();
-        UiPixelTransfer.copy(surfacePixels, target, surfaceWidth, 0, 0, surfaceWidth, surfaceHeight);
+        if (surface == null) return;
         surface.upload();
         lastUploadPixelCount = surfaceWidth * surfaceHeight;
     }
 
     private void upload(PixelRect region) {
-        if (surface == null || surfacePixels == null || region.width() <= 0 || region.height() <= 0) return;
-        NativeImage nativeImage = surface.getPixels();
-        var bytes = nativeImage.getPixelBytes().order(ByteOrder.nativeOrder());
-        UiPixelTransfer.copy(surfacePixels, bytes.asIntBuffer(), surfaceWidth,
+        if (surface == null || region.width() <= 0 || region.height() <= 0) return;
+        var bytes = surface.texture.getPixels().getPixelBytes().order(ByteOrder.nativeOrder());
+        UiPixelTransfer.copy(surface.pixels, bytes.asIntBuffer(), surfaceWidth,
             region.x(), region.y(), region.width(), region.height());
         // Full-width scanlines avoid subrectangle row-packing differences. Guard rows are copied
         // from the unchanged native backing; they never rerasterize neighboring content.
@@ -2870,7 +2822,7 @@ public class UiScreen extends Screen {
         int bottom = Math.min(surfaceHeight, region.bottom() + 1);
         ByteBuffer band = bytes.slice(top * surfaceWidth * 4, (bottom - top) * surfaceWidth * 4);
         RenderSystem.getDevice().createCommandEncoder().writeToTexture(
-            surface.getTexture(), band, 0, 0, 0, top, surfaceWidth, bottom - top);
+            surface.texture.getTexture(), band, 0, 0, 0, top, surfaceWidth, bottom - top);
         lastUploadPixelCount = surfaceWidth * (bottom - top);
     }
 
@@ -3028,14 +2980,13 @@ public class UiScreen extends Screen {
         int bytes = Math.multiplyExact(Math.multiplyExact(pixelWidth, uploadHeight), Integer.BYTES);
         ByteBuffer upload = row.uploadBuffer(bytes);
         int nonTransparent = 0;
-        for (int x = 0; x < pixelWidth; x++) upload.putInt(toRgba(row.pixels[x]));
-        for (int i = 0; i < row.pixels.length; i++) {
-            int argb = row.pixels[i];
+        for (int x = 0; x < pixelWidth; x++) upload.putInt(UiPixelTransfer.swapRedBlue(row.pixels[x]));
+        for (int argb : row.pixels) {
             if ((argb >>> 24) != 0) nonTransparent++;
-            upload.putInt(toRgba(argb));
+            upload.putInt(UiPixelTransfer.swapRedBlue(argb));
         }
         int lastScanline = (pixelHeight - 1) * pixelWidth;
-        for (int x = 0; x < pixelWidth; x++) upload.putInt(toRgba(row.pixels[lastScanline + x]));
+        for (int x = 0; x < pixelWidth; x++) upload.putInt(UiPixelTransfer.swapRedBlue(row.pixels[lastScanline + x]));
         upload.flip();
         row.atlasSlot = Math.floorMod(row.index, layer.atlasRows);
         RenderSystem.getDevice().createCommandEncoder().writeToTexture(
@@ -3125,10 +3076,6 @@ public class UiScreen extends Screen {
             request.viewport.width() / layoutScale,
             request.rowHeight / layoutScale
         );
-    }
-
-    private static int toRgba(int argb) {
-        return argb & 0xFF00FF00 | argb >>> 16 & 0xFF | (argb & 0xFF) << 16;
     }
 
     private void drawVirtualScrollbar(GuiGraphicsExtractor graphics, VirtualListLayer layer) {
@@ -3315,6 +3262,28 @@ public class UiScreen extends Screen {
         long expiresAt() { return shownAt + toast.durationMillis() * 1_000_000L; }
     }
 
+    /** A CPU ARGB raster mirrored into a GPU texture of exactly the same size. */
+    private static final class RetainedTexture {
+        final DynamicTexture texture;
+        final BufferedImage image;
+        final int[] pixels;
+
+        RetainedTexture(String label, int width, int height) {
+            texture = new DynamicTexture(() -> label, width, height, true);
+            image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+            pixels = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
+        }
+
+        boolean matches(int width, int height) { return image.getWidth() == width && image.getHeight() == height; }
+        void clear() { Arrays.fill(pixels, 0); }
+        void upload() {
+            var target = texture.getPixels().getPixelBytes().order(ByteOrder.nativeOrder()).asIntBuffer();
+            UiPixelTransfer.copy(pixels, target, image.getWidth(), 0, 0, image.getWidth(), image.getHeight());
+            texture.upload();
+        }
+        void close() { texture.close(); }
+    }
+
     private record PixelRect(int x, int y, int width, int height) {
         int bottom() { return y + height; }
     }
@@ -3467,13 +3436,9 @@ public class UiScreen extends Screen {
         closeToastSurface();
         closeVirtualLayers();
         closeTooltipSurface();
-        if (surface != null) {
-            surface.close();
-            surface = null;
-        }
+        if (surface != null) surface.close();
+        surface = null;
         surfaceSampler = null;
-        surfaceImage = null;
-        surfacePixels = null;
         surfaceWidth = 0;
         surfaceHeight = 0;
     }

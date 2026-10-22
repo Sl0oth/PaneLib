@@ -52,7 +52,8 @@ public final class UiCanvas {
     private static final int FONT_CACHE_LIMIT = 512;
     private static final java.util.concurrent.atomic.AtomicLong FONT_REVISION=new java.util.concurrent.atomic.AtomicLong();
     private record TextLayoutKey(String value,Font font,java.awt.font.FontRenderContext context,float width,long revision) { }
-    private static final Map<String, Font> FONTS = new ConcurrentHashMap<>();
+    private record FontKey(String family, int style, int sixteenths) { }
+    private static final Map<FontKey, Font> FONTS = new ConcurrentHashMap<>();
     private static final Map<String, Font> REGISTERED_FONTS = new ConcurrentHashMap<>();
     private static final Map<String, BufferedImage> TEXTURES = new ConcurrentHashMap<>();
     private static final java.util.concurrent.atomic.AtomicLong MINECRAFT_TEXTURE_REVISION = new java.util.concurrent.atomic.AtomicLong();
@@ -61,6 +62,8 @@ public final class UiCanvas {
 
     private final Graphics2D graphics;
     private final BufferedImage target;
+    /** Scratch for distance shadows, reused by every shadow in this paint. */
+    private BufferedImage shadowMask;
 
     /**
      * Registers a TrueType or OpenType font under a stable family name. The font stays local to
@@ -265,13 +268,78 @@ public final class UiCanvas {
         if (spread <= 0) return;
         int steps = Math.max(3, Math.min(14, Math.round(spread)));
         int baseAlpha = (color >>> 24) & 0xFF;
-        for (int i = steps; i >= 1; i--) {
-            float grow = spread * i / steps;
-            int stepAlpha = Math.max(1, Math.round(baseAlpha * (1F - (float) i / (steps + 1)) / steps * 2.2F));
-            graphics.setColor(awtColor(alpha(color, stepAlpha)));
-            graphics.fill(roundShape(x - grow + offsetX, y - grow + offsetY,
-                width + grow * 2, height + grow * 2, radius + grow));
+        float[] grow = new float[steps];
+        int[] alpha = new int[steps];
+        for (int i = 1; i <= steps; i++) {
+            grow[i - 1] = spread * i / steps;
+            alpha[i - 1] = Math.max(1, Math.round(baseAlpha * (1F - (float) i / (steps + 1)) / steps * 2.2F));
         }
+        if (distanceShadow(color, grow, alpha, x + offsetX, y + offsetY, width, height, radius)) return;
+        for (int i = steps - 1; i >= 0; i--) {
+            graphics.setColor(awtColor(alpha(color, alpha[i])));
+            graphics.fill(roundShape(x - grow[i] + offsetX, y - grow[i] + offsetY,
+                width + grow[i] * 2, height + grow[i] * 2, radius + grow[i]));
+        }
+    }
+
+    /**
+     * The rings share one colour and are offsets of one rounded rectangle, so stacking them is
+     * equivalent to a single blend whose alpha, 1 - Π(1 - aᵢ·coverageᵢ), depends only on the
+     * pixel's distance from that rectangle. Evaluates it once per visible device pixel instead of
+     * antialiasing every ring. Rotated, sheared or unevenly scaled drawing keeps the ring path.
+     */
+    private boolean distanceShadow(int color, float[] grow, int[] alpha, float x, float y,
+                                   float width, float height, float radius) {
+        AffineTransform matrix = graphics.getTransform();
+        double scale = matrix.getScaleX();
+        // Group opacity applies per ring in the reference path, so it joins each ring's alpha here.
+        if (!(graphics.getComposite() instanceof AlphaComposite composite) || composite.getRule() != AlphaComposite.SRC_OVER) return false;
+        double opacity = composite.getAlpha();
+        if (matrix.getShearX() != 0 || matrix.getShearY() != 0 || scale <= 0 || matrix.getScaleY() != scale
+                || width <= 0 || height <= 0 || radius < 0 || radius > Math.min(width, height) / 2) return false;
+        double halfW = width * scale / 2, halfH = height * scale / 2, corner = radius * scale;
+        double centerX = (x + width / 2) * scale + matrix.getTranslateX();
+        double centerY = (y + height / 2) * scale + matrix.getTranslateY();
+        double reach = grow[grow.length - 1] * scale + 1;
+        Rectangle area = new Rectangle((int) Math.floor(centerX - halfW - reach), (int) Math.floor(centerY - halfH - reach), 0, 0);
+        area.add(Math.ceil(centerX + halfW + reach), Math.ceil(centerY + halfH + reach));
+        Shape clip = graphics.getClip();
+        Shape deviceClip = clip == null ? null : matrix.createTransformedShape(clip);
+        if (deviceClip != null) area = area.intersection(deviceClip.getBounds());
+        if (target != null) area = area.intersection(new Rectangle(target.getWidth(), target.getHeight()));
+        if (area.isEmpty()) return true;
+        // Alpha by signed distance in sixteenths of a device pixel; inside the first ring it is constant.
+        int samples = (int) Math.ceil((reach + .5) * 16) + 1;
+        int[] lookup = new int[samples];
+        for (int i = 0; i < samples; i++) {
+            double distance = i / 16D - .5, clear = 1;
+            for (int ring = 0; ring < grow.length; ring++)
+                clear *= 1 - opacity * alpha[ring] / 255D * Math.clamp(.5 - distance + grow[ring] * scale, 0, 1);
+            lookup[i] = (int) Math.round((1 - clear) * 255) << 24 | color & 0xFFFFFF;
+        }
+        if (shadowMask == null || shadowMask.getWidth() < area.width || shadowMask.getHeight() < area.height)
+            shadowMask = new BufferedImage(Math.max(area.width, shadowMask == null ? 0 : shadowMask.getWidth()),
+                Math.max(area.height, shadowMask == null ? 0 : shadowMask.getHeight()), BufferedImage.TYPE_INT_ARGB);
+        int stride = shadowMask.getWidth();
+        int[] pixels = ((java.awt.image.DataBufferInt) shadowMask.getRaster().getDataBuffer()).getData();
+        double innerW = halfW - corner, innerH = halfH - corner;
+        for (int row = 0; row < area.height; row++) {
+            double qy = Math.abs(area.y + row + .5 - centerY) - innerH, dy = Math.max(qy, 0);
+            for (int column = 0; column < area.width; column++) {
+                double qx = Math.abs(area.x + column + .5 - centerX) - innerW, dx = Math.max(qx, 0);
+                double distance = Math.sqrt(dx * dx + dy * dy) + Math.min(Math.max(qx, qy), 0) - corner;
+                pixels[row * stride + column] = lookup[(int) Math.clamp(Math.round((distance + .5) * 16), 0, samples - 1)];
+            }
+        }
+        Graphics2D output = (Graphics2D) graphics.create();
+        try {
+            output.setTransform(new AffineTransform());
+            output.setClip(deviceClip);
+            output.setComposite(AlphaComposite.SrcOver);
+            output.drawImage(shadowMask, area.x, area.y, area.x + area.width, area.y + area.height,
+                0, 0, area.width, area.height, null);
+        } finally { output.dispose(); }
+        return true;
     }
 
     /** Coloured glow centred on a shape. Reads as light rather than shade. */
@@ -445,10 +513,13 @@ public final class UiCanvas {
         FontMetrics metrics = graphics.getFontMetrics(font);
         float baseline = top + metrics.getAscent();
         float cursor = x;
-        for (int i = 0; i < value.length(); i++) {
-            String glyph = String.valueOf(value.charAt(i));
+        var boundaries = UiTextBoundary.index(value);
+        for (int start = 0; start < value.length();) {
+            int end = boundaries.next(start);
+            String glyph = value.substring(start, end);
             graphics.drawString(glyph, cursor, baseline);
             cursor += metrics.stringWidth(glyph) + tracking;
+            start = end;
         }
     }
 
@@ -567,9 +638,18 @@ public final class UiCanvas {
         return graphics.getFontMetrics(font(size, style, family)).getHeight();
     }
 
+    /** Advance of {@link #trackedText}: each grapheme is measured exactly as it is drawn. */
     public float trackedTextWidth(String value, float size, int style, String family, float tracking) {
         if (value == null || value.isEmpty()) return 0;
-        return textWidth(value, size, style, family) + tracking * (value.length() - 1);
+        FontMetrics metrics = graphics.getFontMetrics(font(size, style, family));
+        var boundaries = UiTextBoundary.index(value);
+        float width = -tracking;
+        for (int start = 0; start < value.length();) {
+            int end = boundaries.next(start);
+            width += metrics.stringWidth(value.substring(start, end)) + tracking;
+            start = end;
+        }
+        return width;
     }
 
     /**
@@ -643,6 +723,9 @@ public final class UiCanvas {
         outer:
         for (UiRichText.Span span : value.spans()) {
             StringBuilder run = new StringBuilder();
+            UiRichText.Span ellipsisStyle = new UiRichText.Span("…", span.color(), span.bold(),
+                span.italic(), span.underlined(), span.strikethrough(), false);
+            float ellipsisWidth = formattedSpanWidth("…", ellipsisStyle, size, family);
             for (int offset = 0; offset < span.text().length();) {
                 int codePoint = span.text().codePointAt(offset);
                 if (codePoint == '\n' || codePoint == '\r') {
@@ -651,9 +734,6 @@ public final class UiCanvas {
                 }
                 String glyph = new String(Character.toChars(codePoint));
                 float glyphWidth = formattedSpanWidth(glyph, span, size, family);
-                UiRichText.Span ellipsisStyle = new UiRichText.Span("…", span.color(), span.bold(),
-                    span.italic(), span.underlined(), span.strikethrough(), false);
-                float ellipsisWidth = formattedSpanWidth("…", ellipsisStyle, size, family);
                 if (ellipsisWidth > Math.max(0, maxWidth)) return UiRichText.plain("");
                 if (width + glyphWidth + ellipsisWidth > Math.max(0, maxWidth)) {
                     if (!run.isEmpty()) kept.add(copySpan(span, run.toString()));
@@ -710,8 +790,9 @@ public final class UiCanvas {
     public String ellipsize(String value, float maxWidth, float size, int style, String family) {
         if (value == null || value.isEmpty() || textWidth(value, size, style, family) <= maxWidth) return value;
         String suffix = "…";
-        int end = value.length();
-        while (end > 0 && textWidth(value.substring(0, end) + suffix, size, style, family) > maxWidth) end--;
+        var boundaries = UiTextBoundary.index(value);
+        int end = boundaries.previous(value.length());
+        while (end > 0 && textWidth(value.substring(0, end) + suffix, size, style, family) > maxWidth) end = boundaries.previous(end);
         return end <= 0 ? suffix : value.substring(0, end) + suffix;
     }
 
@@ -778,70 +859,44 @@ public final class UiCanvas {
     // ---------------------------------------------------------------- scoped state
 
     public void withClip(float x, float y, float width, float height, Runnable painter) {
-        Shape old = graphics.getClip();
-        graphics.clip(new Rectangle2D.Float(x, y, Math.max(0, width), Math.max(0, height)));
-        try {
-            painter.run();
-        } finally {
-            graphics.setClip(old);
-        }
+        withClipShape(new Rectangle2D.Float(x, y, Math.max(0, width), Math.max(0, height)), painter);
     }
 
     /** Clips to a rounded rectangle, for masking content inside a card. */
     public void withRoundedClip(float x, float y, float width, float height, float radius, Runnable painter) {
-        Shape old = graphics.getClip();
-        graphics.clip(roundShape(x, y, Math.max(0, width), Math.max(0, height), radius));
-        try {
-            painter.run();
-        } finally {
-            graphics.setClip(old);
-        }
+        withClipShape(roundShape(x, y, Math.max(0, width), Math.max(0, height), radius), painter);
     }
 
     /** Clips to a circle, for avatars and badges. */
     public void withCircleClip(float centerX, float centerY, float radius, Runnable painter) {
+        withClipShape(new Ellipse2D.Float(centerX - radius, centerY - radius, radius * 2, radius * 2), painter);
+    }
+
+    private void withClipShape(Shape shape, Runnable painter) {
         Shape old = graphics.getClip();
-        graphics.clip(new Ellipse2D.Float(centerX - radius, centerY - radius, radius * 2, radius * 2));
-        try {
-            painter.run();
-        } finally {
-            graphics.setClip(old);
-        }
+        graphics.clip(shape);
+        try { painter.run(); } finally { graphics.setClip(old); }
     }
 
     /** Rotates everything drawn inside, in degrees clockwise about a pivot. */
     public void withRotation(float degrees, float pivotX, float pivotY, Runnable painter) {
-        AffineTransform old = graphics.getTransform();
-        graphics.rotate(Math.toRadians(degrees), pivotX, pivotY);
-        try {
-            painter.run();
-        } finally {
-            graphics.setTransform(old);
-        }
+        withMatrix(g -> g.rotate(Math.toRadians(degrees), pivotX, pivotY), painter);
     }
 
     /** Scales everything drawn inside about a pivot. */
     public void withScale(float scaleX, float scaleY, float pivotX, float pivotY, Runnable painter) {
-        AffineTransform old = graphics.getTransform();
-        graphics.translate(pivotX, pivotY);
-        graphics.scale(scaleX, scaleY);
-        graphics.translate(-pivotX, -pivotY);
-        try {
-            painter.run();
-        } finally {
-            graphics.setTransform(old);
-        }
+        withMatrix(g -> { g.translate(pivotX, pivotY); g.scale(scaleX, scaleY); g.translate(-pivotX, -pivotY); }, painter);
     }
 
     /** Translates everything drawn inside. Used by scroll containers and custom viewports. */
     public void withTranslation(float offsetX, float offsetY, Runnable painter) {
+        withMatrix(g -> g.translate(offsetX, offsetY), painter);
+    }
+
+    private void withMatrix(java.util.function.Consumer<Graphics2D> change, Runnable painter) {
         AffineTransform old = graphics.getTransform();
-        graphics.translate(offsetX, offsetY);
-        try {
-            painter.run();
-        } finally {
-            graphics.setTransform(old);
-        }
+        change.accept(graphics);
+        try { painter.run(); } finally { graphics.setTransform(old); }
     }
 
     /** Multiplies opacity per drawing operation. Use withLayer for overlapping shapes as one group. */
@@ -922,10 +977,7 @@ public final class UiCanvas {
 
     /** Transforms drawing around a pivot. Interactive consumers should use UiContext.withTransform. */
     public void withTransform(UiTransform transform, float pivotX, float pivotY, Runnable painter) {
-        AffineTransform previous = graphics.getTransform();
-        graphics.transform(transform.matrix(pivotX, pivotY));
-        try { withOpacity(transform.opacity(), painter); }
-        finally { graphics.setTransform(previous); }
+        withMatrix(g -> g.transform(transform.matrix(pivotX, pivotY)), () -> withOpacity(transform.opacity(), painter));
     }
 
     /**
@@ -978,7 +1030,7 @@ public final class UiCanvas {
             sourceH = Math.max(1, Math.round(sourceW / targetAspect));
             sourceY = (image.getHeight() - sourceH) / 2;
         }
-        drawMinecraftImage(image, sourceX, sourceY, sourceW, sourceH, x, y, width, height);
+        drawMinecraftImage(image, sourceX, sourceY, sourceW, sourceH, x, y, width, height, UiImageOptions.Sampling.NEAREST);
         return true;
     }
 
@@ -1069,10 +1121,6 @@ public final class UiCanvas {
     }
 
     private void drawMinecraftImage(BufferedImage image, int sourceX, int sourceY, int sourceWidth,
-                                    int sourceHeight, float x, float y, float width, float height) {
-        drawMinecraftImage(image,sourceX,sourceY,sourceWidth,sourceHeight,x,y,width,height,UiImageOptions.Sampling.NEAREST);
-    }
-    private void drawMinecraftImage(BufferedImage image, int sourceX, int sourceY, int sourceWidth,
                                     int sourceHeight, float x, float y, float width, float height,UiImageOptions.Sampling sampling) {
         Object old = graphics.getRenderingHint(RenderingHints.KEY_INTERPOLATION);
         graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, interpolation(sampling));
@@ -1113,12 +1161,8 @@ public final class UiCanvas {
             if (pixels == null || pixels.isClosed()) return null;
             int width = pixels.getWidth(), height = pixels.getHeight();
             BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-            int[] source = pixels.getPixelsABGR();
-            int[] target = new int[source.length];
-            for (int i = 0; i < source.length; i++) {
-                int abgr = source[i];
-                target[i] = (abgr & 0xFF00FF00) | ((abgr & 0x000000FF) << 16) | ((abgr >>> 16) & 0x000000FF);
-            }
+            int[] target = pixels.getPixelsABGR();
+            for (int i = 0; i < target.length; i++) target[i] = UiPixelTransfer.swapRedBlue(target[i]);
             image.setRGB(0, 0, width, height, target, 0, width);
             return image;
         } catch (RuntimeException ignored) {
@@ -1171,7 +1215,7 @@ public final class UiCanvas {
     private static Font font(float size, int style, String family) {
         float quantised = Math.max(1F, Math.min(512F, Math.round(size * 16F) / 16F));
         String resolved = family == null || family.isEmpty() ? SANS : family;
-        String key = resolved + '|' + style + '|' + Math.round(quantised * 16F);
+        var key = new FontKey(resolved, style, Math.round(quantised * 16F));
         Font cached = FONTS.get(key);
         if (cached != null) return cached;
         if (FONTS.size() >= FONT_CACHE_LIMIT) FONTS.clear();

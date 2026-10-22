@@ -80,3 +80,8 @@ The [October 21 editor and pixel-transfer pass](audits/performance-2026-10-21.md
 selection painting and redundant geometry copies, and reduces pixel conversion cost. It includes
 reproducible CPU workloads, pixel/geometry parity checks and matched Minecraft measurements;
 the measured upload improvement is not a general FPS claim.
+
+The [October 21 cleanup and paint-cost pass](audits/cleanup-and-paint-2026-10-21.md) draws
+shadows in one blend instead of up to fourteen antialiased rings, limits caret and selection
+updates to their editor, and removes duplicated surface and control code. A full-page CPU
+repaint benchmark halved; it is a raster workload, not a frame-rate claim.

@@ -22,7 +22,8 @@ final class UiInteractionState {
     }
     void beginPaint() { buttons.clear(); targets.clear(); inputs.clear(); ancestors.clear(); }
     void register(UiHitRegion hit) {
-        var chain = ancestors.stream().map(region -> new Ancestor(region, offsets.getOrDefault(region.id(), 0D))).toList();
+        List<Ancestor> chain = ancestors.isEmpty() ? List.of()
+            : ancestors.stream().map(region -> new Ancestor(region, offsets.getOrDefault(region.id(), 0D))).toList();
         UiRect bounds = new UiRect(hit.x(), hit.y(), hit.width(), hit.height());
         // Inner content may extend beyond its parent's content, yet become visible by inner scrolling.
         // Validate reachability in reveal order, rather than clipping the raw target against every ancestor.
