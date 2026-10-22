@@ -14,6 +14,15 @@ final class UiInteractionState {
     final Deque<UiScrollRegion> ancestors = new ArrayDeque<>();
     /** Present only while a screen's page paint can hand groups to the GPU compositor. */
     UiGpuLayers.Collector gpuLayers;
+    /** Show/hide state of each {@link UiContext#gpuTransition}, kept between paints. */
+    final Map<String, Transition> transitions = new HashMap<>();
+
+    static final class Transition {
+        boolean shown;
+        long changedAt;
+        Transition(boolean shown) { this.shown = shown; }
+    }
+
     /** Pointer, drag and timer requests; affine child contexts share the parent's instance. */
     Live live = new Live();
 
@@ -26,13 +35,18 @@ final class UiInteractionState {
         final List<UiRect> pointerAreas = new ArrayList<>();
         /** What each drag area moves, so a drag step repaints only that. */
         final Map<String, UiRect> dragBounds = new HashMap<>();
+        /** The drag area key being dragged, set by the screen before each paint, and whether it has moved. */
+        String draggingKey;
+        boolean dragMoved;
+        /** State key prefixes that only affect a region of the page, with that region. */
+        final Map<String, UiRect> scopes = new HashMap<>();
         /** Timed repaints painters asked for; null bounds means the page. */
         final List<Refresh> refreshes = new ArrayList<>();
 
         void requestRefresh(long atNanos, UiRect bounds) { refreshes.add(new Refresh(atNanos, bounds)); }
 
         void clear() {
-            pointerAreas.clear(); dragBounds.clear(); refreshes.clear();
+            pointerAreas.clear(); dragBounds.clear(); refreshes.clear(); scopes.clear();
         }
     }
 

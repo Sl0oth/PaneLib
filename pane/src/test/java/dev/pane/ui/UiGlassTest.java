@@ -127,6 +127,31 @@ class UiGlassTest {
     }
 
     @Test
+    void outsideShadowMatchesAClippedShadowAndLeavesTheShapeAlone() {
+        var reference = new BufferedImage(240, 200, BufferedImage.TYPE_INT_ARGB);
+        var outside = new BufferedImage(240, 200, BufferedImage.TYPE_INT_ARGB);
+        var graphics = reference.createGraphics();
+        try {
+            var clip = new java.awt.geom.Area(new java.awt.Rectangle(0, 0, 240, 200));
+            clip.subtract(new java.awt.geom.Area(new java.awt.geom.RoundRectangle2D.Float(50, 40, 140, 100, 36, 36)));
+            graphics.setClip(clip);
+            new UiCanvas(graphics, reference).shadow(0x80000000, 18, 0, 8, 50, 40, 140, 100, 18);
+        } finally { graphics.dispose(); }
+        paint(outside, canvas -> canvas.shadowOutside(0x80000000, 18, 0, 8, 50, 40, 140, 100, 18));
+        int worst = 0;
+        for (int y = 0; y < 200; y++) for (int x = 0; x < 240; x++) {
+            boolean inside = new java.awt.geom.RoundRectangle2D.Float(51, 41, 138, 98, 34, 34).contains(x + .5, y + .5);
+            if (inside) { assertEquals(0, outside.getRGB(x, y) >>> 24, "inside the shape at " + x + "," + y); continue; }
+            // The reference clip is aliased; the outline's own pixels are antialiased in the fast path.
+            if (new java.awt.geom.RoundRectangle2D.Float(48, 38, 144, 104, 40, 40).contains(x + .5, y + .5)) continue;
+            int difference = Math.abs((reference.getRGB(x, y) >>> 24) - (outside.getRGB(x, y) >>> 24));
+            worst = Math.max(worst, difference);
+        }
+        assertTrue(worst <= 6, "outside the shape it matches the clipped shadow (worst alpha difference " + worst + ")");
+        assertTrue((outside.getRGB(120, 146) >>> 24) > 20, "the shadow falls below the shape");
+    }
+
+    @Test
     void glassValuesAreValidatedAndClamped() {
         var glass = new UiGlass(200, 0, 99, 0, 3, -1, 0);
         assertEquals(64, glass.refraction());

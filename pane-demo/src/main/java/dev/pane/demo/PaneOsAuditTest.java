@@ -16,6 +16,7 @@ final class PaneOsAuditTest {
     private boolean failed, finished, warm;
     private long fullRaster, warmRaster;
     private float width;
+    private UiRect bar;
 
     void tick(Minecraft client) {
         if (finished) return;
@@ -41,19 +42,22 @@ final class PaneOsAuditTest {
                 case 80 -> {
                     capture(client, "paneos-files");
                     check(screen.regionBounds("files:bar").isPresent(), "settled window takes input");
-                    var bar = screen.regionBounds("files:bar").orElseThrow();
+                    bar = screen.regionBounds("files:bar").orElseThrow();
                     paints = screen.paintCount(); partials = screen.partialPaintCount();
                     press(bar.centerX(), bar.y() + 20);
                 }
-                case 81 -> drag(screen.regionBounds("files:bar").orElseThrow().centerX() + 120, screen.regionBounds("files:bar").orElseThrow().y() + 50);
-                case 82 -> drag(screen.regionBounds("files:bar").orElseThrow().centerX() + 120, screen.regionBounds("files:bar").orElseThrow().y() + 40);
+                case 81 -> drag(bar.centerX() + 120, bar.y() + 50);
+                case 82 -> {
+                    drag(bar.centerX() + 250, bar.y() + 40);
+                    check(screen.regionBounds("files:bar").isEmpty(), "a moving window is lifted onto the GPU, off the page");
+                }
                 case 83 -> {
-                    var bar = screen.regionBounds("files:bar").orElseThrow();
-                    release(bar.centerX(), bar.y() + 20);
+                    release(bar.centerX() + 250, bar.y() + 40);
                     int full = (screen.paintCount() - paints) - (screen.partialPaintCount() - partials);
                     check(screen.numberValue("win:files:x", 0) > 200, "title bar drags the window (" + Math.round(screen.numberValue("win:files:x", 0)) + ")");
-                    check(full <= 1, "window drag repaints only where the window was and goes (" + full + " full paints)");
+                    check(full == 0, "window drag does no full repaints (" + full + ")");
                 }
+                case 84 -> check(screen.regionBounds("files:bar").isPresent(), "a dropped window is back on the page and takes input");
                 case 85 -> { var corner = screen.regionBounds("files:resize").orElseThrow(); width = screen.regionBounds("files:bg").orElseThrow().width(); press(corner.centerX(), corner.centerY()); }
                 case 86 -> { var corner = screen.regionBounds("files:resize").orElseThrow(); drag(corner.centerX() + 100, corner.centerY() + 40); }
                 case 87 -> { var corner = screen.regionBounds("files:resize").orElseThrow(); release(corner.centerX(), corner.centerY()); }

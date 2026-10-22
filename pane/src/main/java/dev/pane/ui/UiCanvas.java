@@ -22,8 +22,6 @@ import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
-import java.awt.image.ConvolveOp;
-import java.awt.image.Kernel;
 import java.io.IOException;
 import java.io.InputStream;
 import javax.imageio.ImageIO;
@@ -293,12 +291,36 @@ public final class UiCanvas {
             grow[i - 1] = spread * i / steps;
             alpha[i - 1] = Math.max(1, Math.round(baseAlpha * (1F - (float) i / (steps + 1)) / steps * 2.2F));
         }
-        if (distanceShadow(color, grow, alpha, x + offsetX, y + offsetY, width, height, radius)) return;
+        if (distanceShadow(color, grow, alpha, x + offsetX, y + offsetY, width, height, radius, null)) return;
         for (int i = steps - 1; i >= 0; i--) {
             graphics.setColor(awtColor(alpha(color, alpha[i])));
             graphics.fill(roundShape(x - grow[i] + offsetX, y - grow[i] + offsetY,
                 width + grow[i] * 2, height + grow[i] * 2, radius + grow[i]));
         }
+    }
+
+    /**
+     * {@link #shadow} drawn only outside the shape itself, for glass and for panels painted over it.
+     * Large shapes are much cheaper: the covered interior is never evaluated or blended. Rotated,
+     * sheared or unevenly scaled drawing clips the ordinary shadow instead.
+     */
+    public void shadowOutside(int color, float spread, float offsetX, float offsetY,
+                              float x, float y, float width, float height, float radius) {
+        if (spread <= 0) return;
+        int steps = Math.max(3, Math.min(14, Math.round(spread)));
+        int baseAlpha = (color >>> 24) & 0xFF;
+        float[] grow = new float[steps];
+        int[] alpha = new int[steps];
+        for (int i = 1; i <= steps; i++) {
+            grow[i - 1] = spread * i / steps;
+            alpha[i - 1] = Math.max(1, Math.round(baseAlpha * (1F - (float) i / (steps + 1)) / steps * 2.2F));
+        }
+        if (distanceShadow(color, grow, alpha, x + offsetX, y + offsetY, width, height, radius,
+            new Rectangle2D.Float(x, y, width, height))) return;
+        var outside = new java.awt.geom.Area(new Rectangle2D.Float(x - spread * 2 + Math.min(0, offsetX), y - spread * 2 + Math.min(0, offsetY),
+            width + spread * 4 + Math.abs(offsetX), height + spread * 4 + Math.abs(offsetY)));
+        outside.subtract(new java.awt.geom.Area(roundShape(x, y, width, height, radius)));
+        withClipShape(outside, () -> shadow(color, spread, offsetX, offsetY, x, y, width, height, radius));
     }
 
     /**
@@ -308,7 +330,7 @@ public final class UiCanvas {
      * antialiasing every ring. Rotated, sheared or unevenly scaled drawing keeps the ring path.
      */
     private boolean distanceShadow(int color, float[] grow, int[] alpha, float x, float y,
-                                   float width, float height, float radius) {
+                                   float width, float height, float radius, Rectangle2D.Float caster) {
         AffineTransform matrix = graphics.getTransform();
         double scale = matrix.getScaleX();
         // Group opacity applies per ring in the reference path, so it joins each ring's alpha here.
@@ -324,9 +346,10 @@ public final class UiCanvas {
         area.add(Math.ceil(centerX + halfW + reach), Math.ceil(centerY + halfH + reach));
         Shape clip = graphics.getClip();
         Shape deviceClip = clip == null ? null : matrix.createTransformedShape(clip);
-        if (deviceClip != null) area = area.intersection(deviceClip.getBounds());
         if (target != null) area = area.intersection(new Rectangle(target.getWidth(), target.getHeight()));
-        if (area.isEmpty()) return true;
+        // Outside-only shadows keep whole bands, so cached bands match whatever a later paint clips to.
+        if (deviceClip != null && (caster == null || glassCache == null)) area = area.intersection(deviceClip.getBounds());
+        if (area.isEmpty() || deviceClip != null && !deviceClip.intersects(area)) return true;
         // Alpha by signed distance in sixteenths of a device pixel; inside the first ring it is constant.
         int samples = (int) Math.ceil((reach + .5) * 16) + 1;
         int[] lookup = new int[samples];
@@ -335,6 +358,10 @@ public final class UiCanvas {
             for (int ring = 0; ring < grow.length; ring++)
                 clear *= 1 - opacity * alpha[ring] / 255D * Math.clamp(.5 - distance + grow[ring] * scale, 0, 1);
             lookup[i] = (int) Math.round((1 - clear) * 255) << 24 | color & 0xFFFFFF;
+        }
+        if (caster != null) {
+            outsideShadow(matrix, caster, radius * scale, area, lookup, samples, centerX, centerY, halfW - corner, halfH - corner, corner, deviceClip);
+            return true;
         }
         if (shadowMask == null || shadowMask.getWidth() < area.width || shadowMask.getHeight() < area.height)
             shadowMask = new BufferedImage(Math.max(area.width, shadowMask == null ? 0 : shadowMask.getWidth()),
@@ -368,6 +395,66 @@ public final class UiCanvas {
                 0, 0, area.width, area.height, null);
         } finally { output.dispose(); }
         return true;
+    }
+
+    /**
+     * Evaluates and blends only the bands of {@code area} around the caster's surely-covered core,
+     * scaling each pixel by how much of it lies outside the caster's rounded outline. On the screen
+     * surface each band is kept between paints and reused while the geometry is unchanged.
+     */
+    private void outsideShadow(AffineTransform matrix, Rectangle2D.Float caster, double casterCorner, Rectangle area,
+                               int[] lookup, int samples, double centerX, double centerY, double innerW, double innerH,
+                               double corner, Shape deviceClip) {
+        double scale = matrix.getScaleX();
+        double cx = (caster.x + caster.width / 2) * scale + matrix.getTranslateX(), cy = (caster.y + caster.height / 2) * scale + matrix.getTranslateY();
+        double chw = caster.width * scale / 2, chh = caster.height * scale / 2, cInnerW = chw - casterCorner, cInnerH = chh - casterCorner;
+        // Inside the caster inset by its corner radius every pixel is covered.
+        Rectangle core = new Rectangle((int) Math.ceil(cx - chw + casterCorner + 1), (int) Math.ceil(cy - chh + casterCorner + 1), 0, 0);
+        core.add(Math.floor(cx + chw - casterCorner - 1), Math.floor(cy + chh - casterCorner - 1));
+        core = core.intersection(area);
+        List<Rectangle> bands = new ArrayList<>(4);
+        if (core.isEmpty()) bands.add(area);
+        else {
+            bands.add(new Rectangle(area.x, area.y, area.width, core.y - area.y));
+            bands.add(new Rectangle(area.x, core.y + core.height, area.width, area.y + area.height - core.y - core.height));
+            bands.add(new Rectangle(area.x, core.y, core.x - area.x, core.height));
+            bands.add(new Rectangle(core.x + core.width, core.y, area.x + area.width - core.x - core.width, core.height));
+        }
+        long ramp = glassCache == null ? 0 : UiGlassCache.hash(lookup);
+        Graphics2D output = (Graphics2D) graphics.create();
+        try {
+            output.setTransform(new AffineTransform());
+            output.setClip(deviceClip);
+            output.setComposite(AlphaComposite.SrcOver);
+            for (Rectangle band : bands) {
+                if (band.width <= 0 || band.height <= 0 || deviceClip != null && !deviceClip.intersects(band)) continue;
+                var key = glassCache == null ? null : new UiGlassCache.ShadowKey(band, cx, cy, chw, chh, casterCorner, centerX, centerY, innerW, innerH, corner, ramp);
+                BufferedImage image = key == null ? null : glassCache.find(key, 0);
+                if (image == null) {
+                    image = new BufferedImage(band.width, band.height, BufferedImage.TYPE_INT_ARGB);
+                    int[] pixels = ((java.awt.image.DataBufferInt) image.getRaster().getDataBuffer()).getData();
+                    int bandWidth = band.width;
+                    rows(band.height, (long) band.width * band.height, row -> {
+                        double py = band.y + row + .5;
+                        double offsetY = Math.abs(py - centerY), qy = offsetY - innerH, dy = Math.max(qy, 0);
+                        double cqy = Math.abs(py - cy) - cInnerH, cdy = Math.max(cqy, 0);
+                        for (int column = 0; column < bandWidth; column++) {
+                            double px = band.x + column + .5;
+                            double cqx = Math.abs(px - cx) - cInnerW, cdx = Math.max(cqx, 0);
+                            double casterDistance = Math.sqrt(cdx * cdx + cdy * cdy) + Math.min(Math.max(cqx, cqy), 0) - casterCorner;
+                            double visible = Math.clamp(casterDistance + .5, 0, 1);
+                            if (visible <= 0) continue;
+                            double qx = Math.abs(px - centerX) - innerW, dx = Math.max(qx, 0);
+                            double distance = Math.sqrt(dx * dx + dy * dy) + Math.min(Math.max(qx, qy), 0) - corner;
+                            int value = lookup[(int) Math.clamp(Math.round((distance + .5) * 16), 0, samples - 1)];
+                            pixels[row * bandWidth + column] = visible >= 1 ? value : (int) Math.round((value >>> 24) * visible) << 24 | value & 0xFFFFFF;
+                        }
+                    });
+                    if (key != null) glassCache.store(key, 0, image);
+                }
+                output.drawImage(image, band.x, band.y, null);
+            }
+        } finally { output.dispose(); }
     }
 
     /** Coloured glow centred on a shape. Reads as light rather than shade. */
@@ -451,13 +538,12 @@ public final class UiCanvas {
             copyGraphics.drawImage(target, 0, 0, pixelWidth, pixelHeight, left, top, right, bottom, null);
         } finally { copyGraphics.dispose(); }
 
-        int kernelSize = pixelRadius * 2 + 1;
-        float[] weights = new float[kernelSize];
-        java.util.Arrays.fill(weights, 1F / kernelSize);
-        BufferedImage horizontal = scratch.horizontal;
+        // A running-sum box blur costs the same for any radius, unlike a convolution kernel.
         BufferedImage blurred = scratch.source;
-        new ConvolveOp(new Kernel(kernelSize, 1, weights), ConvolveOp.EDGE_NO_OP, null).filter(source, horizontal);
-        new ConvolveOp(new Kernel(1, kernelSize, weights), ConvolveOp.EDGE_NO_OP, null).filter(horizontal, blurred);
+        int[] sourcePixels = ((java.awt.image.DataBufferInt) source.getRaster().getDataBuffer()).getData();
+        int[] horizontalPixels = ((java.awt.image.DataBufferInt) scratch.horizontal.getRaster().getDataBuffer()).getData();
+        blurPass(sourcePixels, horizontalPixels, pixelWidth, pixelHeight, pixelRadius, 1, pixelWidth);
+        blurPass(horizontalPixels, sourcePixels, pixelHeight, pixelWidth, pixelRadius, pixelWidth, 1);
 
         Graphics2D output = (Graphics2D) graphics.create();
         try {
@@ -478,6 +564,11 @@ public final class UiCanvas {
             output.setClip(deviceClip);
             output.drawImage(image, x, y, null);
         } finally { output.dispose(); }
+    }
+
+    /** Glass on this canvas reads {@code parent}'s pixels beneath it, this canvas's origin lying at (x, y) there. */
+    void readBackdropFrom(UiCanvas parent, int x, int y) {
+        backdropParent = parent; backdropX = x; backdropY = y;
     }
 
     private void recordBackdropRead(Rectangle read) {
@@ -550,12 +641,7 @@ public final class UiCanvas {
         radius = Math.max(0, Math.min(radius, Math.min(width, height) / 2));
         AffineTransform matrix = graphics.getTransform();
         double scale = matrix.getScaleX();
-        if ((glass.shadow() >>> 24) != 0) {
-            var outside = new java.awt.geom.Area(new Rectangle2D.Float(x - 80, y - 80, width + 160, height + 160));
-            outside.subtract(new java.awt.geom.Area(roundShape(x, y, width, height, radius)));
-            float r = radius;
-            withClipShape(outside, () -> shadow(glass.shadow(), 14, 0, 6, x, y, width, height, r));
-        }
+        if ((glass.shadow() >>> 24) != 0) shadowOutside(glass.shadow(), 14, 0, 6, x, y, width, height, radius);
         if (matrix.getShearX() != 0 || matrix.getShearY() != 0 || matrix.getScaleY() != scale || scale <= 0) {
             boolean read = backdropBlur(Math.max(1, glass.blur()), x, y, width, height);
             roundRect(glass.tint(), x, y, width, height, radius);
@@ -619,7 +705,7 @@ public final class UiCanvas {
         float tintA = (glass.tint() >>> 24) / 255F;
         int tintR = glass.tint() >>> 16 & 255, tintG = glass.tint() >>> 8 & 255, tintB = glass.tint() & 255;
         double innerW = halfW - corner, innerH = halfH - corner, top = centerY - halfH;
-        for (int row = 0; row < area.height; row++) {
+        rows(area.height, (long) area.width * area.height, row -> {
             double py = area.y + row + .5, oy = py - centerY, qy = Math.abs(oy) - innerH, dy = Math.max(qy, 0);
             float sheen = glass.highlight() * .07F * (float) Math.max(0, 1 - (py - top) / (halfH * 2));
             double sy = (py - source.y - .5) * toBlur + blurOffset;
@@ -653,7 +739,7 @@ public final class UiCanvas {
                 b = Math.min(255, Math.round(b + (tintB - b) * tintA + (255 - b) * (lift - tintA + sheen)));
                 pixels[row * area.width + column] = (int) Math.round(coverage * 255) << 24 | r << 16 | g << 8 | b;
             }
-        }
+        });
         return output;
     }
 
@@ -707,9 +793,18 @@ public final class UiCanvas {
         blurPass(scratch, pixels, height, width, radius, width, 1);
     }
 
+    /** Rasters at least this large split their rows across cores; smaller ones are not worth the hand-off. */
+    private static final int PARALLEL_PIXELS = 1 << 15;
+
+    /** Runs {@code row} for 0..count-1, in parallel when the work is large enough. Rows must be independent. */
+    private static void rows(int count, long pixels, java.util.function.IntConsumer row) {
+        if (pixels >= PARALLEL_PIXELS && count > 1) java.util.stream.IntStream.range(0, count).parallel().forEach(row);
+        else for (int i = 0; i < count; i++) row.accept(i);
+    }
+
     private static void blurPass(int[] from, int[] to, int length, int lines, int radius, int step, int lineStep) {
         int window = radius * 2 + 1;
-        for (int line = 0; line < lines; line++) {
+        rows(lines, (long) length * lines, line -> {
             int base = line * lineStep, a = 0, r = 0, g = 0, b = 0;
             for (int i = -radius; i <= radius; i++) {
                 int pixel = from[base + clampIndex(i, length) * step];
@@ -721,7 +816,7 @@ public final class UiCanvas {
                 a += (in >>> 24) - (out >>> 24); r += (in >>> 16 & 255) - (out >>> 16 & 255);
                 g += (in >>> 8 & 255) - (out >>> 8 & 255); b += (in & 255) - (out & 255);
             }
-        }
+        });
     }
 
     // ---------------------------------------------------------------- procedural texture

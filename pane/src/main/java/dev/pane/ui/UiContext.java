@@ -336,10 +336,94 @@ public final class UiContext {
         var collector = interactions.gpuLayers;
         if (collector != null && collector.accepts(canvas, offsetX, offsetY)) {
             collector.requests.add(new UiGpuLayers.Request(id, bounds, bounds.translate(offsetX, offsetY), revision,
-                target, durationMillis, easing, inputClip, painter));
+                null, target, durationMillis, easing, inputClip, null, painter));
             return;
         }
         canvas.withTransform(target, bounds.centerX(), bounds.centerY(), () -> painter.accept(canvas));
+    }
+
+    /**
+     * {@link #gpuLayer} for a whole group of controls, such as a window opening, closing or
+     * minimizing: the group is painted once exactly as {@link #withPresentation} would, editors and
+     * glass included and without taking input, and the GPU animates it from {@code from} (or, for a
+     * layer already on screen, from where it is) to {@code target} with no page repaints. Glass in
+     * the group reads the page behind it as that page was painted. The layer draws above the page.
+     * Where GPU layers are unavailable the group is presented in place at {@code target}.
+     */
+    public void gpuGroup(String id, UiRect bounds, Object revision, UiTransform from, UiTransform target, int durationMillis,
+                         UiEasing easing, Consumer<UiContext> painter) {
+        if (id == null || id.isBlank() || bounds == null || target == null || painter == null
+                || bounds.width() <= 0 || bounds.height() <= 0) return;
+        var collector = interactions.gpuLayers;
+        if (collector != null && collector.accepts(canvas, offsetX, offsetY)) {
+            collector.requests.add(new UiGpuLayers.Request(id, bounds, bounds.translate(offsetX, offsetY), revision,
+                from, target, durationMillis, easing, inputClip, canvas, layer -> painter.accept(detached(layer))));
+            return;
+        }
+        withPresentation(target, bounds.centerX(), bounds.centerY(), painter);
+    }
+
+    /**
+     * Shows or hides a group, such as a panel or overlay, with the GPU animating between
+     * {@code hidden} and its natural place, so the page never repaints during the transition.
+     * Settled and shown, the group paints normally and takes input; settled and hidden, it paints
+     * nothing. The first paint of an id is already settled. Call it on every paint with the current
+     * {@code shown}; reversing mid-way continues from where the group is.
+     */
+    public void gpuTransition(String id, UiRect bounds, Object revision, boolean shown, UiTransform hidden,
+                              int durationMillis, UiEasing easing, Consumer<UiContext> painter) {
+        if (id == null || bounds == null || hidden == null || painter == null) return;
+        var transition = interactions.transitions.computeIfAbsent(id, key -> new UiInteractionState.Transition(shown));
+        long now = System.nanoTime();
+        if (transition.shown != shown) { transition.shown = shown; transition.changedAt = now; }
+        long elapsed = (now - transition.changedAt) / 1_000_000;
+        if (elapsed >= durationMillis) { if (shown) painter.accept(this); return; }
+        UiTransform settled = UiTransform.identity();
+        gpuGroup("transition:" + id, bounds, revision, shown ? hidden : settled, shown ? settled : hidden, durationMillis, easing, painter);
+        refreshAfter(durationMillis - elapsed + 16, bounds);
+    }
+
+    /**
+     * Paints a group the pointer drags smoothly, such as a window, with a {@link #dragArea} for
+     * {@code key} inside it. While that drag moves, the group is lifted into a GPU layer that follows
+     * the pointer with no page repaints and is drawn above the page; otherwise it paints normally.
+     * {@code bounds} must hold the group and its shadow; change {@code revision} when its content changes.
+     */
+    public void dragLayer(String key, UiRect bounds, Object revision, Consumer<UiContext> painter) {
+        if (painter == null) return;
+        var collector = interactions.gpuLayers;
+        if (dragging(key) && bounds != null && collector != null && collector.accepts(canvas, offsetX, offsetY)) {
+            gpuGroup(UiGpuLayers.DRAG_PREFIX + key, bounds, revision, null, UiTransform.identity(), 0, null, painter);
+            return;
+        }
+        painter.accept(this);
+    }
+
+    /**
+     * Declares that state keys starting with {@code keyPrefix} only change what is painted inside
+     * {@code bounds}, such as one window's own selection and fields. Changing such a key, by
+     * {@link UiScreen#setValue}, a selectable, toggle or slider, then repaints only that region
+     * instead of the page. Declare it on every paint; keys read anywhere outside the region must
+     * not use the prefix. Several declarations of one prefix combine.
+     */
+    public void repaintScope(String keyPrefix, UiRect bounds) {
+        if (keyPrefix == null || keyPrefix.isEmpty() || bounds == null) return;
+        UiRect area = documentRect(bounds);
+        interactions.live.scopes.merge(keyPrefix, area, UiRect::union);
+    }
+
+    /** True while the pointer is moving a {@link #dragArea} for {@code key}. */
+    public boolean dragging(String key) {
+        return key != null && key.equals(interactions.live.draggingKey) && interactions.live.dragMoved;
+    }
+
+    /** A context over another canvas, such as a GPU layer, whose controls paint but take no input. */
+    private UiContext detached(UiCanvas target) {
+        var child = new UiContext(target, theme, width, height, accent, content, null, null, motion, interactionMotion, animating,
+            paintCount, state, new java.util.ArrayList<>(), new java.util.LinkedHashMap<>(), new java.util.LinkedHashMap<>(),
+            new java.util.HashMap<>(), new java.util.ArrayList<>(), new java.util.ArrayList<>(), new java.util.ArrayList<>(),
+            new UiTextInputState(null, 0, 0), new java.util.ArrayList<>(), new java.util.ArrayList<>(), animationClock, nativeScale, null);
+        return child;
     }
 
     /** True group fade with shared input/layout state. A fully transparent group has no hit targets. */

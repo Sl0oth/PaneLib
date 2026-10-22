@@ -22,13 +22,13 @@ final class PaneOsEvents {
         String verb = split < 0 ? action : action.substring(0, split), arg = split < 0 ? "" : action.substring(split + 1);
         switch (verb) {
             case "open" -> openApp(screen, arg);
-            case "close" -> { if (!arg.isEmpty()) { screen.setValue("open:" + arg, false); screen.setValue("max:" + arg, false); } }
-            case "min" -> { if (!arg.isEmpty()) screen.setValue("min:" + arg, true); }
+            case "close" -> close(screen, arg);
+            case "min" -> minimize(screen, arg);
             case "zoom" -> { if (!arg.isEmpty()) screen.setValue("max:" + arg, !screen.booleanValue("max:" + arg, false)); }
             case "front" -> raise(screen, arg);
-            case "restore" -> { screen.setValue("min:" + arg, false); raise(screen, arg); }
+            case "restore" -> { show(screen, arg); raise(screen, arg); }
             case "hideothers" -> {
-                for (String id : PaneOsShowcase.stack(screen.stringValue("z", ""))) if (!id.equals(arg)) screen.setValue("min:" + id, true);
+                for (String id : PaneOsShowcase.stack(screen.stringValue("z", ""))) if (!id.equals(arg)) minimize(screen, id);
             }
             case "unlock" -> unlock(screen);
             case "lock" -> {
@@ -109,17 +109,44 @@ final class PaneOsEvents {
         }
         if (PaneOsShowcase.app(id) == null) return;
         boolean wasOpen = screen.booleanValue("open:" + id, false);
-        if (!wasOpen) screen.setValue("launch:" + id, screen.numberValue("launch:" + id, 0) + 1);
+        if (!wasOpen) {
+            screen.setValue("launch:" + id, screen.numberValue("launch:" + id, 0) + 1);
+            screen.setValue("win:" + id + ":shownAt", (double) System.currentTimeMillis());
+            screen.setValue("win:" + id + ":fromDock", false);
+        }
         screen.setValue("open:" + id, true);
-        screen.setValue("min:" + id, false);
+        show(screen, id);
         raise(screen, id);
         if (id.equals("notes")) screen.requestFocus("notes:editor");
         if (id.equals("terminal")) screen.requestFocus("terminal:input");
     }
 
+    /** Window transitions are timed from these moments, so the GPU animates them with no page repaints. */
+    private static void show(UiScreen screen, String id) {
+        if (!screen.booleanValue("min:" + id, false)) return;
+        screen.setValue("min:" + id, false);
+        screen.setValue("win:" + id + ":shownAt", (double) System.currentTimeMillis());
+        screen.setValue("win:" + id + ":fromDock", true);
+    }
+
+    private static void minimize(UiScreen screen, String id) {
+        if (id.isEmpty() || !screen.booleanValue("open:" + id, false) || screen.booleanValue("min:" + id, false)) return;
+        screen.setValue("min:" + id, true);
+        screen.setValue("win:" + id + ":hiddenAt", (double) System.currentTimeMillis());
+    }
+
+    private static void close(UiScreen screen, String id) {
+        if (id.isEmpty() || !screen.booleanValue("open:" + id, false)) return;
+        screen.setValue("open:" + id, false);
+        screen.setValue("max:" + id, false);
+        screen.setValue("min:" + id, false);
+        screen.setValue("win:" + id + ":hiddenAt", (double) System.currentTimeMillis());
+    }
+
     private static void unlock(UiScreen screen) {
         if (!screen.booleanValue("locked", true)) return;
         screen.setValue("locked", false);
+        screen.setValue("unlockedAt", (double) System.currentTimeMillis());
         screen.setValue("lock:pw", "");
         screen.clearFocus();
         if (!screen.booleanValue("welcomed", false)) {

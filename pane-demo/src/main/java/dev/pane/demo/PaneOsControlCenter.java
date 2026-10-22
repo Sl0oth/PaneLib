@@ -14,6 +14,9 @@ final class PaneOsControlCenter {
 
     static void paint(UiContext ui, Look look, UiRect panel) {
         UiCanvas g = ui.canvas();
+        // Every place that shows a toggle declares it, so a change repaints just those places.
+        UiRect area = panel.inset(-30);
+        for (String key : new String[] {"bt", "airdrop", "wifi"}) ui.repaintScope(key, area);
         float x = panel.x(), y = panel.y(), half = (panel.width() - 12) / 2;
         // Connectivity: Wi-Fi, Bluetooth, AirDrop.
         g.liquidGlass(x, y, half, 156, 26, module(look));

@@ -177,6 +177,10 @@ public class UiScreen extends Screen {
     /** What the drag moves as last painted, with the offsets it was painted at; null repaints the page. */
     private UiRect dragPainted;
     private double dragPaintedX, dragPaintedY;
+    /** Whether the current drag has moved, which lifts a matching drag layer onto the GPU. */
+    private boolean dragMoved;
+    /** Key prefixes the latest paint scoped to a region; see {@link UiContext#repaintScope}. */
+    private Map<String, UiRect> repaintScopes = Map.of();
     /** Timed repaints requested by the latest paint, each due on its own. */
     private List<UiInteractionState.Refresh> refreshes = List.of();
     /** Device rectangles glass and backdrop blur read in the latest paint. */
@@ -603,7 +607,18 @@ public class UiScreen extends Screen {
         boolean equal = Objects.equals(previous, stored);
         if (!equal) textHistories.remove(key);
         if (present && equal && stableStateScalar(stored)) return;
-        markDirty();
+        repaintForKey(key);
+    }
+
+    /** Repaints what a state key affects: its declared scope, or the page. */
+    private void repaintForKey(String key) {
+        UiRect scope = null;
+        int longest = -1;
+        for (var entry : repaintScopes.entrySet())
+            if (key.startsWith(entry.getKey()) && entry.getKey().length() > longest) { scope = entry.getValue(); longest = entry.getKey().length(); }
+        if (scope == null) { markDirty(); return; }
+        hoverDirty = true;
+        requestPartialRepaint(scope.expandAndClamp(surfaceLayoutWidth, surfaceLayoutHeight, 2));
     }
 
     private static boolean stableStateScalar(Object value) {
@@ -1207,6 +1222,7 @@ public class UiScreen extends Screen {
             dragOriginX = numberValue(draggingKey + ":x", 0); dragOriginY = numberValue(draggingKey + ":y", 0);
             dragPainted = interactions.live.dragBounds.get(draggingId);
             dragPaintedX = dragOriginX; dragPaintedY = dragOriginY;
+            dragMoved = false;
         }
         if(popupTarget(region.id()))popupDirty=true;
         else startInteraction(100);
@@ -1220,7 +1236,11 @@ public class UiScreen extends Screen {
         if (openMenuId != null && menuHitsStale) { pressedId = null; draggingSlider = null; draggingTextInput = null; draggingKey = null; return true; }
         if (event.button() != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
         boolean wasInteracting = pressedId != null || draggingSlider != null || draggingTextInput != null;
-        draggingKey = null;
+        if (draggingKey != null && gpuLayers.has(UiGpuLayers.DRAG_PREFIX + draggingKey) && dragPainted != null) {
+            float dx = (float) (numberValue(draggingKey + ":x", 0) - dragPaintedX), dy = (float) (numberValue(draggingKey + ":y", 0) - dragPaintedY);
+            requestPartialRepaint(dragPainted.union(dragPainted.translate(dx, dy)).expandAndClamp(surfaceLayoutWidth, surfaceLayoutHeight, 2));
+        }
+        draggingKey = null; dragMoved = false;
         String releasedId = pressedId;
         float scale = eventLayoutScale();
         UiHitRegion region = regionAt(event.x() * scale, event.y() * scale);
@@ -1246,6 +1266,9 @@ public class UiScreen extends Screen {
             state.put(draggingKey + ":x", x);
             state.put(draggingKey + ":y", y);
             hoverDirty = true;
+            dragMoved = true;
+            // A lifted drag layer follows on the GPU; the page repaints once when it drops.
+            if (gpuLayers.follow(UiGpuLayers.DRAG_PREFIX + draggingKey, (float) (x - dragPaintedX), (float) (y - dragPaintedY))) return true;
             // Repaint where the dragged content was painted and where the step takes it.
             if (dragPainted == null) requestFullRepaint();
             else requestPartialRepaint(dragPainted.union(dragPainted.translate((float) (x - dragPaintedX), (float) (y - dragPaintedY)))
@@ -1480,7 +1503,7 @@ public class UiScreen extends Screen {
                 String key = UiValueKey.decode(body.substring(0, split));
                 String value = body.substring(split + 1);
                 state.put(key, value);
-                requestFullRepaint();
+                repaintForKey(key);
                 eventListener.onEvent("value", key, value);
             }
             return;
@@ -1489,7 +1512,7 @@ public class UiScreen extends Screen {
             String key = action.substring("toggle:".length());
             boolean value = !(state.get(key) instanceof Boolean bool && bool);
             state.put(key, value);
-            requestFullRepaint();
+            repaintForKey(key);
             eventListener.onEvent("value", key, Boolean.toString(value));
             return;
         }
@@ -1550,7 +1573,7 @@ public class UiScreen extends Screen {
         Object previous = state.put(range.key(), value);
         if (previous instanceof Number number && number.doubleValue() == value) return;
         eventListener.onEvent("value", range.key(), Double.toString(value));
-        requestFullRepaint();
+        repaintForKey(range.key());
     }
 
     private void updateHover(double layoutX, double layoutY, boolean animate) {
@@ -1576,7 +1599,9 @@ public class UiScreen extends Screen {
                 && (popupTarget(previous) || popupTarget(next))) {
             popupDirty = true;
         } else if (!virtual.markRows(previous, next)) {
-            requestPartialRepaint(interactionBounds(previous, next));
+            UiRect bounds = interactionBounds(previous, next);
+            // Neither control is on the page, such as both inside a lifted drag layer: nothing to repaint.
+            if (bounds != null || !noneShown(previous, next)) requestPartialRepaint(bounds);
         }
     }
 
@@ -1720,7 +1745,11 @@ public class UiScreen extends Screen {
         } else if (popupTarget(id) && popupTarget(previous)) popupDirty = true;
         // Painters may react to focus anywhere on the page, so only a row-to-row move stays local;
         // both rows repaint, or the previous row would keep its focus ring.
-        else if (!virtual.markRows(previous, id)) requestFullRepaint();
+        else if (!virtual.markRows(previous, id)) {
+            UiRect rings = document.localFocusRepaint() ? interactionBounds(previous, id) : null;
+            if (rings == null) requestFullRepaint();
+            else requestPartialRepaint(rings);
+        }
         return true;
     }
 
@@ -2072,6 +2101,13 @@ public class UiScreen extends Screen {
         if (virtualOnly) {
             interactionRepaintBounds = continuingBase ? previousBounds : null;
             virtual.markRows(controlIds);
+        } else if (!continuingBase && interactionBounds(controlIds) == null && noneShown(controlIds)) {
+            // Controls not on the page right now, such as inside a lifted drag layer, have nothing to repaint.
+            interactionRepaintBounds = null;
+            interactionPaintsBase = false;
+            interactionStart = System.nanoTime();
+            interactionEnd = interactionStart + duration;
+            return;
         } else {
             interactionRepaintBounds = interactionBounds(controlIds);
             if (continuingBase) {
@@ -2097,6 +2133,17 @@ public class UiScreen extends Screen {
         }
         interactionStart = System.nanoTime();
         interactionEnd = interactionStart + duration;
+    }
+
+    private boolean noneShown(String... controlIds) {
+        if (controlIds == null) return false;
+        boolean any = false;
+        for (String id : controlIds) {
+            if (id == null) continue;
+            any = true;
+            if (interactions.targets.containsKey(id) || menuItem(id) != null || region(id).isPresent()) return false;
+        }
+        return any;
     }
 
     private void requestInteractionRepaint() {
@@ -2202,6 +2249,8 @@ public class UiScreen extends Screen {
             UiCanvas canvas = new UiCanvas(graphics, surface.image);
             canvas.backdropReads = new ArrayList<>();
             canvas.glassCache = glassCache;
+            interactions.live.draggingKey = draggingKey;
+            interactions.live.dragMoved = dragMoved;
             List<UiHitRegion> nextHits = new ArrayList<>();
             Map<String, NativeBounds> nextNativeBounds = new LinkedHashMap<>();
             Map<String, UiRect> nextNativeOverlayLayers = new LinkedHashMap<>();
@@ -2243,9 +2292,15 @@ public class UiScreen extends Screen {
             canvas.glassCache = null;
             var live = interactions.live;
             refreshes = List.copyOf(live.refreshes);
+            repaintScopes = Map.copyOf(live.scopes);
             if (draggingKey != null) {
-                dragPainted = live.dragBounds.get(draggingId);
-                dragPaintedX = numberValue(draggingKey + ":x", 0); dragPaintedY = numberValue(draggingKey + ":y", 0);
+                double x = numberValue(draggingKey + ":x", 0), y = numberValue(draggingKey + ":y", 0);
+                UiRect painted = live.dragBounds.get(draggingId);
+                // A lifted group registers no drag bounds; it was painted where the last bounds moved to.
+                if (painted == null && dragPainted != null) painted = dragPainted.translate((float) (x - dragPaintedX), (float) (y - dragPaintedY));
+                dragPainted = painted;
+                dragPaintedX = x; dragPaintedY = y;
+                gpuLayers.follow(UiGpuLayers.DRAG_PREFIX + draggingKey, 0, 0);
             }
             gpuLayers.reconcile(gpuCollector.requests, qualityScale, motionScale(), now);
             for (String id : interactions.scrollEnds.takeResolved()) scrollMotions.remove(id);

@@ -14,11 +14,9 @@ final class PaneOsOverlays {
         boolean open = ui.booleanValue("nc", false);
         float pw = 360, px = w - pw - 10, py = PaneOsShowcase.MENU_H + 6;
         UiRect bounds = new UiRect(px - 40, py - 10, pw + 50, h - py);
-        float t = ui.animate("nc:t", open ? 1F : 0F, open ? 460 : 220, open ? UiEasing.SPRING : UiEasing.EASE_IN, bounds);
-        if (t <= .001F) return;
-        if (t >= 1) { centerPanel(ui, look, px, py, pw, h); return; }
-        ui.withPresentation(new UiTransform((1 - t) * (pw + 20), 0, 1, 1, 0, Math.min(1, t * 1.5F)), px + pw / 2, py + 200,
-            inner -> centerPanel(inner, look, px, py, pw, h));
+        ui.repaintScope("nc", new UiRect(w / 2, 0, w / 2, h));
+        ui.gpuTransition("nc", bounds, java.util.List.of(look, ui.stringValue("notice:history", "")), open,
+            new UiTransform(pw + 20, 0, 1, 1, 0, 0), 340, UiEasing.EASE_OUT, inner -> centerPanel(inner, look, px, py, pw, h));
     }
 
     private static void centerPanel(UiContext ui, Look look, float x, float y, float width, float h) {
@@ -74,17 +72,12 @@ final class PaneOsOverlays {
 
     static void appsGrid(UiContext ui, Look look, float w, float h) {
         boolean open = ui.booleanValue("apps", false);
-        UiRect all = new UiRect(0, 0, w, h);
-        float t = ui.animate("apps:t", open ? 1F : 0F, open ? 380 : 200, open ? UiEasing.EASE_OUT : UiEasing.EASE_IN, all);
-        if (t <= .001F) return;
-        UiCanvas g = ui.canvas();
-        g.withOpacity(t, () -> {
+        ui.gpuTransition("apps", new UiRect(0, 0, w, h), look, open, new UiTransform(0, 0, 1.06F, 1.06F, 0, 0), 300, UiEasing.EASE_OUT, inner -> {
+            UiCanvas g = inner.canvas();
             g.backdropBlur(22, 0, 0, w, h);
             g.fill(0x40000000, 0, 0, w, h);
+            grid(inner, look, w, h);
         });
-        if (t >= 1) { grid(ui, look, w, h); return; }
-        float scale = 1.08F - .08F * t;
-        ui.withPresentation(new UiTransform(0, 0, scale, scale, 0, t), w / 2, h / 2, inner -> grid(inner, look, w, h));
     }
 
     private static void grid(UiContext ui, Look look, float w, float h) {

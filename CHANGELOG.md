@@ -15,6 +15,11 @@
   styling through `UiTooltipStyle`, and glass reuse diagnostics.
 - Added menu row shortcut hints, disabled rows and group dividers (`UiMenuItem.shortcut`,
   `enabled`, `startsGroup`) and right-click context menus (`UiContext.contextMenu`).
+- Added `gpuGroup`, `gpuTransition` and `dragLayer` for GPU-animated groups of controls,
+  `repaintScope` for region-only state repaints, opt-in `localFocusRepaint`, and `shadowOutside`.
+- Blur now costs the same at any radius; large lenses, blurs, shadows and cache hashes split across
+  CPU cores; outside shadows are reused between paints. Interactions on controls that are not on the
+  page no longer fall back to repainting the page.
 - Replaced the Beacon example with PaneOS, a Mac-like desktop showcase with a real-client fixture.
 
 ## 0.9.8 — opt-in Minecraft-formatted text

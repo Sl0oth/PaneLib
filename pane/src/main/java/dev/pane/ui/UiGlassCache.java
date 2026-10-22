@@ -8,23 +8,28 @@ import java.util.Map;
 import java.util.Set;
 
 /**
- * Liquid glass results kept between paints of one surface. A lens is reused only when its geometry,
+ * Liquid glass, frost and shadow results kept between paints of one surface. A lens is reused only when its geometry,
  * appearance and every backdrop pixel it reads (by 64-bit hash) are unchanged, so a repaint that
  * leaves the dock's backdrop alone does not recompute the dock.
  */
 final class UiGlassCache {
-    private static final long MAX_PIXELS = 12L << 20;
+    private static final long MAX_PIXELS = 24L << 20;
     record Key(Rectangle area, Rectangle source, double centerX, double centerY, double halfW, double halfH,
                double corner, UiGlass glass) {
         Key { area = new Rectangle(area); source = new Rectangle(source); }
     }
     private record Entry(long hash, BufferedImage image) { }
-    private final Map<Key, Entry> entries = new HashMap<>();
-    private final Set<Key> used = new HashSet<>();
+    /** One band of an outside-only shadow: its device rectangle, the caster and shadow geometry, and its alpha ramp. */
+    record ShadowKey(Rectangle band, double casterX, double casterY, double casterHalfW, double casterHalfH, double casterCorner,
+                     double centerX, double centerY, double innerW, double innerH, double corner, long ramp) {
+        ShadowKey { band = new Rectangle(band); }
+    }
+    private final Map<Object, Entry> entries = new HashMap<>();
+    private final Set<Object> used = new HashSet<>();
     private long pixels;
     long hits, misses;
 
-    BufferedImage find(Key key, long hash) {
+    BufferedImage find(Object key, long hash) {
         used.add(key);
         Entry entry = entries.get(key);
         if (entry != null && entry.hash == hash) { hits++; return entry.image; }
@@ -32,7 +37,7 @@ final class UiGlassCache {
         return null;
     }
 
-    void store(Key key, long hash, BufferedImage image) {
+    void store(Object key, long hash, BufferedImage image) {
         long size = (long) image.getWidth() * image.getHeight();
         if (size > MAX_PIXELS) return;
         Entry previous = entries.put(key, new Entry(hash, image));
@@ -79,8 +84,17 @@ final class UiGlassCache {
     }
 
     static long hash(int[] pixels) {
-        long hash = 0xCBF29CE484222325L;
-        for (int pixel : pixels) hash = (hash ^ pixel) * 0x100000001B3L;
-        return hash ^ pixels.length;
+        // Large backdrops hash in independent chunks across cores, then combine in order.
+        int chunks = pixels.length < 1 << 16 ? 1 : 16, size = (pixels.length + chunks - 1) / chunks;
+        long[] parts = new long[chunks];
+        java.util.stream.IntStream range = java.util.stream.IntStream.range(0, chunks);
+        (chunks > 1 ? range.parallel() : range).forEach(chunk -> {
+            long hash = 0xCBF29CE484222325L;
+            for (int i = chunk * size, end = Math.min(pixels.length, i + size); i < end; i++) hash = (hash ^ pixels[i]) * 0x100000001B3L;
+            parts[chunk] = hash;
+        });
+        long hash = pixels.length;
+        for (long part : parts) hash = (hash ^ part) * 0x9E3779B97F4A7C15L;
+        return hash;
     }
 }

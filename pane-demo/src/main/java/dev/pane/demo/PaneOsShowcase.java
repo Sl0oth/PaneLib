@@ -57,7 +57,14 @@ public final class PaneOsShowcase {
         final UiLayer[] wallpaperThumbs = {new UiLayer(), new UiLayer(), new UiLayer()};
     }
 
+    /** Builds the screen object; the performance probe substitutes a measuring subclass. */
+    interface ScreenMaker { UiScreen make(UiDocument document, UiScreenEventHandler handler, UiScreenOptions options); }
+
     public static UiScreen createScreen(Screen parent) {
+        return createScreen(parent, (document, handler, options) -> UiScreen.create(document, NativeOverlayRenderer.NONE, handler, options));
+    }
+
+    static UiScreen createScreen(Screen parent, ScreenMaker maker) {
         var caches = new Caches();
         var doc = UiDocument.builder("PaneOS").shell(UiShell.NONE)
             .theme(new UiTheme(0xFF0B1B3A, 0xFFFFFFFF, 0xFFF2F2F7, 0x1F000000, 0xFF1D1D1F, 0xA63C3C43,
@@ -65,6 +72,7 @@ public final class PaneOsShowcase {
             .scaling(UiScaling.fixed().reference(1440, 900).adaptivity(1).range(.25F, 8))
             .renderSettings(UiRenderSettings.typography())
             .tooltipDelayMillis(350)
+            .localFocusRepaint(true)
             .tooltipStyle(UiTooltipStyle.defaults().background(0xE6F2F2F5).border(0x1F000000).text(0xFF1D1D1F)
                 .font(12, Font.PLAIN).shape(26, 8).preferAbove(true))
             .page(new UiPage("desktop", "PaneOS", "", PaneOsArt.BLUE, ui -> paint(ui, caches))).build();
@@ -73,7 +81,7 @@ public final class PaneOsShowcase {
             .onKey(PaneOsShowcase::key)
             .onClick((screen, click) -> { pointerDown(screen, click.targetId(), click.doubleClick()); return false; })
             .onClose(PaneOsShowcase::escape).build();
-        self[0] = UiScreen.create(doc, NativeOverlayRenderer.NONE, (screen, event) -> PaneOsEvents.handle(screen, event), options);
+        self[0] = maker.make(doc, PaneOsEvents::handle, options);
         self[0].setValue("boot:at", (double) System.currentTimeMillis());
         self[0].setValue("locked", true);
         self[0].requestFocus("lock:field");
@@ -156,8 +164,8 @@ public final class PaneOsShowcase {
         long sinceBoot = System.currentTimeMillis() - (long) ui.numberValue("boot:at", 0);
         if (sinceBoot < PaneOsLock.BOOT_MILLIS) { PaneOsLock.boot(ui, w, h, sinceBoot); return; }
         boolean locked = ui.booleanValue("locked", true);
-        float unlock = ui.animate("unlock", locked ? 0F : 1F, locked ? 260 : 620, UiEasing.EASE_IN_OUT, new UiRect(0, 0, w, h));
-        if (unlock <= 0) { PaneOsLock.lock(ui, caches.lock, caches.wallpaper, wallRevision, wallpaper, look, w, h); return; }
+        if (locked) { PaneOsLock.lock(ui, caches.lock, caches.wallpaper, wallRevision, wallpaper, look, w, h); return; }
+        long sinceUnlock = System.currentTimeMillis() - (long) ui.numberValue("unlockedAt", 0);
 
         g.cachedLayer(caches.desk, deskRevision, new UiRect(0, 0, w, h), c -> {
             c.cachedLayer(caches.wallpaper, wallRevision, new UiRect(0, 0, w, h), wc -> PaneOsArt.wallpaper(wc, wallpaper, look.dark(), w, h));
@@ -173,6 +181,8 @@ public final class PaneOsShowcase {
             new UiMenuItem("sort", "Sort By", "desk:sort").enabled(false)), menuStyle(look));
         if (widgets) PaneOsWidgets.paintLive(ui, look, h);
         PaneOsWidgets.desktopItems(ui, look, w, h);
+        ui.repaintScope("desk:", new UiRect(w - 124, MENU_H, 124, h - MENU_H - 100));
+        ui.repaintScope("rem:", new UiRect(0, MENU_H, PaneOsWidgets.X + 2 * PaneOsWidgets.S + PaneOsWidgets.GAP + 30, h - MENU_H - 100));
 
         DockLayout dock = DockLayout.base(ui, w, h);
         var z = stack(ui.stringValue("z", ""));
@@ -188,10 +198,11 @@ public final class PaneOsShowcase {
         notification(ui, look, w);
         PaneOsOverlays.notificationCenter(ui, look, w, h);
         PaneOsOverlays.appsGrid(ui, look, w, h);
-        if (unlock < 1) {
-            float scale = 1 + .08F * unlock;
-            ui.withPresentation(new UiTransform(0, 0, scale, scale, 0, 1 - unlock), w / 2, h / 2,
-                lock -> PaneOsLock.lock(lock, caches.lock, caches.wallpaper, wallRevision, wallpaper, look, w, h));
+        if (sinceUnlock < UNLOCK_MILLIS) {
+            // The lock screen lifts away on the GPU while the desktop beneath stays still.
+            ui.gpuGroup("unlock", new UiRect(0, 0, w, h), wallRevision, UiTransform.identity(), new UiTransform(0, 0, 1.08F, 1.08F, 0, 0),
+                UNLOCK_MILLIS, UiEasing.EASE_IN_OUT, lock -> PaneOsLock.lock(lock, caches.lock, caches.wallpaper, wallRevision, wallpaper, look, w, h));
+            ui.refreshAfter(UNLOCK_MILLIS - sinceUnlock + 20, new UiRect(0, 0, w, h));
         }
         long shots = (long) ui.numberValue("shot:count", 0);
         float flash = shots == 0 ? 0 : ui.sequence("shot:flash", shots,
@@ -224,23 +235,53 @@ public final class PaneOsShowcase {
 
     static boolean resizable(App app) { return !app.id().equals("calculator"); }
 
+    static final int UNLOCK_MILLIS = 620;
+    static final int OPEN_MILLIS = 480, CLOSE_MILLIS = 200, MINIMIZE_MILLIS = 420;
+
+    /**
+     * A settled window paints normally and lifts onto the GPU while dragged. Opening, closing and
+     * minimizing paint the window once into a GPU layer that the GPU animates with no page repaints.
+     */
     private static void window(UiContext ui, Caches caches, Look look, App app, boolean active, DockLayout dock, float w, float h) {
         String id = app.id();
         boolean open = ui.booleanValue("open:" + id, false), minimized = ui.booleanValue("min:" + id, false);
         UiRect f = frame(ui, app, w, h);
-        UiRect icon = dock.icon(id);
         UiRect bounds = f.inset(-80);
-        if (icon != null) bounds = union(bounds, icon);
-        float t = ui.animateFrom("win:" + id + ":t", 0, open ? 1 : 0, open ? 560 : 200, 0, open ? UiEasing.SPRING : UiEasing.EASE_IN, bounds);
-        float m = ui.animate("win:" + id + ":m", minimized ? 1F : 0F, 460, UiEasing.EASE_IN_OUT, bounds);
-        if (t <= .001F || m >= .999F) return;
-        if (t >= 1 && m <= 0) { chrome(ui, caches, look, app, f, active, true); return; }
-        float scale = (.88F + .12F * t) * (1 - .9F * m);
-        float dx = icon == null ? 0 : (icon.centerX() - f.centerX()) * m, dy = icon == null ? 0 : (icon.centerY() - f.centerY()) * m;
-        float opacity = Math.min(1, t * 1.8F) * (1 - .5F * m);
-        ui.withPresentation(new UiTransform(dx, dy, scale, scale, 0, opacity), f.centerX(), f.centerY(),
-            inner -> chrome(inner, caches, look, app, f, active, false));
+        UiRect icon = dock.icon(id);
+        long now = System.currentTimeMillis();
+        long shown = now - (long) ui.numberValue("win:" + id + ":shownAt", 0), hidden = now - (long) ui.numberValue("win:" + id + ":hiddenAt", 0);
+        UiTransform genie = icon == null ? new UiTransform(0, 0, .1F, .1F, 0, 0)
+            : new UiTransform(icon.centerX() - f.centerX(), icon.centerY() - f.centerY(), .1F, .1F, 0, .3F);
+        UiTransform settled = UiTransform.identity();
+        Object revision = List.of(look, f.width(), f.height(), active);
+        if (!open || minimized) {
+            if (hidden >= (open ? MINIMIZE_MILLIS : CLOSE_MILLIS)) return;
+            UiTransform away = open ? genie : new UiTransform(0, 0, .92F, .92F, 0, 0);
+            ui.gpuGroup("window:" + id, bounds, revision, settled, away, open ? MINIMIZE_MILLIS : CLOSE_MILLIS,
+                open ? UiEasing.EASE_IN_OUT : UiEasing.EASE_IN, inner -> chrome(inner, caches, look, app, f, active, false));
+            ui.refreshAfter((open ? MINIMIZE_MILLIS : CLOSE_MILLIS) - hidden + 20, bounds);
+            return;
+        }
+        if (shown < OPEN_MILLIS) {
+            boolean fromDock = ui.booleanValue("win:" + id + ":fromDock", false);
+            ui.gpuGroup("window:" + id, bounds, revision, fromDock ? genie : new UiTransform(0, 0, .88F, .88F, 0, 0), settled,
+                OPEN_MILLIS, fromDock ? UiEasing.EASE_OUT : UiEasing.SPRING, inner -> chrome(inner, caches, look, app, f, active, false));
+            ui.refreshAfter(OPEN_MILLIS - shown + 20, bounds);
+            return;
+        }
+        // A window's own selections and fields repaint only the window.
+        for (String prefix : SCOPES.getOrDefault(id, List.of())) ui.repaintScope(prefix, f.inset(-6));
+        ui.dragLayer("win:" + id, bounds, revision, inner -> chrome(inner, caches, look, app, f, active, true));
     }
+
+    /** State key prefixes each window alone reads. Keys shown anywhere else stay unscoped. */
+    private static final java.util.Map<String, List<String>> SCOPES = java.util.Map.ofEntries(
+        java.util.Map.entry("files", List.of("files:")), java.util.Map.entry("notes", List.of("notes:", "note:")),
+        java.util.Map.entry("calculator", List.of("calc:")), java.util.Map.entry("terminal", List.of("terminal:")),
+        java.util.Map.entry("settings", List.of("settings:pane", "wifi", "bt")), java.util.Map.entry("music", List.of("music:side")),
+        java.util.Map.entry("photos", List.of("photos:")), java.util.Map.entry("messages", List.of("msg:")),
+        java.util.Map.entry("maps", List.of("maps:")), java.util.Map.entry("compass", List.of("compass:")),
+        java.util.Map.entry("calendar", List.of("cal:")));
 
     private static UiRect union(UiRect a, UiRect b) {
         float x = Math.min(a.x(), b.x()), y = Math.min(a.y(), b.y());
@@ -251,7 +292,7 @@ public final class PaneOsShowcase {
         UiCanvas g = ui.canvas();
         String id = app.id();
         float r = radius(app);
-        g.shadow(active ? 0x5C000000 : 0x30000000, active ? 38 : 24, 0, active ? 20 : 10, f.x(), f.y(), f.width(), f.height(), r);
+        g.shadowOutside(active ? 0x5C000000 : 0x30000000, active ? 38 : 24, 0, active ? 20 : 10, f.x(), f.y(), f.width(), f.height(), r);
         if (interactive) {
             ui.hit(id + ":bg", "front:" + id, f.x(), f.y(), f.width(), f.height());
             if (!ui.booleanValue("max:" + id, false))
@@ -462,6 +503,7 @@ public final class PaneOsShowcase {
         right = status(ui, "mb:spot", "Spotlight", "spot", right - 32, ink, hover, ui.booleanValue("spot", false), (c, cx, cy) -> PaneOsArt.symbol(c, "search", cx, cy, 15, ink));
         boolean wifi = ui.booleanValue("wifi", true);
         String network = ui.stringValue("wifi:network", "Home");
+        ui.repaintScope("wifi", new UiRect(w / 2, 0, w / 2, MENU_H));
         var networks = new ArrayList<UiMenuItem>();
         networks.add(new UiMenuItem("toggle", wifi ? "Turn Wi-Fi Off" : "Turn Wi-Fi On", "wifi"));
         if (wifi) for (String name : new String[] {"Home", "Lakeside Cabin", "Pane Labs 5G", "Coffee Bar Guest"}) {
@@ -525,11 +567,8 @@ public final class PaneOsShowcase {
         boolean open = ui.booleanValue("cc", false);
         float pw = 336, px = w - 12 - pw, py = MENU_H + 6, ph = 492;
         UiRect panel = new UiRect(px, py, pw, ph);
-        float t = ui.animate("cc:t", open ? 1F : 0F, open ? 420 : 180, open ? UiEasing.SPRING : UiEasing.EASE_IN, panel.inset(-40));
-        if (t <= .001F) return;
-        if (t >= 1) { PaneOsControlCenter.paint(ui, look, panel); return; }
-        float scale = .92F + .08F * t;
-        ui.withPresentation(new UiTransform(0, (1 - t) * -10, scale, scale, 0, Math.min(1, t * 1.6F)), panel.right(), panel.y(),
+        ui.repaintScope("cc", new UiRect(w / 2, 0, w / 2, panel.bottom() + 40));
+        ui.gpuTransition("cc", panel.inset(-40), look, open, new UiTransform(12, -14, .92F, .92F, 0, 0), 260, UiEasing.EASE_OUT,
             inner -> PaneOsControlCenter.paint(inner, look, panel));
     }
 
@@ -557,16 +596,15 @@ public final class PaneOsShowcase {
         boolean open = ui.booleanValue("spot", false);
         float sw = Math.min(680, w - 80), sx = (w - sw) / 2, sy = h * .2F;
         UiRect panel = new UiRect(sx, sy, sw, 56 + 6 * 46 + 24);
-        float t = ui.animate("spot:t", open ? 1F : 0F, open ? 380 : 160, open ? UiEasing.SPRING : UiEasing.EASE_IN, panel.inset(-50));
-        if (t <= .001F) return;
-        if (t >= 1) { spotlightPanel(ui, look, sx, sy, sw); return; }
-        float scale = .94F + .06F * t;
-        ui.withPresentation(new UiTransform(0, 0, scale, scale, 0, Math.min(1, t * 1.7F)), sx + sw / 2, sy + 28,
+        ui.repaintScope("spot", panel.inset(-50));
+        ui.repaintScope("spot", new UiRect(w / 2, 0, w / 2, MENU_H));
+        ui.gpuTransition("spot", panel.inset(-50), look, open, new UiTransform(0, -18, .94F, .94F, 0, 0), 220, UiEasing.EASE_OUT,
             inner -> spotlightPanel(inner, look, sx, sy, sw));
     }
 
     private static void spotlightPanel(UiContext ui, Look look, float x, float y, float width) {
         UiCanvas g = ui.canvas();
+        ui.repaintScope("spot:q", new UiRect(x - 24, y - 10, width + 48, 64 + 6 * 46 + 60));
         g.liquidGlass(x, y, width, 56, 28, look.glass().withTint(look.dark() ? 0x66202024 : 0x73FFFFFF).withShadow(0x40000000));
         PaneOsArt.symbol(g, "search", x + 30, y + 28, 22, look.secondary());
         var style = UiInputStyle.defaults().font(PaneOsArt.FONT, 22, Font.PLAIN).padding(0, 8)
@@ -598,14 +636,12 @@ public final class PaneOsShowcase {
         if (at == 0 || now > at + 6000) return;
         float nw = 356, nh = 76, nx = w - nw - 14, ny = MENU_H + 10;
         UiRect bounds = new UiRect(nx - 40, ny - 20, nw + 80, nh + 60);
-        if (now < at) { ui.refreshAfter(at - now, bounds); return; }
-        boolean visible = now < at + 5200;
-        if (visible) ui.refreshAfter(at + 5200 - now, bounds);
-        float t = ui.animateFrom("notice:" + at, 0, visible ? 1 : 0, visible ? 620 : 260, 0, visible ? UiEasing.SPRING : UiEasing.EASE_IN, bounds);
-        if (t <= .001F) return;
+        boolean visible = now >= at && now < at + 5200;
+        if (now < at) ui.refreshAfter(at - now, bounds);
+        else if (visible) ui.refreshAfter(at + 5200 - now, bounds);
         String app = ui.stringValue("notice:app", "settings");
         String title = ui.stringValue("notice:title", ""), body = ui.stringValue("notice:body", "");
-        ui.withPresentation(new UiTransform((1 - t) * (nw + 30), 0, 1, 1, 0, Math.min(1, t * 1.4F)), nx + nw / 2, ny + nh / 2, inner -> {
+        ui.gpuTransition("notice", bounds, at, visible, new UiTransform(nw + 30, 0, 1, 1, 0, 0), 420, UiEasing.EASE_OUT, inner -> {
             UiCanvas g = inner.canvas();
             g.liquidGlass(nx, ny, nw, nh, 22, look.glass().withTint(look.dark() ? 0x80262628 : 0x99FFFFFF).withShadow(0x3A000000));
             PaneOsArt.icon(g, app, nx + 14, ny + 18, 40);

@@ -72,6 +72,30 @@ toast schedules no frames. While a menu/dialog is open, toast visuals/input are 
 continue expiring. Menus and dialogs still use the older page path and temporarily suspend atlas
 composition. Tooltip overlays remain independent.
 
+## Keeping big interfaces fast
+
+Pane rasterizes on the CPU and uploads only what changed, so the cost of a change is the area it
+repaints. These APIs keep that area small, and keep motion on the GPU, on every platform:
+
+- `ui.gpuTransition(id, bounds, revision, shown, hidden, ms, easing, painter)` shows or hides a panel
+  or overlay with the GPU animating it. Settled, the group paints normally and takes input; while it
+  animates, the page does not repaint at all.
+- `ui.gpuGroup(id, bounds, revision, from, target, ms, easing, painter)` animates any group, controls
+  and glass included, as a GPU layer, such as a window opening or minimizing into a dock.
+- `ui.dragLayer(key, bounds, revision, painter)` lifts a group onto the GPU while its `dragArea`
+  moves, so dragging a window costs one repaint when it lifts and one when it drops.
+- `ui.repaintScope(keyPrefix, bounds)` tells Pane that state keys with that prefix only affect one
+  region, so `setValue`, selectables, toggles and sliders repaint that region instead of the page.
+- `UiDocument.builder(...).localFocusRepaint(true)` makes focus changes, including the one every
+  click causes, repaint only the two controls involved.
+- `canvas.shadowOutside(...)` draws a shadow only outside its shape; large windows and glass skip
+  the covered interior entirely, and on the screen surface the bands are reused between paints.
+
+Glass, frost and outside shadows are also reused between paints while nothing beneath them changes,
+blur costs the same at any radius, and large lenses, blurs and shadows split their rows across CPU
+cores. On a 3024×1890 surface PaneOS repaints a click in one window in about 20 ms, animates
+windows and panels on the GPU, and moves a dragged window with no repaints between lift and drop.
+
 ## Pointer, time and drag driven painting
 
 - `ui.pointer(x, y, w, h)` returns where the pointer is over a region painted from it, in local

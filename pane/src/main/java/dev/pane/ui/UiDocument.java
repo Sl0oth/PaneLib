@@ -15,6 +15,7 @@ public final class UiDocument {
     private final boolean pageShortcuts;
     private final int tooltipDelayMillis;
     private final UiTooltipStyle tooltipStyle;
+    private final boolean localFocusRepaint;
     private final UiToastSettings toastSettings;
     private final UiRenderSettings renderSettings;
     private final UiScrollSettings scrollSettings;
@@ -29,6 +30,7 @@ public final class UiDocument {
         pageShortcuts = builder.pageShortcuts;
         tooltipDelayMillis = builder.tooltipDelayMillis;
         tooltipStyle = builder.tooltipStyle;
+        localFocusRepaint = builder.localFocusRepaint;
         toastSettings = builder.toastSettings == null ? UiToastSettings.defaults() : builder.toastSettings;
         renderSettings = builder.renderSettings == null ? UiRenderSettings.balanced() : builder.renderSettings;
         scrollSettings = builder.scrollSettings == null ? UiScrollSettings.smooth() : builder.scrollSettings;
@@ -61,6 +63,9 @@ public final class UiDocument {
     /** How native tooltips look. */
     public UiTooltipStyle tooltipStyle() { return tooltipStyle; }
 
+    /** Whether a focus change repaints only the controls losing and gaining focus. */
+    public boolean localFocusRepaint() { return localFocusRepaint; }
+
     /** Document-wide defaults for toast placement, spacing, animation, and style. */
     public UiToastSettings toastSettings() { return toastSettings; }
 
@@ -89,6 +94,7 @@ public final class UiDocument {
         private boolean pageShortcuts;
         private int tooltipDelayMillis = 450;
         private UiTooltipStyle tooltipStyle = UiTooltipStyle.defaults();
+        private boolean localFocusRepaint;
         private UiToastSettings toastSettings = UiToastSettings.defaults();
         private UiRenderSettings renderSettings = UiRenderSettings.balanced();
         private UiScrollSettings scrollSettings = UiScrollSettings.smooth();
@@ -121,6 +127,13 @@ public final class UiDocument {
             this.tooltipStyle = tooltipStyle == null ? UiTooltipStyle.defaults() : tooltipStyle;
             return this;
         }
+
+        /**
+         * Makes focus changes, including the focus every click moves, repaint only the controls
+         * losing and gaining focus instead of the page. Enable it when no painter reads
+         * {@link UiContext#focused} to draw outside the focused control's own bounds. Off by default.
+         */
+        public Builder localFocusRepaint(boolean local) { localFocusRepaint = local; return this; }
 
         /** Sets document-wide defaults for native toast notifications. */
         public Builder toastSettings(UiToastSettings toastSettings) {

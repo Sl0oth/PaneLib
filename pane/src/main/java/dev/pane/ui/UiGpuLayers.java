@@ -20,8 +20,15 @@ import net.minecraft.client.renderer.RenderPipelines;
  * without repainting the page surface.
  */
 final class UiGpuLayers {
-    record Request(String id, UiRect local, UiRect screen, Object revision, UiTransform target, int durationMillis,
-                   UiEasing easing, UiRect clip, Consumer<UiCanvas> painter) { }
+    /**
+     * {@code from}, when set, is where a new layer starts before animating to {@code target}.
+     * {@code backdrop}, when set, is the page canvas glass in the layer reads behind it.
+     */
+    record Request(String id, UiRect local, UiRect screen, Object revision, UiTransform from, UiTransform target, int durationMillis,
+                   UiEasing easing, UiRect clip, UiCanvas backdrop, Consumer<UiCanvas> painter) { }
+
+    /** Prefix of layers that follow a drag; the screen moves them between paints. */
+    static final String DRAG_PREFIX = "drag-layer:";
 
     /** Accepts requests painted directly on one screen canvas, under nothing but context translations. */
     static final class Collector {
@@ -51,6 +58,8 @@ final class UiGpuLayers {
         UiTransform from, to;
         UiEasing easing = UiEasing.EASE_OUT;
         long start, end;
+        /** Drag travel applied after the animated transform, set by the screen between paints. */
+        float liveX, liveY;
 
         UiTransform at(long now) {
             if (now >= end || end <= start) return to;
@@ -80,6 +89,12 @@ final class UiGpuLayers {
             if (layer == null) {
                 layer = new Layer();
                 layer.from = layer.to = request.target();
+                if (request.from() != null && !request.from().equals(request.target())) {
+                    layer.from = request.from();
+                    layer.start = now;
+                    layer.end = now + Math.round(Math.max(0, request.durationMillis()) * Math.max(0, motionScale) * 1_000_000D);
+                    layer.easing = request.easing() == null ? UiEasing.EASE_OUT : request.easing();
+                }
                 layers.put(request.id(), layer);
             } else if (!request.target().equals(layer.to)) {
                 layer.from = layer.at(now);
@@ -103,7 +118,10 @@ final class UiGpuLayers {
             try {
                 graphics.scale(quality, quality);
                 graphics.translate(-request.local().x(), -request.local().y());
-                request.painter().accept(new UiCanvas(graphics, layer.surface.image));
+                var canvas = new UiCanvas(graphics, layer.surface.image);
+                if (request.backdrop() != null)
+                    canvas.readBackdropFrom(request.backdrop(), Math.round(request.screen().x() * quality), Math.round(request.screen().y() * quality));
+                request.painter().accept(canvas);
             } finally { graphics.dispose(); }
             layer.surface.upload();
             layer.local = request.local();
@@ -136,7 +154,7 @@ final class UiGpuLayers {
             try {
                 float pivotX = layer.screen.centerX(), pivotY = layer.screen.centerY();
                 pose.scale(1 / layoutScale, 1 / layoutScale);
-                pose.translate(transform.x() + pivotX, transform.y() + pivotY);
+                pose.translate(transform.x() + layer.liveX + pivotX, transform.y() + layer.liveY + pivotY);
                 pose.rotate((float) Math.toRadians(transform.rotationDegrees()));
                 pose.scale(transform.scaleX(), transform.scaleY());
                 pose.translate(layer.screen.x() - pivotX, layer.screen.y() - pivotY);
@@ -151,6 +169,16 @@ final class UiGpuLayers {
             }
         }
     }
+
+    /** Moves a layer by drag travel without repainting it; false when no such layer is shown. */
+    boolean follow(String id, float x, float y) {
+        Layer layer = layers.get(id);
+        if (layer == null) return false;
+        layer.liveX = x; layer.liveY = y;
+        return true;
+    }
+
+    boolean has(String id) { return layers.containsKey(id); }
 
     void close() {
         for (Layer layer : layers.values()) if (layer.surface != null) layer.surface.close();

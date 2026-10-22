@@ -25,6 +25,7 @@ public final class PaneDemoClient implements ClientModInitializer {
     private final AnimationAuditTest animationTest = Boolean.getBoolean("pane.demo.animationTest") ? new AnimationAuditTest() : null;
     private final EditorAuditTest editorTest = Boolean.getBoolean("pane.demo.editorTest") ? new EditorAuditTest() : null;
     private final GpuLayerAuditTest gpuLayerTest = Boolean.getBoolean("pane.demo.gpuLayerTest") ? new GpuLayerAuditTest() : null;
+    private final PaneOsPerfTest paneOsPerf = Boolean.getBoolean("pane.demo.paneOsPerf") ? new PaneOsPerfTest() : null;
     private final PaneOsAuditTest paneOsTest = Boolean.getBoolean("pane.demo.paneOsTest") ? new PaneOsAuditTest() : null;
     private final DialogTypographyAuditTest dialogTypographyTest = Boolean.getBoolean("pane.demo.dialogTypographyTest") ? new DialogTypographyAuditTest() : null;
     private final DialogAuditTest dialogTest = Boolean.getBoolean("pane.demo.dialogTest") ? new DialogAuditTest() : null;
@@ -59,6 +60,7 @@ public final class PaneDemoClient implements ClientModInitializer {
             if (editorTest != null) { editorTest.tick(client); return; }
             if (gpuLayerTest != null) { gpuLayerTest.tick(client); return; }
             if (paneOsTest != null) { paneOsTest.tick(client); return; }
+            if (paneOsPerf != null) { paneOsPerf.tick(client); return; }
             if (dialogTypographyTest != null) { dialogTypographyTest.tick(client); return; }
             if (dialogTest != null) { dialogTest.tick(client); return; }
             if (popupTriggerTest != null) { popupTriggerTest.tick(client); return; }
