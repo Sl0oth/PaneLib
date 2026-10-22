@@ -12,6 +12,8 @@ public final class UiLayer {
     private boolean cached;
     private BufferedImage cachedImage;
     private int cachedX, cachedY;
+    /** Device scale and sub-pixel offset the cached pixels were painted at. */
+    float quality = 1, alignX, alignY;
 
     BufferedImage prepare(int width, int height) {
         cached = false;
@@ -33,6 +35,14 @@ public final class UiLayer {
         return false;
     }
     BufferedImage image() { return image; }
+
+    boolean cached() { return cached; }
+    Object revision() { return revision; }
+
+    void finishCache(float quality, float alignX, float alignY) {
+        this.quality = quality; this.alignX = alignX; this.alignY = alignY;
+        finishCache();
+    }
 
     /** Scan once per revision. Keep a transparent guard pixel for bilinear sampling at crop edges. */
     void finishCache() {

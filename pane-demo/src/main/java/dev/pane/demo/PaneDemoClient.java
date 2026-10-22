@@ -34,6 +34,7 @@ public final class PaneDemoClient implements ClientModInitializer {
     private final AnimationAuditTest animationTest = Boolean.getBoolean("pane.demo.animationTest") ? new AnimationAuditTest() : null;
     private final EditorAuditTest editorTest = Boolean.getBoolean("pane.demo.editorTest") ? new EditorAuditTest() : null;
     private final GpuLayerAuditTest gpuLayerTest = Boolean.getBoolean("pane.demo.gpuLayerTest") ? new GpuLayerAuditTest() : null;
+    private final BeaconAuditTest beaconTest = Boolean.getBoolean("pane.demo.beaconTest") ? new BeaconAuditTest() : null;
     private final DialogTypographyAuditTest dialogTypographyTest = Boolean.getBoolean("pane.demo.dialogTypographyTest") ? new DialogTypographyAuditTest() : null;
     private final DialogAuditTest dialogTest = Boolean.getBoolean("pane.demo.dialogTest") ? new DialogAuditTest() : null;
     private final PopupTriggerAuditTest popupTriggerTest = Boolean.getBoolean("pane.demo.popupTriggerTest") ? new PopupTriggerAuditTest() : null;
@@ -77,6 +78,7 @@ public final class PaneDemoClient implements ClientModInitializer {
             if (animationTest != null) { animationTest.tick(client); return; }
             if (editorTest != null) { editorTest.tick(client); return; }
             if (gpuLayerTest != null) { gpuLayerTest.tick(client); return; }
+            if (beaconTest != null) { beaconTest.tick(client); return; }
             if (dialogTypographyTest != null) { dialogTypographyTest.tick(client); return; }
             if (dialogTest != null) { dialogTest.tick(client); return; }
             if (popupTriggerTest != null) { popupTriggerTest.tick(client); return; }
@@ -121,6 +123,7 @@ public final class PaneDemoClient implements ClientModInitializer {
             case "wayfarer": return WayfarerShowcase.createScreen(parent);
             case "gather": return DiscordShowcase.createScreen(parent);
             case "mail": return GmailShowcase.createScreen(parent);
+            case "beacon": return BeaconShowcase.createScreen(parent);
         }
         if (Boolean.getBoolean("pane.demo.wayfarer")) return WayfarerShowcase.createScreen(net.minecraft.client.Minecraft.getInstance().gui.screen());
         if (Boolean.getBoolean("pane.demo.discord")) return DiscordShowcase.createScreen(net.minecraft.client.Minecraft.getInstance().gui.screen());

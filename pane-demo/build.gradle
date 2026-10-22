@@ -30,6 +30,11 @@ tasks.named('runClient') {
             jvmArgs "-XX:StartFlightRecording=filename=${recording.absolutePath},settings=profile,dumponexit=true,maxsize=128m"
         }
     }
+    // Dev-only JFR capture for any fixture run, e.g. -Pjfr=beacon.
+    if (project.hasProperty('jfr')) {
+        def label = project.property('jfr').toString().replaceAll('[^a-zA-Z0-9_-]', '_')
+        jvmArgs "-XX:StartFlightRecording=filename=${rootProject.file("build/performance/${label}.jfr").absolutePath},settings=profile,dumponexit=true,maxsize=128m"
+    }
     if (project.hasProperty('wayfarer')) systemProperty 'pane.demo.wayfarer', 'true'
     if (project.hasProperty('wayfarerTest')) systemProperty 'pane.demo.wayfarerTest', 'true'
     if (project.hasProperty('discord')) systemProperty 'pane.demo.discord', 'true'
@@ -45,6 +50,8 @@ tasks.named('runClient') {
     if (project.hasProperty('animationTest')) systemProperty 'pane.demo.animationTest', 'true'
     if (project.hasProperty('editorTest')) systemProperty 'pane.demo.editorTest', 'true'
     if (project.hasProperty('gpuLayerTest')) systemProperty 'pane.demo.gpuLayerTest', 'true'
+    if (project.hasProperty('beaconTest')) systemProperty 'pane.demo.beaconTest', 'true'
+    if (project.hasProperty('beaconKeepOpen')) systemProperty 'pane.demo.beaconKeepOpen', 'true'
     if (project.hasProperty('dialogTest')) systemProperty 'pane.demo.dialogTest', 'true'
     if (project.hasProperty('popupTest')) systemProperty 'pane.demo.popupTest', 'true'
     if (project.hasProperty('reviewTest')) systemProperty 'pane.demo.reviewTest', 'true'
@@ -101,7 +108,7 @@ tasks.named('runClient') {
 }
 
 // A graceful Minecraft shutdown is not proof that the fixture passed.
-def fixtureMarkers = [adoptionTest: '[AdoptionTest] complete PASS', wayfarerTest: '[WayfarerTest] complete PASS', discordTest: '[DiscordTest] complete PASS', gmailTest: '[GmailTest] complete PASS', castleTest: '[CastleTest] complete PASS', resourceTest: '[ResourceTest] complete PASS', editingTest: '[EditingTest] complete PASS', animationTest: '[AnimationTest] complete PASS', editorTest: '[EditorTest] complete PASS', gpuLayerTest: '[GpuLayerTest] complete PASS', dialogTest: '[DialogTest] complete PASS', popupTest: '[PopupTest] complete PASS', reviewTest: '[ReviewFix] complete PASS', apiTest: '[ApiTest] complete PASS', perftest: '[PanePerf] complete PASS', designTest: '[DesignLab] complete PASS', studioTest: '[StudioTest] complete PASS', benchmark: '[StudioTest] complete PASS', autotestExit: 'autotest complete']
+def fixtureMarkers = [adoptionTest: '[AdoptionTest] complete PASS', wayfarerTest: '[WayfarerTest] complete PASS', discordTest: '[DiscordTest] complete PASS', gmailTest: '[GmailTest] complete PASS', castleTest: '[CastleTest] complete PASS', resourceTest: '[ResourceTest] complete PASS', editingTest: '[EditingTest] complete PASS', animationTest: '[AnimationTest] complete PASS', editorTest: '[EditorTest] complete PASS', gpuLayerTest: '[GpuLayerTest] complete PASS', beaconTest: '[BeaconTest] complete PASS', dialogTest: '[DialogTest] complete PASS', popupTest: '[PopupTest] complete PASS', reviewTest: '[ReviewFix] complete PASS', apiTest: '[ApiTest] complete PASS', perftest: '[PanePerf] complete PASS', designTest: '[DesignLab] complete PASS', studioTest: '[StudioTest] complete PASS', benchmark: '[StudioTest] complete PASS', autotestExit: 'autotest complete']
 def expectedMarkers = fixtureMarkers.findAll { key, marker -> project.hasProperty(key) }.values()
 if (!expectedMarkers.isEmpty()) {
     def captured = new ByteArrayOutputStream()
@@ -139,7 +146,7 @@ if (!expectedMarkers.isEmpty()) {
         doLast {
             def output = captured.toString('UTF-8')
             if (project.hasProperty('fixtureFailureProbe')) output += '\n[Fixture] injected FAIL'
-            if (output =~ /(?m)\[(AdoptionTest|WayfarerTest|DiscordTest|GmailTest|CastleTest|ResourceTest|EditingTest|AnimationTest|EditorTest|GpuLayerTest|DialogTest|PopupTest|ReviewFix|ApiTest|PanePerf|DesignLab|StudioTest|ConsumerTest|AutoTest|pane-autotest|Fixture)\][^\r\n]*FAIL/
+            if (output =~ /(?m)\[(AdoptionTest|WayfarerTest|DiscordTest|GmailTest|CastleTest|ResourceTest|EditingTest|AnimationTest|EditorTest|GpuLayerTest|BeaconTest|DialogTest|PopupTest|ReviewFix|ApiTest|PanePerf|DesignLab|StudioTest|ConsumerTest|AutoTest|pane-autotest|Fixture)\][^\r\n]*FAIL/
                     || expectedMarkers.any { !output.contains(it) }) {
                 throw new GradleException('Client fixture failed or did not finish. Inspect its PASS/FAIL output above.')
             }
@@ -152,7 +159,7 @@ tasks.withType(Jar).configureEach { from(rootProject.file('LICENSE')) }
 
 // Supported public examples. No cached argument-file parsing, private save, or local Java path.
 loom.runs {
-    [Examples: 'gallery', Wayfarer: 'wayfarer', Gather: 'gather', Mail: 'mail',
+    [Examples: 'gallery', Wayfarer: 'wayfarer', Gather: 'gather', Mail: 'mail', Beacon: 'beacon',
      WayfarerHud: 'wayfarer-hud', VanillaHud: 'vanilla-hud'].each { label, example ->
         create(label[0].toLowerCase() + label.substring(1)) {
             inherit client

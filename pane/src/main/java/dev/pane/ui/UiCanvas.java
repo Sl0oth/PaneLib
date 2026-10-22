@@ -161,6 +161,15 @@ public final class UiCanvas {
         graphics.draw(visible);
     }
 
+    /** Focus outline following an arbitrary shape: a ring one to 2.4 units outside it. */
+    void shapeFocusRing(int color, Shape outline) {
+        var ring = new java.awt.geom.Area(new BasicStroke(4.8F, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND).createStrokedShape(outline));
+        ring.subtract(new java.awt.geom.Area(new BasicStroke(2F, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND).createStrokedShape(outline)));
+        ring.subtract(new java.awt.geom.Area(outline));
+        graphics.setColor(awtColor(color));
+        graphics.fill(ring);
+    }
+
     /** Dashed rounded outline, useful for focus guides, drop targets, and cut-paper treatments. */
     public void dashedRoundRect(int color, float stroke, float dash, float x, float y,
                                 float width, float height, float radius) {
@@ -327,8 +336,17 @@ public final class UiCanvas {
         int[] pixels = ((java.awt.image.DataBufferInt) shadowMask.getRaster().getDataBuffer()).getData();
         double innerW = halfW - corner, innerH = halfH - corner;
         for (int row = 0; row < area.height; row++) {
-            double qy = Math.abs(area.y + row + .5 - centerY) - innerH, dy = Math.max(qy, 0);
+            double offsetY = Math.abs(area.y + row + .5 - centerY), qy = offsetY - innerH, dy = Math.max(qy, 0);
+            // Pixel centres this far inside every straight edge all share the first lookup entry.
+            double interior = corner < .5 ? -1 : qy <= 0 ? halfW - .5 : offsetY <= halfH - .5 ? innerW : -1;
+            int spanStart = interior < 0 ? area.width : Math.max(0, (int) Math.ceil(centerX - interior - area.x - .5));
+            int spanEnd = interior < 0 ? -1 : Math.min(area.width - 1, (int) Math.floor(centerX + interior - area.x - .5));
             for (int column = 0; column < area.width; column++) {
+                if (column == spanStart && spanEnd >= spanStart) {
+                    java.util.Arrays.fill(pixels, row * stride + column, row * stride + spanEnd + 1, lookup[0]);
+                    column = spanEnd;
+                    continue;
+                }
                 double qx = Math.abs(area.x + column + .5 - centerX) - innerW, dx = Math.max(qx, 0);
                 double distance = Math.sqrt(dx * dx + dy * dy) + Math.min(Math.max(qx, qy), 0) - corner;
                 pixels[row * stride + column] = lookup[(int) Math.clamp(Math.round((distance + .5) * 16), 0, samples - 1)];
@@ -870,6 +888,11 @@ public final class UiCanvas {
         withClipShape(roundShape(x, y, Math.max(0, width), Math.max(0, height), radius), painter);
     }
 
+    /** Clips to a free-form outline, such as a custom button shape. */
+    public void withClip(UiPath outline, Runnable painter) {
+        withClipShape(outline.shape(), painter);
+    }
+
     /** Clips to a circle, for avatars and badges. */
     public void withCircleClip(float centerX, float centerY, float radius, Runnable painter) {
         withClipShape(new Ellipse2D.Float(centerX - radius, centerY - radius, radius * 2, radius * 2), painter);
@@ -992,24 +1015,43 @@ public final class UiCanvas {
     public void cachedLayer(UiLayer layer, Object revision, UiRect bounds, java.util.function.Consumer<UiCanvas> painter) {
         if (layer == null || painter == null || bounds.width() <= 0 || bounds.height() <= 0) return;
         var matrix = graphics.getTransform();
-        float quality = Math.max(1, Math.min(4, Math.round(Math.max(
+        // Axis-aligned uniform drawing caches at the exact device scale and phase and is blitted 1:1.
+        // A reused revision keeps the scale and sub-pixel phase it was painted at: moving content
+        // snaps to the nearest device pixel and scaling or rotating content resamples, so motion
+        // never repaints the cache. Other transforms cache at a whole-number quality bucket.
+        double scale = matrix.getScaleX();
+        boolean axisAligned = matrix.getShearX() == 0 && matrix.getShearY() == 0
+            && matrix.getScaleY() == scale && scale > 0 && scale <= 4;
+        double originX = bounds.x() * scale + matrix.getTranslateX(), originY = bounds.y() * scale + matrix.getTranslateY();
+        boolean keep = layer.cached() && java.util.Objects.equals(layer.revision(), revision);
+        float quality = keep ? layer.quality : axisAligned ? (float) scale : Math.max(1, Math.min(4, Math.round(Math.max(
             Math.hypot(matrix.getScaleX(), matrix.getShearY()), Math.hypot(matrix.getShearX(), matrix.getScaleY())))));
-        int w = Math.max(1, (int) Math.ceil(bounds.width() * quality));
-        int h = Math.max(1, (int) Math.ceil(bounds.height() * quality));
+        float alignX = keep ? layer.alignX : axisAligned ? (float) (originX - Math.floor(originX)) : 0;
+        float alignY = keep ? layer.alignY : axisAligned ? (float) (originY - Math.floor(originY)) : 0;
+        int w = Math.max(1, (int) Math.ceil(bounds.width() * quality + alignX));
+        int h = Math.max(1, (int) Math.ceil(bounds.height() * quality + alignY));
         if (!layer.reuse(w, h, revision)) {
             var child = layer.image().createGraphics();
             try {
-                child.scale(quality, quality); child.translate(-bounds.x(), -bounds.y());
+                child.translate(alignX, alignY); child.scale(quality, quality); child.translate(-bounds.x(), -bounds.y());
                 painter.accept(new UiCanvas(child, layer.image()));
             } finally { child.dispose(); }
-            layer.finishCache();
+            layer.finishCache(quality, alignX, alignY);
         }
         if (layer.cachedImage() == null) return;
         var previous = graphics.getTransform();
-        graphics.translate(bounds.x(), bounds.y());
-        graphics.scale(bounds.width() / w, bounds.height() / h);
-        try { graphics.drawImage(layer.cachedImage(), layer.cachedX(), layer.cachedY(), null); }
-        finally { graphics.setTransform(previous); }
+        try {
+            if (axisAligned && scale == layer.quality) {
+                graphics.setTransform(new AffineTransform());
+                graphics.drawImage(layer.cachedImage(), (int) Math.round(originX - layer.alignX) + layer.cachedX(),
+                    (int) Math.round(originY - layer.alignY) + layer.cachedY(), null);
+            } else {
+                graphics.translate(bounds.x(), bounds.y());
+                graphics.scale(1 / layer.quality, 1 / layer.quality);
+                graphics.translate(-layer.alignX, -layer.alignY);
+                graphics.drawImage(layer.cachedImage(), layer.cachedX(), layer.cachedY(), null);
+            }
+        } finally { graphics.setTransform(previous); }
     }
 
     /**

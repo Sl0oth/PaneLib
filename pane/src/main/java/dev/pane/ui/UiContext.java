@@ -547,6 +547,12 @@ public final class UiContext {
 
     private void addHit(String id, String action, float x, float y, float width, float height,
                         float trackX, float trackWidth) {
+        addHit(id, action, x, y, width, height, trackX, trackWidth, null);
+    }
+
+    /** {@code shape}, when present, is the exact pointer target in this context's coordinates. */
+    private void addHit(String id, String action, float x, float y, float width, float height,
+                        float trackX, float trackWidth, java.awt.Shape shape) {
         requireConsumerInteractionId(id);
         UiRect bounds = new UiRect(x + offsetX, y + offsetY, width, height);
         UiRect keyboardBounds = focusClip == null ? bounds : intersect(bounds, focusClip);
@@ -557,7 +563,8 @@ public final class UiContext {
         if (inputClip != null) bounds = intersect(bounds, inputClip);
         if (bounds.width() <= 0 || bounds.height() <= 0) return;
         hitRegions.add(new UiHitRegion(id, action, bounds.x(), bounds.y(), bounds.width(), bounds.height(),
-            trackX + offsetX, trackWidth));
+            trackX + offsetX, trackWidth, shape == null ? null
+                : java.awt.geom.AffineTransform.getTranslateInstance(offsetX, offsetY).createTransformedShape(shape)));
     }
 
     private static void requireConsumerInteractionId(String id) {
@@ -1114,6 +1121,27 @@ public final class UiContext {
             hit(id, action, x, y, width, height);
             tooltip(id, label);
         }
+    }
+
+    /**
+     * Custom-shaped control whose pointer target is exactly {@code outline}, so the empty corners of
+     * a hexagon, chevron or ring segment never take clicks or hover. Build the outline from
+     * {@code canvas().path()} in this context's coordinates; the painter may fill or stroke it.
+     * Focus ring, keyboard activation, tooltip and disabled opacity match {@link #paintedButton}.
+     */
+    public void shapedButton(String id, String label, String action, UiPath outline, boolean enabled,
+                             BiConsumer<UiCanvas, UiButtonState> painter) {
+        java.util.Objects.requireNonNull(outline, "outline");
+        java.util.Objects.requireNonNull(painter, "painter");
+        var state = recordButtonState(id, label, enabled);
+        canvas.withOpacity(enabled ? 1 : .42F, () -> painter.accept(canvas, state));
+        java.awt.Shape shape = outline.shape();
+        if (state.focused()) canvas.shapeFocusRing(accent, shape);
+        if (!enabled) return;
+        var bounds = shape.getBounds2D();
+        addHit(id, action, (float) bounds.getX(), (float) bounds.getY(), (float) bounds.getWidth(), (float) bounds.getHeight(),
+            (float) bounds.getX(), (float) bounds.getWidth(), shape);
+        tooltip(id, label);
     }
 
     private UiButtonState recordButtonState(String id, String label, boolean enabled) {

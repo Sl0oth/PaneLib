@@ -45,10 +45,26 @@ public final class UiPath {
         return this;
     }
 
+    /**
+     * Continues along a circular arc, connecting from the current point with a straight segment.
+     * Angles are clockwise from east, like gradients; a negative sweep runs counter-clockwise.
+     * Two arcs of opposite sweep form a ring segment for radial menus.
+     */
+    public UiPath arc(float centerX, float centerY, float radius, float startDegrees, float sweepDegrees) {
+        var arc = new java.awt.geom.Arc2D.Float(centerX - radius, centerY - radius, radius * 2, radius * 2,
+            -startDegrees, -sweepDegrees, java.awt.geom.Arc2D.OPEN);
+        path.append(arc, started);
+        started = true;
+        return this;
+    }
+
     public UiPath close() {
         if (started) path.closePath();
         return this;
     }
+
+    /** The outline described so far, in the coordinates it was built with. */
+    java.awt.Shape shape() { return path; }
 
     public UiPath fill(int color) {
         if (!started) return this;
