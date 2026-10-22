@@ -11,7 +11,9 @@ final class UiPixelTransfer {
             int start = row * stride + x;
             for (int i = start; i < start + width; i++) {
                 int pixel = argb[i];
-                rgba.put(i, pixel & 0xFF00FF00 | pixel >>> 16 & 0xFF | (pixel & 0xFF) << 16);
+                // A R G B -> R G B A -> A B G R. Rotation/reversal use JIT intrinsics;
+                // the source stays ARGB, with no scratch array or extra copy.
+                rgba.put(i, Integer.reverseBytes(Integer.rotateLeft(pixel, 8)));
             }
         }
     }

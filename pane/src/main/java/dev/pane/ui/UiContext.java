@@ -588,15 +588,24 @@ public final class UiContext {
     private void addInput(String id, String key, float x, float y, float width, float height,
                           int maxLength, boolean multiline, float[] caretXs, float[] caretYs, List<UiTextLine> lines, boolean masked) {
         UiRect bounds = new UiRect(x + offsetX, y + offsetY, width, height);
-        float[] movedXs = caretXs == null ? null : caretXs.clone();
-        float[] movedYs = caretYs == null ? null : caretYs.clone();
-        if (movedXs != null) for (int i = 0; i < movedXs.length; i++) movedXs[i] += offsetX;
-        if (movedYs != null) for (int i = 0; i < movedYs.length; i++) movedYs[i] += offsetY;
-        var movedLines = lines.stream().map(line -> line.translate(offsetX, offsetY)).toList();
-        interactions.inputs.put(id, new UiInputRegion(id, key, bounds, maxLength, multiline, movedXs, movedYs, movedLines, masked));
-        if (inputClip != null) bounds = intersect(bounds, inputClip);
-        if (bounds.width() > 0 && bounds.height() > 0)
-            inputRegions.add(new UiInputRegion(id, key, bounds, maxLength, multiline, movedXs, movedYs, movedLines, masked));
+        // UiInputRegion owns defensive copies. Only allocate a translated intermediate when needed.
+        float[] movedXs = caretXs, movedYs = caretYs;
+        if (caretXs != null && offsetX != 0) {
+            movedXs = caretXs.clone();
+            for (int i = 0; i < movedXs.length; i++) movedXs[i] += offsetX;
+        }
+        if (caretYs != null && offsetY != 0) {
+            movedYs = caretYs.clone();
+            for (int i = 0; i < movedYs.length; i++) movedYs[i] += offsetY;
+        }
+        var movedLines = offsetX == 0 && offsetY == 0 ? lines
+            : lines.stream().map(line -> line.translate(offsetX, offsetY)).toList();
+        var registered = new UiInputRegion(id, key, bounds, maxLength, multiline, movedXs, movedYs, movedLines, masked);
+        interactions.inputs.put(id, registered);
+        UiRect clipped = inputClip == null ? bounds : intersect(bounds, inputClip);
+        if (clipped.width() > 0 && clipped.height() > 0)
+            inputRegions.add(clipped.equals(bounds) ? registered
+                : new UiInputRegion(id, key, clipped, maxLength, multiline, movedXs, movedYs, movedLines, masked));
     }
 
     private void drawScrollBar(UiRect viewport, float contentHeight, float offset) {
@@ -1294,6 +1303,8 @@ public final class UiContext {
             for (int lineIndex = 0; lineIndex < lines.size(); lineIndex++) {
                 UiShapedText.Line line = lines.get(lineIndex);
                 float baseline = firstBaseline + lineIndex * lineHeight - offset;
+                // Selection is clipped to this same line-height box: hidden lines need no draw work.
+                if (baseline + textHeight < y + paddingY || baseline >= y + height - paddingY) continue;
                 int selectedFrom = Math.max(selectionStart, line.start());
                 int selectedTo = Math.min(selectionEnd, line.end());
                 if (selectedTo > selectedFrom) {
@@ -1301,15 +1312,14 @@ public final class UiContext {
                 }
                 if(line.start()==line.end() && selectionStart<=line.start() && selectionEnd>line.end())
                     canvas.fill(UiInputAppearance.color(paint.selection(), UiCanvas.fade(accent,.45F)),textX,baseline,1,textHeight);
-                if(baseline+textHeight>=y+paddingY&&baseline<y+height-paddingY)
-                    canvas.shapedText(line.text(),textX,baseline,UiInputAppearance.color(paint.text(), theme.text()));
+                canvas.shapedText(line.text(),textX,baseline,UiInputAppearance.color(paint.text(), theme.text()));
             }
             if (focused) canvas.line(UiInputAppearance.color(paint.caret(), accent), 1, caretXs[cursor], caretYs[cursor] - textHeight / 2,
                 caretXs[cursor], caretYs[cursor] + textHeight / 2);
         });
         internalHit(id, "input:" + key, x, y, width, height);
         addInput(id, key, x, y, width, height, maxLength, true, caretXs, caretYs,
-            visualLines.stream().map(line -> line.translate(0, -offset)).toList());
+            offset == 0 ? visualLines : visualLines.stream().map(line -> line.translate(0, -offset)).toList());
         return value;
     }
 

@@ -75,3 +75,8 @@ The [active performance follow-up](performance-iteration-2026-10-16.md) records 
 CSV/JFR measurements, premultiplied/cropped drawing caches, full regression results, and the
 remaining frame-time and Windows validation limits. Run `-Pbenchmark -Pprofile` for the isolated
 Atlas benchmark; it keeps the interactive client's run directory separate.
+
+The [October 21 editor and pixel-transfer pass](audits/performance-2026-10-21.md) removes hidden
+selection painting and redundant geometry copies, and reduces pixel conversion cost. It includes
+reproducible CPU workloads, pixel/geometry parity checks and matched Minecraft measurements;
+the measured upload improvement is not a general FPS claim.

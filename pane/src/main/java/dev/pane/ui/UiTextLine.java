@@ -6,6 +6,8 @@ record UiTextLine(int start, int end, float[] xs, float y) {
     @Override public float[] xs() { return xs.clone(); }
     float x(int index) { return xs[Math.clamp(index - start, 0, xs.length - 1)]; }
     UiTextLine translate(float dx, float dy) {
+        if (dx == 0 && dy == 0) return this;
+        if (dx == 0) return new UiTextLine(start, end, xs, y + dy);
         float[] moved = xs.clone();
         for (int i = 0; i < moved.length; i++) moved[i] += dx;
         return new UiTextLine(start, end, moved, y + dy);
