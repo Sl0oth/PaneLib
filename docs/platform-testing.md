@@ -4,7 +4,8 @@ The build workflow runs Windows, macOS and Ubuntu jobs. The automated build gate
 October 21, 2026 at source commit `e9fbc41d3d0fcf17a5a9eeec5d9f2619203847df`:
 [Unicode/platform run 39665812338](https://github.com/Sl0oth/PaneLib/actions/runs/39665812338).
 The preceding portability-only [run 39664808951](https://github.com/Sl0oth/PaneLib/actions/runs/39664808951)
-also passed. No release or Modrinth upload was performed; beta.2 remains development source.
+also passed. No release or Modrinth upload was performed then; that beta.2 development line was later
+released as 1.0.0-beta.1.
 
 | Hosted runner | Java unit tests | Release tooling | Fixture tooling | Independent consumer |
 | --- | --- | --- | --- | --- |

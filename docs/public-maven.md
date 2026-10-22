@@ -11,7 +11,10 @@ caches were reused; fresh endpoint downloads were checked separately. See the
 [publication audit](audits/public-maven-publication-2026-10-21.md) and
 [installation guide](installation.md).
 
-Download the matching starter, runtime, sources and API reference from the
+The newer [`1.0.0-beta.1`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.1) is on GitHub Releases and not yet in the catalog; adding it follows
+the release asset and catalog steps below on `main`.
+
+Download the matching 0.9.9-beta.1 starter, runtime, sources and API reference from the
 [GitHub beta release](https://github.com/Sl0oth/PaneLib/releases/tag/v0.9.9-beta.1).
 This publication does not update Modrinth.
 
