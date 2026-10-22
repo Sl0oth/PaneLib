@@ -17,25 +17,24 @@ separates hosted build/client checks from pending Windows desktop validation.
 
 ## Current public examples
 
-`./gradlew :pane-demo:runExamples` opens the curated shelf at the title screen:
+`./gradlew :pane-demo:runExamples` opens the one showcase launcher at the title screen:
 
+- Beacon: an expedition planner built from custom-shaped controls, staged motion and GPU layers.
 - Wayfarer: an authored game menu with a native player preview, plus a textured gameplay HUD.
-- Gather: a chat layout with channels, direct messages, menus, and settings.
 - Pane Mail: a light, dense inbox with search, local message actions, and composition.
 - Vanilla HUD: native Minecraft font labels, items, and vanilla texture treatment.
 
-Dedicated public launch tasks use installed Java 25 and separate profiles. They require no private
-save, Python launcher, or Mac-specific Java path. HUD examples wait for you to create or join a
-world. See the [example index](../examples/README.md).
+The launcher uses installed Java 25 and its own profile, and needs no private save, Python
+launcher, or Mac-specific Java path. HUD examples wait for you to create or join a world. See the
+[example index](../examples/README.md).
 
 The independent [first-screen starter](../examples/first-screen/README.md) is the recommended
 consumer entry point: five controls, persistent settings, parent restoration, optional single-player
 pause, and an isolated packaged-JAR smoke test. The [migration guide](migrating-to-panelib.md)
 explains how to replace one existing mod screen without rewriting its game logic.
 
-YouTube and older duplicate showcases are retired from the public lineup. Atlas and other retained
-internal fixtures remain available for regression work; their historic layouts and world setup are
-not the current first-run experience.
+Older showcases (YouTube, Gather, Briarkeep, Atlas/Studio, Design Lab and the style gallery) were
+removed on October 22 so the demo module holds only the three examples above and their tests.
 
 ## Implemented in current source
 

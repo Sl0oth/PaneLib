@@ -366,6 +366,9 @@ public final class BeaconShowcase {
         });
     }
 
+    /** The Shattered Peaks landscape alone, for the showcase launcher card. */
+    static void paintPreview(UiCanvas g, UiRect bounds) { regionArt(g, bounds, 0, true); }
+
     private static void stat(UiCanvas g, float x, float y, String label, String value) {
         g.fill(0x40FFB347, x, y + 2, 2, 38);
         g.trackedText(label, x + 12, y + 2, 7.5F, MUTED, Font.BOLD, FONT, 1.4F);

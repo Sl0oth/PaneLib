@@ -5,7 +5,7 @@ An original expedition menu with a live Minecraft player, a photographic lookout
 From the repository root, with Java 25 installed:
 
 ```sh
-./gradlew :pane-demo:runWayfarer
+./gradlew :pane-demo:runExamples
 ```
 
 On Windows use `gradlew.bat`. No world or Python installation is needed. Finish Minecraft's first-run accessibility screen if shown. Escape returns to Minecraft; H reopens the selected example.

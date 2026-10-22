@@ -47,7 +47,7 @@ class CliTests(unittest.TestCase):
     def test_public_compatibility_without_arguments_delegates_without_export(self):
         with patch.object(sys, 'argv', ['launch.py']), patch.object(runner.subprocess, 'call', return_value=0) as call:
             self.assertEqual(runner.compatibility_main('wayfarer-hud'), 0)
-        self.assertIn(':pane-demo:runWayfarerHud', call.call_args.args[0])
+        self.assertIn(':pane-demo:runExamples', call.call_args.args[0])
 
     def test_invalid_compatibility_arguments_do_not_build(self):
         with patch.object(sys, 'argv', ['launch.py', '--tset']), patch.object(runner, 'export_runtime') as export:

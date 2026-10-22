@@ -47,10 +47,6 @@ MODES = {
         Mode('--editing-test', 'editingTest', 'EditingTest', 'run-editing'),
         Mode('--editor-test', 'editorTest', 'EditorTest', 'run-editor'),
         Mode('--mail-test', 'gmailTest', 'GmailTest', 'run-mail'),
-    ),
-    'discord-inbox': (
-        Mode('--test', 'discordTest', 'DiscordTest', 'run-discord'),
-        Mode('--scroll-end-test', 'scrollEndTest', 'ScrollEndTest', 'run-scroll-end'),
         Mode('--popup-trigger-test', 'popupTriggerTest', 'PopupTriggerTest', 'run-popup-triggers'),
         Mode('--popup-test', 'popupTest', 'PopupTest', 'run-popup'),
     ),
@@ -64,7 +60,8 @@ MODES = {
         Mode('--capture', 'wayfarerHud', 'WayfarerHudCapture', 'run-wayfarerHud'),
     ),
 }
-PUBLIC_TASKS = {'wayfarer': 'runWayfarer', 'discord-inbox': 'runGather', 'wayfarer-hud': 'runWayfarerHud'}
+# Every public example opens from the one showcase launcher.
+PUBLIC_TASKS = {'wayfarer': 'runExamples', 'wayfarer-hud': 'runExamples'}
 FAILURE = re.compile(r'\[(?:[^]\r\n]*(?:Test|Capture)|Fixture|ReviewFix)\][^\r\n]*\bFAIL\b')
 
 

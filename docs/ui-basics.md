@@ -85,8 +85,8 @@ ui.virtualList("log", viewport, entries.size(), 24, 2,
     UiScrollFollow.WHEN_AT_END, (row, item) -> paintEntry(row, entries.get(item.index())));
 ```
 
-Use separate stable IDs for different conversations/datasets. For example, Gather uses
-`history:general` and `history:dm:Maya`; selecting a channel explicitly scrolls its own ID to zero,
+Use separate stable IDs for different conversations/datasets, for example `history:general` and
+`history:dm:Maya`; selecting a channel explicitly scrolls its own ID to zero,
 which also cancels any old pending command for that channel. Ordinary and virtual views share the
 same end-scrolling behavior. No scrollbar-specific controller or consumer timer is needed.
 
@@ -114,7 +114,7 @@ ui.canvas().text("A matching heading", x, y, 18, ui.theme().text(), Font.BOLD,
 ```
 
 If loading fails, Pane safely falls back to its normal sans-serif font. Include the font's license
-next to the resource when you redistribute it. Pane Mail, Gather, and Wayfarer share the bundled
+next to the resource when you redistribute it. Beacon, Pane Mail, and Wayfarer share the bundled
 Roboto family under the SIL Open Font License.
 
 ## Minecraft-formatted text
@@ -479,8 +479,7 @@ button groups and retained virtual rows use the existing shared input/compositio
 
 These APIs add no polling loop or independent textures. Painter callbacks run when their retained
 page/row needs painting, not once per game frame. Keep painters side-effect-free and reuse styles
-when their values do not change. See Gather's server heading/role selector, Wayfarer's deploy button,
-and the video example's icon menus for migrations.
+when their values do not change. See Wayfarer's deploy button and Beacon's styled difficulty picker for examples.
 
 ## Dropdowns
 

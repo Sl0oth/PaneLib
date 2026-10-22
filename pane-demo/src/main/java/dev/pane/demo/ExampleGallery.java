@@ -6,7 +6,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.resources.Identifier;
 
-/** A small, deliberately curated example shelf. Developer fixtures are not product examples. */
+/** The one showcase launcher: three curated examples plus the example HUDs. Esc returns here from each. */
 public final class ExampleGallery {
     private static final int PAPER=0xFFF1EBDD, INK=0xFF252820, MUTED=0xFF686B61, RULE=0xFFCCC8B9, GOLD=0xFFFFD357;
     private static final String FONT=ExampleFonts.FAMILY;
@@ -21,8 +21,8 @@ public final class ExampleGallery {
             if(type!=UiEventType.ACTION)return;
             var client=Minecraft.getInstance();
             switch(key){
+                case "beacon" -> client.gui.setScreen(BeaconShowcase.createScreen(s));
                 case "wayfarer" -> client.gui.setScreen(WayfarerShowcase.createScreen(s));
-                case "gather" -> client.gui.setScreen(DiscordShowcase.createScreen(s));
                 case "mail" -> client.gui.setScreen(GmailShowcase.createScreen(s));
                 case "wayfarer-hud", "vanilla-hud" -> {
                     ExampleHudController.select(key);
@@ -50,24 +50,31 @@ public final class ExampleGallery {
         float y=top+77, bottom=h-m-102;
         float heroW=(w-2*m)*.55F, gap=20, right=m+heroW+gap, rightW=w-m-right;
         float heroH=bottom-y;
-        ui.paintedButton("wayfarer","Open Wayfarer menu","wayfarer",m,y,heroW,heroH,0,true,(c,state)->{
-            c.minecraftImage(LANDSCAPE,new UiRect(m,y,heroW,heroH),UiImageOptions.photo());
-            c.gradientRect(0x18081924,0xFA081924,90,m,y,heroW,heroH,0);
-            text(c,"01 / WAYFARER",m+20,y+21,12,GOLD,true);
-            text(c,"Beyond the",m+20,y+heroH-112,32,0xFFF5F6F0,true);
-            text(c,"cloudline.",m+20,y+heroH-76,32,0xFFF5F6F0,true);
-            text(c,"PLAYER PREVIEW  /  GAME MENU",m+20,y+heroH-27,10,GOLD,true);
-            if(state.hovered()||state.focused())c.strokeRoundRect(GOLD,3,m,y,heroW,heroH,0);
+        ui.paintedButton("beacon","Open Beacon","beacon",m,y,heroW,heroH,0,true,(c,state)->{
+            c.withClip(m,y,heroW,heroH,()->BeaconShowcase.paintPreview(c,new UiRect(m,y,heroW,heroH)));
+            c.gradientRect(0x00060A11,0xE6060A11,90,m,y+heroH*.45F,heroW,heroH*.55F,0);
+            text(c,"01 / BEACON",m+20,y+21,12,0xFFFFB347,true);
+            text(c,"Plan the climb.",m+20,y+heroH-112,32,0xFFF5F6F0,true);
+            text(c,"Light the beacon.",m+20,y+heroH-76,32,0xFFF5F6F0,true);
+            text(c,"CUSTOM SHAPES  /  MOTION  /  GPU LAYERS",m+20,y+heroH-27,10,0xFFFFB347,true);
+            if(state.hovered()||state.focused())c.strokeRoundRect(0xFFFFB347,3,m,y,heroW,heroH,0);
         });
         float rowH=(heroH-gap)/2;
-        card(ui,"gather","02 / GATHER","A place for your people.","Channels, messages & server settings",right,y,rightW,rowH,0xFF28292E,0xFFEEC99B);
+        ui.paintedButton("wayfarer","Open Wayfarer menu","wayfarer",right,y,rightW,rowH,0,true,(c,state)->{
+            c.minecraftImage(LANDSCAPE,new UiRect(right,y,rightW,rowH),UiImageOptions.photo());
+            c.gradientRect(0x18081924,0xF0081924,90,right,y,rightW,rowH,0);
+            text(c,"02 / WAYFARER",right+18,y+18,11,GOLD,true);
+            text(c,"Beyond the cloudline.",right+18,y+rowH-53,18,0xFFF5F6F0,true);
+            text(c,"Player preview & game menu",right+18,y+rowH-25,10,0xFFB5B8B1,false);
+            if(state.hovered()||state.focused())c.strokeRoundRect(GOLD,2,right,y,rightW,rowH,0);
+        });
         card(ui,"mail","03 / PANE MAIL","A desk for your day.","Search, compose & organise",right,y+rowH+gap,rightW,rowH,0xFFFEFFFC,0xFF365A4B);
         float foot=bottom+18;
         text(g,"IN THE WORLD",m,foot,10,MUTED,true);
         button(ui,"wayfarer-hud","Wayfarer HUD",m,foot+22,160,30);
         button(ui,"vanilla-hud","Vanilla HUD",m+170,foot+22,145,30);
         button(ui,"disable-hud","HUD off",m+325,foot+22,95,30);
-        text(g,ui.stringValue("hud-note", "Choose a HUD, then open a world. H: examples · J: toggle HUD."),m,foot+62,11,MUTED,false);
+        text(g,ui.stringValue("hud-note", "Choose a HUD, then open a world. H: this launcher · J: toggle HUD · Esc: back here."),m,foot+62,11,MUTED,false);
         button(ui,"back","Back to Minecraft",w-m-170,foot+22,170,30);
     }
 

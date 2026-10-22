@@ -3,7 +3,7 @@
 loom {
     runs {
         client {
-            if (project.hasProperty('benchmark') || project.hasProperty('isolated')) runDir 'run-benchmark'
+            if (project.hasProperty('isolated')) runDir 'run-benchmark'
             if (project.hasProperty('adoptionTest')) runDir 'run-adoption'
         }
     }
@@ -20,16 +20,6 @@ dependencies {
 
 tasks.named('runClient') {
     if (project.hasProperty('adoptionTest')) systemProperty 'pane.demo.adoptionTest', 'true'
-    if (project.hasProperty('benchmark')) {
-        systemProperty 'pane.demo.studioTest', 'true'
-        systemProperty 'pane.demo.benchmark', 'true'
-        systemProperty 'pane.demo.benchLabel', project.findProperty('benchLabel') ?: 'sample'
-        if (project.hasProperty('profile')) {
-            def label = (project.findProperty('benchLabel') ?: 'sample').toString().replaceAll('[^a-zA-Z0-9_-]', '_')
-            def recording = rootProject.file("build/performance/${label}.jfr")
-            jvmArgs "-XX:StartFlightRecording=filename=${recording.absolutePath},settings=profile,dumponexit=true,maxsize=128m"
-        }
-    }
     // Dev-only JFR capture for any fixture run, e.g. -Pjfr=beacon.
     if (project.hasProperty('jfr')) {
         def label = project.property('jfr').toString().replaceAll('[^a-zA-Z0-9_-]', '_')
@@ -37,14 +27,9 @@ tasks.named('runClient') {
     }
     if (project.hasProperty('wayfarer')) systemProperty 'pane.demo.wayfarer', 'true'
     if (project.hasProperty('wayfarerTest')) systemProperty 'pane.demo.wayfarerTest', 'true'
-    if (project.hasProperty('discord')) systemProperty 'pane.demo.discord', 'true'
-    if (project.hasProperty('discordTest')) systemProperty 'pane.demo.discordTest', 'true'
     if (project.hasProperty('gmail')) systemProperty 'pane.demo.gmail', 'true'
     if (project.hasProperty('gmailTest') || project.hasProperty('gmailCapture')) systemProperty 'pane.demo.gmailTest', 'true'
     if (project.hasProperty('gmailCapture')) systemProperty 'pane.demo.gmailCapture', 'true'
-    if (project.hasProperty('castleTest')) systemProperty 'pane.demo.castleTest', 'true'
-    if (project.hasProperty('castleWorldTest')) systemProperty 'pane.demo.castleWorldTest', 'true'
-    if (project.hasProperty('castle')) systemProperty 'pane.demo.castle', 'true'
     if (project.hasProperty('resourceTest')) systemProperty 'pane.demo.resourceTest', 'true'
     if (project.hasProperty('editingTest')) systemProperty 'pane.demo.editingTest', 'true'
     if (project.hasProperty('animationTest')) systemProperty 'pane.demo.animationTest', 'true'
@@ -56,51 +41,11 @@ tasks.named('runClient') {
     if (project.hasProperty('popupTest')) systemProperty 'pane.demo.popupTest', 'true'
     if (project.hasProperty('reviewTest')) systemProperty 'pane.demo.reviewTest', 'true'
     if (project.hasProperty('apiTest')) systemProperty 'pane.demo.apiTest', 'true'
-    if (project.hasProperty('studio')) systemProperty 'pane.demo.studio', 'true'
-    if (project.hasProperty('studioPreview')) {
-        systemProperty 'pane.demo.studioTest', 'true'
-        systemProperty 'pane.demo.studioRecord', 'true'
-        systemProperty 'pane.demo.studioPreview', 'true'
-    }
-    if (project.hasProperty('studioRecord')) {
-        systemProperty 'pane.demo.studioTest', 'true'
-        systemProperty 'pane.demo.studioRecord', 'true'
-    }
-    if (project.hasProperty('studioTest')) systemProperty 'pane.demo.studioTest', 'true'
-    if (project.hasProperty('designLab')) systemProperty 'pane.demo.designLab', 'true'
-    if (project.hasProperty('designTest')) systemProperty 'pane.demo.designTest', 'true'
-    if (project.hasProperty('autotestExit')) {
-        systemProperty 'pane.demo.autotestExit', 'true'
-    }
     if (project.hasProperty('perftest')) {
         systemProperty 'pane.demo.perftest', 'true'
     }
     if (project.hasProperty('demoPage')) {
         systemProperty 'pane.demo.page', project.property('demoPage')
-    }
-    // Dev-only: loads a throwaway world and exercises every page. See DemoAutoTest.
-    if (project.hasProperty('autotest')) {
-        systemProperty 'pane.demo.autotest', 'true'
-    }
-    // Hands-on: loads a scratch world and opens the showcase, then leaves you to it.
-    if (project.hasProperty('play')) {
-        systemProperty 'pane.demo.play', 'true'
-    }
-    // Hands-on gallery mode: open the style gallery directly after the scratch world loads.
-    if (project.hasProperty('gallery')) {
-        systemProperty 'pane.demo.gallery', 'true'
-    }
-    // Hands-on Minecraft texture and player-skin fill reference.
-    if (project.hasProperty('textures')) {
-        systemProperty 'pane.demo.textures', 'true'
-    }
-    // Hands-on native iron-golem and villager card-preview reference.
-    if (project.hasProperty('entities')) {
-        systemProperty 'pane.demo.entities', 'true'
-    }
-    // Minimal retained-surface shadow regression reference.
-    if (project.hasProperty('shadows')) {
-        systemProperty 'pane.demo.shadows', 'true'
     }
     if (project.hasProperty('levelId')) {
         systemProperty 'pane.demo.levelId', project.property('levelId')
@@ -108,7 +53,7 @@ tasks.named('runClient') {
 }
 
 // A graceful Minecraft shutdown is not proof that the fixture passed.
-def fixtureMarkers = [adoptionTest: '[AdoptionTest] complete PASS', wayfarerTest: '[WayfarerTest] complete PASS', discordTest: '[DiscordTest] complete PASS', gmailTest: '[GmailTest] complete PASS', castleTest: '[CastleTest] complete PASS', resourceTest: '[ResourceTest] complete PASS', editingTest: '[EditingTest] complete PASS', animationTest: '[AnimationTest] complete PASS', editorTest: '[EditorTest] complete PASS', gpuLayerTest: '[GpuLayerTest] complete PASS', beaconTest: '[BeaconTest] complete PASS', dialogTest: '[DialogTest] complete PASS', popupTest: '[PopupTest] complete PASS', reviewTest: '[ReviewFix] complete PASS', apiTest: '[ApiTest] complete PASS', perftest: '[PanePerf] complete PASS', designTest: '[DesignLab] complete PASS', studioTest: '[StudioTest] complete PASS', benchmark: '[StudioTest] complete PASS', autotestExit: 'autotest complete']
+def fixtureMarkers = [adoptionTest: '[AdoptionTest] complete PASS', wayfarerTest: '[WayfarerTest] complete PASS', gmailTest: '[GmailTest] complete PASS', resourceTest: '[ResourceTest] complete PASS', editingTest: '[EditingTest] complete PASS', animationTest: '[AnimationTest] complete PASS', editorTest: '[EditorTest] complete PASS', gpuLayerTest: '[GpuLayerTest] complete PASS', beaconTest: '[BeaconTest] complete PASS', dialogTest: '[DialogTest] complete PASS', popupTest: '[PopupTest] complete PASS', reviewTest: '[ReviewFix] complete PASS', apiTest: '[ApiTest] complete PASS', perftest: '[PanePerf] complete PASS']
 def expectedMarkers = fixtureMarkers.findAll { key, marker -> project.hasProperty(key) }.values()
 if (!expectedMarkers.isEmpty()) {
     def captured = new ByteArrayOutputStream()
@@ -146,7 +91,7 @@ if (!expectedMarkers.isEmpty()) {
         doLast {
             def output = captured.toString('UTF-8')
             if (project.hasProperty('fixtureFailureProbe')) output += '\n[Fixture] injected FAIL'
-            if (output =~ /(?m)\[(AdoptionTest|WayfarerTest|DiscordTest|GmailTest|CastleTest|ResourceTest|EditingTest|AnimationTest|EditorTest|GpuLayerTest|BeaconTest|DialogTest|PopupTest|ReviewFix|ApiTest|PanePerf|DesignLab|StudioTest|ConsumerTest|AutoTest|pane-autotest|Fixture)\][^\r\n]*FAIL/
+            if (output =~ /(?m)\[(AdoptionTest|WayfarerTest|GmailTest|ResourceTest|EditingTest|AnimationTest|EditorTest|GpuLayerTest|BeaconTest|DialogTest|PopupTest|ReviewFix|ApiTest|PanePerf|ConsumerTest|AutoTest|pane-autotest|Fixture)\][^\r\n]*FAIL/
                     || expectedMarkers.any { !output.contains(it) }) {
                 throw new GradleException('Client fixture failed or did not finish. Inspect its PASS/FAIL output above.')
             }
@@ -159,8 +104,7 @@ tasks.withType(Jar).configureEach { from(rootProject.file('LICENSE')) }
 
 // Supported public examples. No cached argument-file parsing, private save, or local Java path.
 loom.runs {
-    [Examples: 'gallery', Wayfarer: 'wayfarer', Gather: 'gather', Mail: 'mail', Beacon: 'beacon',
-     WayfarerHud: 'wayfarer-hud', VanillaHud: 'vanilla-hud'].each { label, example ->
+    [Examples: 'gallery'].each { label, example ->
         create(label[0].toLowerCase() + label.substring(1)) {
             inherit client
             configName "PaneLib / ${label}"

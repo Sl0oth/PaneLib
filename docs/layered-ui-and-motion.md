@@ -54,8 +54,8 @@ explicit user/consumer preference; automatic OS preference detection is not impl
 Minecraft's world/panorama or separately composed virtual rows. Apply it before painting a panel,
 then paint opaque text afterward. Calling it on an empty scratch layer will not blur the parent.
 
-The Design Lab's optional Soft glass switch blurs only retained decoration behind its panels.
-Blur is off by default and only runs on invalidation, with no animation loop of its own. It still
+Blur only blurs retained decoration already painted behind a panel. It is off unless you call it
+and only runs on invalidation, with no animation loop of its own. It still
 allocates convolution images when visible; reserve it for small panels. Transparency works with
 blur disabled. A gameplay-world blur would need a separate GPU integration and is not provided.
 
@@ -72,17 +72,6 @@ toast schedules no frames. While a menu/dialog is open, toast visuals/input are 
 continue expiring. Menus and dialogs still use the older page path and temporarily suspend atlas
 composition. Tooltip overlays remain independent.
 
-## Try the three designs
-
-```sh
-./gradlew :pane-demo:runClient -PdesignLab
-./gradlew :pane-demo:runClient -PdesignTest
-```
-
-The first opens the interactive title-panorama showcase. Use 1/2/3 or the top navigation. All three
-styles select routes, scroll the journal, toggle a briefing, change ready state, and show toasts.
-Trailcraft uses a square inventory grid; Skybound uses large open typography and floating cards;
-Blackline uses a command rail, sparse linework, and compact rows. Artwork is original code-drawn
-geometry. The second command exercises interactions, fade reversals, moving targets, reduced
-motion, toast/scroll composition, optional blur, resize, and settled idle. It captures screenshots
-and quits. Inspect `[DesignLab] complete PASS`; Gradle's exit code alone is not the verdict.
+The Beacon example (`./gradlew :pane-demo:runExamples`, then Beacon) combines staged entrance,
+spring retargeting, count-up values, crossfaded cached art and a GPU-composited sheet.
+`-Pisolated -PbeaconTest` checks shape targets, the GPU slide and settled idle in a real client.

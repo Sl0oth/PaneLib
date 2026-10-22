@@ -9,7 +9,7 @@ From the repository root:
 
 ```sh
 python3 tools/fixtures/wayfarer.py --test --fresh
-python3 tools/fixtures/discord-inbox.py --popup-trigger-test --fresh
+python3 tools/fixtures/wayfarer.py --popup-trigger-test --fresh
 python3 tools/fixtures/wayfarer-hud.py --font-test --fresh
 ```
 

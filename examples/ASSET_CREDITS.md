@@ -12,12 +12,10 @@ example/demo module; they are not required to make a new interface with PaneLib.
   skin atlas. The final atlas is `textures/wayfarer/explorer-skin.png`. The preview changes only a
   temporary render snapshot; it does not change the player's account skin. Generation references
   and intermediate artwork are not included in the public source snapshot.
-- **Paper, leather and wood:** CC0 materials; see
-  [Bramble material credits](bramble-hud/materials/LICENSE-AND-SOURCE.md).
 - **Wayfarer HUD metal and fabric:** CC0 photography by Rob Tuytel; see
   [HUD material credits](wayfarer-hud/materials/LICENSE-AND-SOURCE.md).
-- **Gather and Pane Mail thumbnails:** captures of the fictional local examples built with PaneLib.
-  They contain sample data, not connected user accounts or service conversations.
+- **Pane Mail thumbnail:** a capture of the fictional local examples built with PaneLib.
+  It contains sample data, not connected user accounts or service conversations.
 - **Roboto:** the bundled font retains its SIL Open Font License in
   `pane-demo/src/main/resources/assets/pane_demo/fonts/OFL.txt`.
 

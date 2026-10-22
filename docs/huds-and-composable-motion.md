@@ -286,7 +286,7 @@ claim elements again. Keep lifecycle calls on the client thread outside renderin
 Each widget owns its claims. If multiple HUDs claim the same element, vanilla remains suppressed
 while any eligible owner is presented. Hide/close one widget without releasing another widget's
 claim. For a multi-widget toggle, call `setEnabled` on each widget from one client-thread action;
-Wayfarer and Bramble demonstrate this with J. Disable immediately cancels pending fades/motion;
+The Wayfarer HUD demonstrates this with J. Disable immediately cancels pending fades/motion;
 it does not overwrite the widget's values or `visible` preference.
 
 Ordinary screens suppress custom HUDs by default, so the original callbacks resume behind those
@@ -324,30 +324,7 @@ a copyable example, custom resource fonts, diagnostics, scope and the real-Minec
 
 ## Try the supported examples
 
-- `./gradlew :pane-demo:runWayfarerHud` selects the textured Wayfarer HUD.
-- `./gradlew :pane-demo:runVanillaHud` selects the native font/item HUD recipe.
-- `./gradlew :pane-demo:runExamples` opens the full example shelf.
-
-Create or join a world, then use J to toggle the selected HUD. These public launch paths do not
-create a world, position the camera, modify inventory, or need a private save. H opens the shelf.
-See the [example index](../examples/README.md) for the remaining public recipes.
-
-## Developer reference: Atlas fixtures
-
-Atlas remains a historical regression fixture, separate from the curated public examples.
-The following commands intentionally prepare disposable test worlds:
-
-
-- `./gradlew :pane-demo:runClient -Pstudio` opens Atlas in a dedicated disposable field world.
-- H opens the console; J toggles the HUD. Return to world resumes normal movement/look/attack.
-- Motion Studio demonstrates interrupted card expansion, spring retargeting, a finite three-beat
-  sequence, animated selection, and staggered controls.
-- Field HUD exposes visibility, anchors, scale, and reduced motion with a live editor preview.
-- `-PstudioTest` runs the full automated world/input/lifecycle checks and quits.
-- `-PstudioRecord` runs those checks while sampling actual client frames at 20 Hz.
-- `-PstudioPreview` captures just the UI motion segment after clearing setup chat, then quits.
-- `python3 tools/export-studio-previews.py` makes the review GIFs using existing Pillow.
-
-The studio worlds (`pane_studio_scratch` and `pane_studio_autotest_20261016`) are reserved disposable
-fixtures. The launcher prepares a small field area there; use another world for anything you want
-to keep. No personal world is selected automatically.
+`./gradlew :pane-demo:runExamples` opens the showcase launcher; choose **Wayfarer HUD** (textured)
+or **Vanilla HUD** (native font/item recipe), create or join a world, then use J to toggle it. The
+launcher does not create a world, position the camera, modify inventory, or need a private save.
+H reopens it. See the [example index](../examples/README.md).

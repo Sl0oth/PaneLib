@@ -248,7 +248,7 @@ ui.shapedButton("map", "World map", "open-map", hex, true, (g, state) -> {
 UiPath wedge = ui.canvas().path().arc(cx, cy, 100, -118, 56).arc(cx, cy, 50, -62, -56).close();
 ```
 
-The `Beacon` example (`runBeacon`) combines hexagon, slanted, chamfered, chevron, notched,
+The Beacon example (open `runExamples`, then Beacon) combines hexagon, slanted, chamfered, chevron, notched,
 circular and ring-segment buttons with entrance, hover, count-up and GPU-layer motion.
 
 ## Popup menu styling

@@ -25,11 +25,11 @@ remain native overlays. The library alone intentionally adds no screen, command,
 ./gradlew :pane-demo:runExamples
 ```
 
-This opens the curated example shelf at the title screen. Try Wayfarer's game menu and HUD,
-Gather's chat layout, Pane Mail's inbox, or the vanilla HUD recipe. H opens examples; J toggles
-the selected HUD after you create or join a world. Public launchers require an installed Java 25,
-but no Python launcher, private save, or Mac-specific Java path.
-See the [example index](examples/README.md) for direct launch commands.
+This opens the showcase launcher at the title screen, the one place to reach every example:
+Beacon (custom-shaped controls, motion and GPU layers), Wayfarer's game menu, and Pane Mail's inbox,
+plus the Wayfarer and vanilla HUD recipes. Esc returns to the launcher from each; H reopens it and
+J toggles the selected HUD after you create or join a world. It needs an installed Java 25, but no
+Python launcher, private save, or Mac-specific Java path. See the [example index](examples/README.md).
 
 ## What is included
 
@@ -125,7 +125,7 @@ Open the curated example shelf with Java 25:
 ./gradlew :pane-demo:runExamples
 ```
 
-Wayfarer, Gather, Pane Mail and the vanilla HUD recipe have distinct visual styles and dedicated launch commands. See the [example index](examples/README.md). Public launches need no private save, Python launcher or Mac-specific Java path. H opens examples; J toggles the selected HUD.
+Beacon, Wayfarer and Pane Mail have distinct visual styles and all open from that one launcher. See the [example index](examples/README.md). It needs no private save, Python launcher or Mac-specific Java path. H opens the launcher; J toggles the selected HUD.
 
 The [independent starter](examples/first-screen/README.md) compiles against the packaged library and is the smallest place to begin your own mod.
 
@@ -134,11 +134,14 @@ Developer verification is separate:
 ```sh
 ./gradlew :pane:build :pane-demo:build
 ./gradlew :pane-demo:runExamples -PexampleTest
+./gradlew :pane-demo:runClient -Pisolated -PbeaconTest
 ./gradlew :pane-demo:runClient -Pisolated -PgmailTest
-./gradlew :pane-demo:runClient -PstudioTest
 ```
 
-The examples fixture creates a fresh disposable world. The broader historical `-Pautotest` and Studio fixtures still exercise the 10,000-row directory, retained raster work and low-level controls. They are regression tools, not the public example lineup. See [performance](docs/performance.md) and [layered UI and motion](docs/layered-ui-and-motion.md).
+The examples fixture creates a fresh disposable world. Focused `-Pisolated` fixtures (API, review,
+popup, animation, editing, editor, dialog, GPU layer, Beacon, idle/toast performance and more)
+exercise the library in a real client; see [performance](docs/performance.md) and
+[layered UI and motion](docs/layered-ui-and-motion.md).
 
 ## MCEF
 

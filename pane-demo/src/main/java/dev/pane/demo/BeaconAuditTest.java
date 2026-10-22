@@ -10,7 +10,7 @@ import net.minecraft.client.input.MouseButtonInfo;
 /** Beacon showcase acceptance: shape-exact targets, motion, GPU sheet and idle cost. No world or personal data. */
 final class BeaconAuditTest {
     private UiScreen screen;
-    private int tick, checks, paints;
+    private int tick, checks, paints, partials;
     private long rasters;
     private boolean failed, finished;
 
@@ -85,14 +85,19 @@ final class BeaconAuditTest {
                 case 160 -> {
                     // Pointer parked on empty space: only the sheet itself can cause work now.
                     paints = screen.paintCount();
+                    partials = screen.partialPaintCount();
                     screen.setValue("sheet", true);
                 }
                 case 180 -> {
-                    check(screen.paintCount() == paints + 1, "a full sheet slide costs one page paint ("
-                        + (screen.paintCount() - paints) + ")");
+                    // Partial repaints come from hover under a real cursor; the slide itself adds exactly one full paint.
+                    int full = (screen.paintCount() - paints) - (screen.partialPaintCount() - partials);
+                    check(full == 1, "a full sheet slide costs one full page paint (" + full + ")");
                     screen.setValue("sheet", false);
                 }
-                case 200 -> paints = screen.paintCount();
+                case 200 -> {
+                    paints = screen.paintCount();
+                    SurfaceGpuCheck.verify(screen, result -> check(result.contains("PASS"), result));
+                }
                 case 260 -> {
                     check(screen.paintCount() == paints, "settled showcase stays idle (" + (screen.paintCount() - paints) + " paints)");
                     screen.invalidate();

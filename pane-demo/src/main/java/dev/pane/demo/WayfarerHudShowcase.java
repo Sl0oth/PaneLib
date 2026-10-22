@@ -45,7 +45,6 @@ final class WayfarerHudShowcase {
         if(Boolean.getBoolean("pane.demo.hudEfficiencyTest"))efficiencyAudit=new HudEfficiencyAuditTest(this);
         if(Boolean.getBoolean("pane.demo.hudQualityTest"))qualityAudit=new HudQualityAuditTest();
         if(Boolean.getBoolean("pane.demo.hudPlacementTest"))placementAudit=new HudPlacementAuditTest(this);
-        FieldHudDemo.setEnabled(false);
         var theme=UiTheme.dark().withAccent(GOLD);
         location=hud("location",310,106,theme,this::location);
         journal=hud("journal",290,228,theme,this::journal);
