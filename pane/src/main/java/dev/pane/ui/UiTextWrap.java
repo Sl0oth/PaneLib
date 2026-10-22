@@ -19,14 +19,16 @@ final class UiTextWrap {
         breaks.setText(text);
         var boundaries=new java.util.BitSet(text.length()+1);
         for(int boundary=breaks.first();boundary!=BreakIterator.DONE;boundary=breaks.next())boundaries.set(boundary);
+        UiTextBoundary.Index graphemes = UiTextBoundary.index(text);
         int start = 0, index = 0, lastBreak = -1;
         while (index < text.length()) {
             int cp = text.codePointAt(index);
-            if (cp == '\n') {
+            if (cp == '\n' || cp == '\r') {
                 result.add(new Line(start, index));
-                start = ++index; lastBreak = -1; continue;
+                index = graphemes.next(index); // CRLF is one separator; keep original source offsets.
+                start = index; lastBreak = -1; continue;
             }
-            int next = UiTextBoundary.next(text, index);
+            int next = graphemes.next(index);
             // A trailing space belongs to its preceding line even when its advance exceeds the edge.
             if (index > start && measure.applyAsDouble(start, next) > width && !Character.isWhitespace(cp)) {
                 int end = lastBreak > start ? lastBreak : index;

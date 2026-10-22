@@ -1,7 +1,5 @@
 {
   "key.category.pane.demo": "PaneLib Examples",
-  "key.pane_demo.open": "Open PaneLib examples",
-  "key.pane_demo.hud": "Toggle selected example HUD",
-  "key.pane_demo.gmail": "Open Pane Mail",
-  "key.pane_demo.discord": "Open Gather"
+  "key.pane_demo.open": "Open the PaneLib showcase",
+  "key.pane_demo.hud": "Toggle selected example HUD"
 }

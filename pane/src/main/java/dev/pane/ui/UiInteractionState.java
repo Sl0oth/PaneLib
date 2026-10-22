@@ -12,6 +12,44 @@ final class UiInteractionState {
     final LinkedHashMap<String, Target> targets = new LinkedHashMap<>();
     final Map<String, UiInputRegion> inputs = new HashMap<>();
     final Deque<UiScrollRegion> ancestors = new ArrayDeque<>();
+    /** Present only while a screen's page paint can hand groups to the GPU compositor. */
+    UiGpuLayers.Collector gpuLayers;
+    /** Show/hide state of each {@link UiContext#gpuTransition}, kept between paints. */
+    final Map<String, Transition> transitions = new HashMap<>();
+
+    static final class Transition {
+        boolean shown;
+        long changedAt;
+        Transition(boolean shown) { this.shown = shown; }
+    }
+
+    /** Pointer, drag and timer requests; affine child contexts share the parent's instance. */
+    Live live = new Live();
+
+    /** Everything here is in document layout units. */
+    record Refresh(long atNanos, UiRect bounds) { }
+
+    static final class Live {
+        /** Pointer position, NaN when unknown, and the areas painted from it. */
+        float pointerX = Float.NaN, pointerY = Float.NaN;
+        final List<UiRect> pointerAreas = new ArrayList<>();
+        /** What each drag area moves, so a drag step repaints only that. */
+        final Map<String, UiRect> dragBounds = new HashMap<>();
+        /** The drag area key being dragged, set by the screen before each paint, and whether it has moved. */
+        String draggingKey;
+        boolean dragMoved;
+        /** State key prefixes that only affect a region of the page, with that region. */
+        final Map<String, UiRect> scopes = new HashMap<>();
+        /** Timed repaints painters asked for; null bounds means the page. */
+        final List<Refresh> refreshes = new ArrayList<>();
+
+        void requestRefresh(long atNanos, UiRect bounds) { refreshes.add(new Refresh(atNanos, bounds)); }
+
+        void clear() {
+            pointerAreas.clear(); dragBounds.clear(); refreshes.clear(); scopes.clear();
+        }
+    }
+
     UiInteractionState() { this(new HashMap<>()); }
     UiInteractionState(Map<String, Double> offsets) { this(offsets,new HashMap<>(),new UiTextLayoutCache()); }
     UiInteractionState(Map<String, Double> offsets,Map<String,UiEditorViewport> editors,UiTextLayoutCache layouts) {
@@ -20,9 +58,13 @@ final class UiInteractionState {
     UiInteractionState(Map<String, Double> offsets,Map<String,UiEditorViewport> editors,UiTextLayoutCache layouts, UiScrollEndState scrollEnds) {
         this.offsets=offsets;this.editors=editors;this.textLayouts=layouts;this.scrollEnds=scrollEnds;
     }
-    void beginPaint() { buttons.clear(); targets.clear(); inputs.clear(); ancestors.clear(); }
+    void beginPaint() {
+        buttons.clear(); targets.clear(); inputs.clear(); ancestors.clear();
+        live.clear();
+    }
     void register(UiHitRegion hit) {
-        var chain = ancestors.stream().map(region -> new Ancestor(region, offsets.getOrDefault(region.id(), 0D))).toList();
+        List<Ancestor> chain = ancestors.isEmpty() ? List.of()
+            : ancestors.stream().map(region -> new Ancestor(region, offsets.getOrDefault(region.id(), 0D))).toList();
         UiRect bounds = new UiRect(hit.x(), hit.y(), hit.width(), hit.height());
         // Inner content may extend beyond its parent's content, yet become visible by inner scrolling.
         // Validate reachability in reveal order, rather than clipping the raw target against every ancestor.

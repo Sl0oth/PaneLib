@@ -128,10 +128,11 @@ class EndpointTests(unittest.TestCase):
 
     def test_ca_bundle_is_passed_to_verifying_context(self):
         trusted = ssl.create_default_context()
+        ca_file = self.root / 'fixture CA.pem'
         with mock.patch.object(consumer.ssl, 'create_default_context', return_value=trusted) as context, \
                 mock.patch.object(consumer.urllib.request.OpenerDirector, 'open', autospec=True, side_effect=self.transport):
-            consumer.verify_endpoint(self.root, self.version, self.address, Path('/fixture/ca.pem'))
-        context.assert_called_once_with(cafile='/fixture/ca.pem')
+            consumer.verify_endpoint(self.root, self.version, self.address, ca_file)
+        context.assert_called_once_with(cafile=str(ca_file))
 
     def test_empty_version_file_set_is_not_success(self):
         with zipfile.ZipFile(self.archive, 'w') as archive:

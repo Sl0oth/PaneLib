@@ -14,7 +14,10 @@ final class SurfaceGpuCheck {
         try {
             var field = UiScreen.class.getDeclaredField("surface");
             field.setAccessible(true);
-            var surface = (DynamicTexture) field.get(screen);
+            Object retained = field.get(screen);
+            var texture = retained.getClass().getDeclaredField("texture");
+            texture.setAccessible(true);
+            var surface = (DynamicTexture) texture.get(retained);
             var source = surface.getPixels().getPixelBytes().duplicate();
             byte[] expected = new byte[source.remaining()];
             source.get(expected);

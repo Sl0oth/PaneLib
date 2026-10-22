@@ -22,8 +22,6 @@ import java.awt.geom.Point2D;
 import java.awt.geom.Rectangle2D;
 import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
-import java.awt.image.ConvolveOp;
-import java.awt.image.Kernel;
 import java.io.IOException;
 import java.io.InputStream;
 import javax.imageio.ImageIO;
@@ -52,7 +50,8 @@ public final class UiCanvas {
     private static final int FONT_CACHE_LIMIT = 512;
     private static final java.util.concurrent.atomic.AtomicLong FONT_REVISION=new java.util.concurrent.atomic.AtomicLong();
     private record TextLayoutKey(String value,Font font,java.awt.font.FontRenderContext context,float width,long revision) { }
-    private static final Map<String, Font> FONTS = new ConcurrentHashMap<>();
+    private record FontKey(String family, int style, int sixteenths) { }
+    private static final Map<FontKey, Font> FONTS = new ConcurrentHashMap<>();
     private static final Map<String, Font> REGISTERED_FONTS = new ConcurrentHashMap<>();
     private static final Map<String, BufferedImage> TEXTURES = new ConcurrentHashMap<>();
     private static final java.util.concurrent.atomic.AtomicLong MINECRAFT_TEXTURE_REVISION = new java.util.concurrent.atomic.AtomicLong();
@@ -61,6 +60,15 @@ public final class UiCanvas {
 
     private final Graphics2D graphics;
     private final BufferedImage target;
+    /** Scratch for distance shadows, reused by every shadow in this paint. */
+    private BufferedImage shadowMask;
+    /** A group layer's parent and where the layer sits in it, so glass and blur inside the group see what lies behind it. */
+    private UiCanvas backdropParent;
+    private int backdropX, backdropY;
+    /** Device rectangles that glass and backdrop blur read on the screen surface; partial repaints grow to cover them. */
+    List<Rectangle> backdropReads;
+    /** Lenses kept between paints of the screen surface. */
+    UiGlassCache glassCache;
 
     /**
      * Registers a TrueType or OpenType font under a stable family name. The font stays local to
@@ -158,6 +166,15 @@ public final class UiCanvas {
         graphics.draw(visible);
     }
 
+    /** Focus outline following an arbitrary shape: a ring one to 2.4 units outside it. */
+    void shapeFocusRing(int color, Shape outline) {
+        var ring = new java.awt.geom.Area(new BasicStroke(4.8F, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND).createStrokedShape(outline));
+        ring.subtract(new java.awt.geom.Area(new BasicStroke(2F, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND).createStrokedShape(outline)));
+        ring.subtract(new java.awt.geom.Area(outline));
+        graphics.setColor(awtColor(color));
+        graphics.fill(ring);
+    }
+
     /** Dashed rounded outline, useful for focus guides, drop targets, and cut-paper treatments. */
     public void dashedRoundRect(int color, float stroke, float dash, float x, float y,
                                 float width, float height, float radius) {
@@ -215,6 +232,9 @@ public final class UiCanvas {
         graphics.fill(shape);
     }
 
+    /** Current device transform; GPU layers accept only plain context translations. */
+    AffineTransform transform() { return graphics.getTransform(); }
+
     /** A free-form shape built from lines and curves. */
     public UiPath path() {
         return new UiPath(graphics);
@@ -265,13 +285,176 @@ public final class UiCanvas {
         if (spread <= 0) return;
         int steps = Math.max(3, Math.min(14, Math.round(spread)));
         int baseAlpha = (color >>> 24) & 0xFF;
-        for (int i = steps; i >= 1; i--) {
-            float grow = spread * i / steps;
-            int stepAlpha = Math.max(1, Math.round(baseAlpha * (1F - (float) i / (steps + 1)) / steps * 2.2F));
-            graphics.setColor(awtColor(alpha(color, stepAlpha)));
-            graphics.fill(roundShape(x - grow + offsetX, y - grow + offsetY,
-                width + grow * 2, height + grow * 2, radius + grow));
+        float[] grow = new float[steps];
+        int[] alpha = new int[steps];
+        for (int i = 1; i <= steps; i++) {
+            grow[i - 1] = spread * i / steps;
+            alpha[i - 1] = Math.max(1, Math.round(baseAlpha * (1F - (float) i / (steps + 1)) / steps * 2.2F));
         }
+        if (distanceShadow(color, grow, alpha, x + offsetX, y + offsetY, width, height, radius, null)) return;
+        for (int i = steps - 1; i >= 0; i--) {
+            graphics.setColor(awtColor(alpha(color, alpha[i])));
+            graphics.fill(roundShape(x - grow[i] + offsetX, y - grow[i] + offsetY,
+                width + grow[i] * 2, height + grow[i] * 2, radius + grow[i]));
+        }
+    }
+
+    /**
+     * {@link #shadow} drawn only outside the shape itself, for glass and for panels painted over it.
+     * Large shapes are much cheaper: the covered interior is never evaluated or blended. Rotated,
+     * sheared or unevenly scaled drawing clips the ordinary shadow instead.
+     */
+    public void shadowOutside(int color, float spread, float offsetX, float offsetY,
+                              float x, float y, float width, float height, float radius) {
+        if (spread <= 0) return;
+        int steps = Math.max(3, Math.min(14, Math.round(spread)));
+        int baseAlpha = (color >>> 24) & 0xFF;
+        float[] grow = new float[steps];
+        int[] alpha = new int[steps];
+        for (int i = 1; i <= steps; i++) {
+            grow[i - 1] = spread * i / steps;
+            alpha[i - 1] = Math.max(1, Math.round(baseAlpha * (1F - (float) i / (steps + 1)) / steps * 2.2F));
+        }
+        if (distanceShadow(color, grow, alpha, x + offsetX, y + offsetY, width, height, radius,
+            new Rectangle2D.Float(x, y, width, height))) return;
+        var outside = new java.awt.geom.Area(new Rectangle2D.Float(x - spread * 2 + Math.min(0, offsetX), y - spread * 2 + Math.min(0, offsetY),
+            width + spread * 4 + Math.abs(offsetX), height + spread * 4 + Math.abs(offsetY)));
+        outside.subtract(new java.awt.geom.Area(roundShape(x, y, width, height, radius)));
+        withClipShape(outside, () -> shadow(color, spread, offsetX, offsetY, x, y, width, height, radius));
+    }
+
+    /**
+     * The rings share one colour and are offsets of one rounded rectangle, so stacking them is
+     * equivalent to a single blend whose alpha, 1 - Π(1 - aᵢ·coverageᵢ), depends only on the
+     * pixel's distance from that rectangle. Evaluates it once per visible device pixel instead of
+     * antialiasing every ring. Rotated, sheared or unevenly scaled drawing keeps the ring path.
+     */
+    private boolean distanceShadow(int color, float[] grow, int[] alpha, float x, float y,
+                                   float width, float height, float radius, Rectangle2D.Float caster) {
+        AffineTransform matrix = graphics.getTransform();
+        double scale = matrix.getScaleX();
+        // Group opacity applies per ring in the reference path, so it joins each ring's alpha here.
+        if (!(graphics.getComposite() instanceof AlphaComposite composite) || composite.getRule() != AlphaComposite.SRC_OVER) return false;
+        double opacity = composite.getAlpha();
+        if (matrix.getShearX() != 0 || matrix.getShearY() != 0 || scale <= 0 || matrix.getScaleY() != scale
+                || width <= 0 || height <= 0 || radius < 0 || radius > Math.min(width, height) / 2) return false;
+        double halfW = width * scale / 2, halfH = height * scale / 2, corner = radius * scale;
+        double centerX = (x + width / 2) * scale + matrix.getTranslateX();
+        double centerY = (y + height / 2) * scale + matrix.getTranslateY();
+        double reach = grow[grow.length - 1] * scale + 1;
+        Rectangle area = new Rectangle((int) Math.floor(centerX - halfW - reach), (int) Math.floor(centerY - halfH - reach), 0, 0);
+        area.add(Math.ceil(centerX + halfW + reach), Math.ceil(centerY + halfH + reach));
+        Shape clip = graphics.getClip();
+        Shape deviceClip = clip == null ? null : matrix.createTransformedShape(clip);
+        if (target != null) area = area.intersection(new Rectangle(target.getWidth(), target.getHeight()));
+        // Outside-only shadows keep whole bands, so cached bands match whatever a later paint clips to.
+        if (deviceClip != null && (caster == null || glassCache == null)) area = area.intersection(deviceClip.getBounds());
+        if (area.isEmpty() || deviceClip != null && !deviceClip.intersects(area)) return true;
+        // Alpha by signed distance in sixteenths of a device pixel; inside the first ring it is constant.
+        int samples = (int) Math.ceil((reach + .5) * 16) + 1;
+        int[] lookup = new int[samples];
+        for (int i = 0; i < samples; i++) {
+            double distance = i / 16D - .5, clear = 1;
+            for (int ring = 0; ring < grow.length; ring++)
+                clear *= 1 - opacity * alpha[ring] / 255D * Math.clamp(.5 - distance + grow[ring] * scale, 0, 1);
+            lookup[i] = (int) Math.round((1 - clear) * 255) << 24 | color & 0xFFFFFF;
+        }
+        if (caster != null) {
+            outsideShadow(matrix, caster, radius * scale, area, lookup, samples, centerX, centerY, halfW - corner, halfH - corner, corner, deviceClip);
+            return true;
+        }
+        if (shadowMask == null || shadowMask.getWidth() < area.width || shadowMask.getHeight() < area.height)
+            shadowMask = new BufferedImage(Math.max(area.width, shadowMask == null ? 0 : shadowMask.getWidth()),
+                Math.max(area.height, shadowMask == null ? 0 : shadowMask.getHeight()), BufferedImage.TYPE_INT_ARGB);
+        int stride = shadowMask.getWidth();
+        int[] pixels = ((java.awt.image.DataBufferInt) shadowMask.getRaster().getDataBuffer()).getData();
+        double innerW = halfW - corner, innerH = halfH - corner;
+        for (int row = 0; row < area.height; row++) {
+            double offsetY = Math.abs(area.y + row + .5 - centerY), qy = offsetY - innerH, dy = Math.max(qy, 0);
+            // Pixel centres this far inside every straight edge all share the first lookup entry.
+            double interior = corner < .5 ? -1 : qy <= 0 ? halfW - .5 : offsetY <= halfH - .5 ? innerW : -1;
+            int spanStart = interior < 0 ? area.width : Math.max(0, (int) Math.ceil(centerX - interior - area.x - .5));
+            int spanEnd = interior < 0 ? -1 : Math.min(area.width - 1, (int) Math.floor(centerX + interior - area.x - .5));
+            for (int column = 0; column < area.width; column++) {
+                if (column == spanStart && spanEnd >= spanStart) {
+                    java.util.Arrays.fill(pixels, row * stride + column, row * stride + spanEnd + 1, lookup[0]);
+                    column = spanEnd;
+                    continue;
+                }
+                double qx = Math.abs(area.x + column + .5 - centerX) - innerW, dx = Math.max(qx, 0);
+                double distance = Math.sqrt(dx * dx + dy * dy) + Math.min(Math.max(qx, qy), 0) - corner;
+                pixels[row * stride + column] = lookup[(int) Math.clamp(Math.round((distance + .5) * 16), 0, samples - 1)];
+            }
+        }
+        Graphics2D output = (Graphics2D) graphics.create();
+        try {
+            output.setTransform(new AffineTransform());
+            output.setClip(deviceClip);
+            output.setComposite(AlphaComposite.SrcOver);
+            output.drawImage(shadowMask, area.x, area.y, area.x + area.width, area.y + area.height,
+                0, 0, area.width, area.height, null);
+        } finally { output.dispose(); }
+        return true;
+    }
+
+    /**
+     * Evaluates and blends only the bands of {@code area} around the caster's surely-covered core,
+     * scaling each pixel by how much of it lies outside the caster's rounded outline. On the screen
+     * surface each band is kept between paints and reused while the geometry is unchanged.
+     */
+    private void outsideShadow(AffineTransform matrix, Rectangle2D.Float caster, double casterCorner, Rectangle area,
+                               int[] lookup, int samples, double centerX, double centerY, double innerW, double innerH,
+                               double corner, Shape deviceClip) {
+        double scale = matrix.getScaleX();
+        double cx = (caster.x + caster.width / 2) * scale + matrix.getTranslateX(), cy = (caster.y + caster.height / 2) * scale + matrix.getTranslateY();
+        double chw = caster.width * scale / 2, chh = caster.height * scale / 2, cInnerW = chw - casterCorner, cInnerH = chh - casterCorner;
+        // Inside the caster inset by its corner radius every pixel is covered.
+        Rectangle core = new Rectangle((int) Math.ceil(cx - chw + casterCorner + 1), (int) Math.ceil(cy - chh + casterCorner + 1), 0, 0);
+        core.add(Math.floor(cx + chw - casterCorner - 1), Math.floor(cy + chh - casterCorner - 1));
+        core = core.intersection(area);
+        List<Rectangle> bands = new ArrayList<>(4);
+        if (core.isEmpty()) bands.add(area);
+        else {
+            bands.add(new Rectangle(area.x, area.y, area.width, core.y - area.y));
+            bands.add(new Rectangle(area.x, core.y + core.height, area.width, area.y + area.height - core.y - core.height));
+            bands.add(new Rectangle(area.x, core.y, core.x - area.x, core.height));
+            bands.add(new Rectangle(core.x + core.width, core.y, area.x + area.width - core.x - core.width, core.height));
+        }
+        long ramp = glassCache == null ? 0 : UiGlassCache.hash(lookup);
+        Graphics2D output = (Graphics2D) graphics.create();
+        try {
+            output.setTransform(new AffineTransform());
+            output.setClip(deviceClip);
+            output.setComposite(AlphaComposite.SrcOver);
+            for (Rectangle band : bands) {
+                if (band.width <= 0 || band.height <= 0 || deviceClip != null && !deviceClip.intersects(band)) continue;
+                var key = glassCache == null ? null : new UiGlassCache.ShadowKey(band, cx, cy, chw, chh, casterCorner, centerX, centerY, innerW, innerH, corner, ramp);
+                BufferedImage image = key == null ? null : glassCache.find(key, 0);
+                if (image == null) {
+                    image = new BufferedImage(band.width, band.height, BufferedImage.TYPE_INT_ARGB);
+                    int[] pixels = ((java.awt.image.DataBufferInt) image.getRaster().getDataBuffer()).getData();
+                    int bandWidth = band.width;
+                    rows(band.height, (long) band.width * band.height, row -> {
+                        double py = band.y + row + .5;
+                        double offsetY = Math.abs(py - centerY), qy = offsetY - innerH, dy = Math.max(qy, 0);
+                        double cqy = Math.abs(py - cy) - cInnerH, cdy = Math.max(cqy, 0);
+                        for (int column = 0; column < bandWidth; column++) {
+                            double px = band.x + column + .5;
+                            double cqx = Math.abs(px - cx) - cInnerW, cdx = Math.max(cqx, 0);
+                            double casterDistance = Math.sqrt(cdx * cdx + cdy * cdy) + Math.min(Math.max(cqx, cqy), 0) - casterCorner;
+                            double visible = Math.clamp(casterDistance + .5, 0, 1);
+                            if (visible <= 0) continue;
+                            double qx = Math.abs(px - centerX) - innerW, dx = Math.max(qx, 0);
+                            double distance = Math.sqrt(dx * dx + dy * dy) + Math.min(Math.max(qx, qy), 0) - corner;
+                            int value = lookup[(int) Math.clamp(Math.round((distance + .5) * 16), 0, samples - 1)];
+                            pixels[row * bandWidth + column] = visible >= 1 ? value : (int) Math.round((value >>> 24) * visible) << 24 | value & 0xFFFFFF;
+                        }
+                    });
+                    if (key != null) glassCache.store(key, 0, image);
+                }
+                output.drawImage(image, band.x, band.y, null);
+            }
+        } finally { output.dispose(); }
     }
 
     /** Coloured glow centred on a shape. Reads as light rather than shade. */
@@ -299,6 +482,8 @@ public final class UiCanvas {
         int bottom = Math.min(target.getHeight(), pixels.y + pixels.height);
         int pixelWidth = right - left, pixelHeight = bottom - top;
         if (pixelWidth <= 0 || pixelHeight <= 0) return false;
+        // Recorded before clipping, so a partial repaint that touches the region repaints all it reads.
+        recordBackdropRead(new Rectangle(left, top, pixelWidth, pixelHeight));
         Shape clip = graphics.getClip();
         Shape deviceClip = clip == null ? null : graphics.getTransform().createTransformedShape(clip);
         if (deviceClip != null && !deviceClip.intersects(left, top, pixelWidth, pixelHeight)) return false;
@@ -306,6 +491,36 @@ public final class UiCanvas {
         int maximumRadius = Math.max(1, (Math.min(pixelWidth, pixelHeight) - 1) / 2);
         int pixelRadius = Math.max(1, Math.min(Math.min(24, maximumRadius), Math.round(radius *
             (float) Math.max(Math.abs(graphics.getTransform().getScaleX()), Math.abs(graphics.getTransform().getScaleY())))));
+        if (glassCache != null && backdropParent == null) {
+            // Screen surface: reuse the frost when nothing beneath it changed.
+            Rectangle read = new Rectangle(left, top, pixelWidth, pixelHeight);
+            int[] backdrop = new int[pixelWidth * pixelHeight];
+            readStraight(target, read, backdrop, 0, pixelWidth);
+            var key = new UiGlassCache.Key(read, read, pixelRadius, 0, 0, 0, 0, null);
+            long hash = UiGlassCache.hash(backdrop);
+            BufferedImage frosted = glassCache.find(key, hash);
+            if (frosted == null) {
+                boxBlur(backdrop, pixelWidth, pixelHeight, pixelRadius);
+                frosted = new BufferedImage(pixelWidth, pixelHeight, BufferedImage.TYPE_INT_ARGB);
+                frosted.setRGB(0, 0, pixelWidth, pixelHeight, backdrop, 0, pixelWidth);
+                glassCache.store(key, hash, frosted);
+            }
+            drawDevice(frosted, left, top, deviceClip);
+            return true;
+        }
+        if (backdropParent != null) {
+            // Inside a group layer the backdrop is the group composited over its parent.
+            if (deviceClip != null) {
+                Rectangle clipBounds = deviceClip.getBounds().intersection(new Rectangle(left, top, pixelWidth, pixelHeight));
+                if (clipBounds.isEmpty()) return false;
+            }
+            int[] backdrop = backdropPixels(left, top, pixelWidth, pixelHeight);
+            boxBlur(backdrop, pixelWidth, pixelHeight, pixelRadius);
+            var blurredLayer = new BufferedImage(pixelWidth, pixelHeight, BufferedImage.TYPE_INT_ARGB);
+            blurredLayer.setRGB(0, 0, pixelWidth, pixelHeight, backdrop, 0, pixelWidth);
+            drawDevice(blurredLayer, left, top, deviceClip);
+            return true;
+        }
         if (deviceClip != null) {
             Rectangle clipBounds = deviceClip.getBounds();
             left = Math.max(left, clipBounds.x - pixelRadius);
@@ -323,13 +538,12 @@ public final class UiCanvas {
             copyGraphics.drawImage(target, 0, 0, pixelWidth, pixelHeight, left, top, right, bottom, null);
         } finally { copyGraphics.dispose(); }
 
-        int kernelSize = pixelRadius * 2 + 1;
-        float[] weights = new float[kernelSize];
-        java.util.Arrays.fill(weights, 1F / kernelSize);
-        BufferedImage horizontal = scratch.horizontal;
+        // A running-sum box blur costs the same for any radius, unlike a convolution kernel.
         BufferedImage blurred = scratch.source;
-        new ConvolveOp(new Kernel(kernelSize, 1, weights), ConvolveOp.EDGE_NO_OP, null).filter(source, horizontal);
-        new ConvolveOp(new Kernel(1, kernelSize, weights), ConvolveOp.EDGE_NO_OP, null).filter(horizontal, blurred);
+        int[] sourcePixels = ((java.awt.image.DataBufferInt) source.getRaster().getDataBuffer()).getData();
+        int[] horizontalPixels = ((java.awt.image.DataBufferInt) scratch.horizontal.getRaster().getDataBuffer()).getData();
+        blurPass(sourcePixels, horizontalPixels, pixelWidth, pixelHeight, pixelRadius, 1, pixelWidth);
+        blurPass(horizontalPixels, sourcePixels, pixelHeight, pixelWidth, pixelRadius, pixelWidth, 1);
 
         Graphics2D output = (Graphics2D) graphics.create();
         try {
@@ -341,6 +555,268 @@ public final class UiCanvas {
             output.dispose();
         }
         return true;
+    }
+
+    private void drawDevice(BufferedImage image, int x, int y, Shape deviceClip) {
+        Graphics2D output = (Graphics2D) graphics.create();
+        try {
+            output.setTransform(new AffineTransform());
+            output.setClip(deviceClip);
+            output.drawImage(image, x, y, null);
+        } finally { output.dispose(); }
+    }
+
+    /** Glass on this canvas reads {@code parent}'s pixels beneath it, this canvas's origin lying at (x, y) there. */
+    void readBackdropFrom(UiCanvas parent, int x, int y) {
+        backdropParent = parent; backdropX = x; backdropY = y;
+    }
+
+    private void recordBackdropRead(Rectangle read) {
+        if (backdropParent != null) backdropParent.recordBackdropRead(new Rectangle(read.x + backdropX, read.y + backdropY, read.width, read.height));
+        else if (backdropReads != null) backdropReads.add(read);
+    }
+
+    /** Copies straight-alpha ARGB rows, reading packed int rasters directly rather than pixel by pixel. */
+    private static void readStraight(BufferedImage image, Rectangle area, int[] out, int offset, int scan) {
+        int type = image.getType();
+        if ((type == BufferedImage.TYPE_INT_ARGB || type == BufferedImage.TYPE_INT_ARGB_PRE)
+                && image.getRaster().getDataBuffer() instanceof java.awt.image.DataBufferInt buffer
+                && image.getSampleModel() instanceof java.awt.image.SinglePixelPackedSampleModel model) {
+            int[] data = buffer.getData();
+            int stride = model.getScanlineStride();
+            int originX = -image.getRaster().getSampleModelTranslateX(), originY = -image.getRaster().getSampleModelTranslateY();
+            for (int row = 0; row < area.height; row++)
+                System.arraycopy(data, (originY + area.y + row) * stride + originX + area.x, out, offset + row * scan, area.width);
+            if (type == BufferedImage.TYPE_INT_ARGB_PRE) for (int row = 0; row < area.height; row++) {
+                for (int i = offset + row * scan, end = i + area.width; i < end; i++) {
+                    int pixel = out[i], a = pixel >>> 24;
+                    if (a == 0 || a == 255) continue;
+                    out[i] = a << 24 | Math.min(255, (pixel >>> 16 & 255) * 255 / a) << 16
+                        | Math.min(255, (pixel >>> 8 & 255) * 255 / a) << 8 | Math.min(255, (pixel & 255) * 255 / a);
+                }
+            }
+            return;
+        }
+        image.getRGB(area.x, area.y, area.width, area.height, out, offset, scan);
+    }
+
+    /**
+     * Straight-alpha pixels behind a device rectangle: this canvas's own, and inside a group layer
+     * that group composited over everything its parents hold there. Pixels off the surface are transparent.
+     */
+    private int[] backdropPixels(int x, int y, int width, int height) {
+        int[] pixels = new int[width * height];
+        Rectangle own = new Rectangle(x, y, width, height).intersection(new Rectangle(target.getWidth(), target.getHeight()));
+        if (!own.isEmpty()) readStraight(target, own, pixels, (own.y - y) * width + own.x - x, width);
+        if (backdropParent == null) return pixels;
+        int[] under = backdropParent.backdropPixels(x + backdropX, y + backdropY, width, height);
+        for (int i = 0; i < pixels.length; i++) {
+            int top = pixels[i], a = top >>> 24;
+            if (a == 255) continue;
+            int bottom = under[i];
+            if (a == 0) { pixels[i] = bottom; continue; }
+            int ba = (bottom >>> 24) * (255 - a) / 255, oa = a + ba;
+            if (oa == 0) { pixels[i] = 0; continue; }
+            int r = ((top >>> 16 & 255) * a + (bottom >>> 16 & 255) * ba) / oa;
+            int g = ((top >>> 8 & 255) * a + (bottom >>> 8 & 255) * ba) / oa;
+            int b = ((top & 255) * a + (bottom & 255) * ba) / oa;
+            pixels[i] = oa << 24 | r << 16 | g << 8 | b;
+        }
+        return pixels;
+    }
+
+    /**
+     * Liquid glass over everything already painted beneath it. The rim refracts the backdrop
+     * outward along the edge normal (strongest at the edge, with slight colour separation), the
+     * body is softened and lifted toward the tint, and a specular edge catches the light from above.
+     * Like {@link #backdropBlur} it reads pixels already painted, so paint the glass after what it
+     * should bend; moving glass is re-evaluated on each repaint, and a partial repaint that touches
+     * the lens repaints everything the lens reads. Inside a {@link #withLayer} group it sees the group
+     * over what lies behind it, so fading panels keep refracting. Cached and GPU layers are painted on
+     * their own, so glass there bends only what that layer itself drew first. Rotated or sheared
+     * drawing falls back to a blurred, tinted panel. Returns false without a readable surface.
+     */
+    public boolean liquidGlass(float x, float y, float width, float height, float radius, UiGlass glass) {
+        if (target == null || glass == null || width <= 0 || height <= 0) return false;
+        radius = Math.max(0, Math.min(radius, Math.min(width, height) / 2));
+        AffineTransform matrix = graphics.getTransform();
+        double scale = matrix.getScaleX();
+        if ((glass.shadow() >>> 24) != 0) shadowOutside(glass.shadow(), 14, 0, 6, x, y, width, height, radius);
+        if (matrix.getShearX() != 0 || matrix.getShearY() != 0 || matrix.getScaleY() != scale || scale <= 0) {
+            boolean read = backdropBlur(Math.max(1, glass.blur()), x, y, width, height);
+            roundRect(glass.tint(), x, y, width, height, radius);
+            return read;
+        }
+        double halfW = width * scale / 2, halfH = height * scale / 2, corner = radius * scale;
+        double centerX = (x + width / 2) * scale + matrix.getTranslateX(), centerY = (y + height / 2) * scale + matrix.getTranslateY();
+        Rectangle area = new Rectangle((int) Math.floor(centerX - halfW - 1), (int) Math.floor(centerY - halfH - 1), 0, 0);
+        area.add(Math.ceil(centerX + halfW + 1), Math.ceil(centerY + halfH + 1));
+        Rectangle surfaceBounds = new Rectangle(target.getWidth(), target.getHeight());
+        double bend = glass.refraction() * scale, rim = glass.rim() * scale, spread = glass.dispersion() * .22;
+        int blur = Math.round(glass.blur() * (float) scale);
+        int margin = (int) Math.ceil(bend * (1 + spread) + blur * 1.5 + 2);
+        // The whole lens is recorded before clipping, so a partial repaint that touches it repaints all it reads.
+        recordBackdropRead(new Rectangle(area.x - margin, area.y - margin, area.width + margin * 2, area.height + margin * 2)
+            .intersection(surfaceBounds));
+        Shape clip = graphics.getClip();
+        Shape deviceClip = clip == null ? null : matrix.createTransformedShape(clip);
+        if (deviceClip != null) area = area.intersection(deviceClip.getBounds());
+        area = area.intersection(surfaceBounds);
+        if (area.isEmpty()) return true;
+        Rectangle source = new Rectangle(area.x - margin, area.y - margin, area.width + margin * 2, area.height + margin * 2)
+            .intersection(surfaceBounds);
+        int sw = source.width, sh = source.height;
+        int[] backdrop = backdropPixels(source.x, source.y, sw, sh);
+        // Unchanged pixels under unchanged glass give the same lens: reuse it instead of recomputing.
+        var key = glassCache == null ? null : new UiGlassCache.Key(area, source, centerX, centerY, halfW, halfH, corner, glass);
+        long hash = key == null ? 0 : UiGlassCache.hash(backdrop);
+        BufferedImage output = key == null ? null : glassCache.find(key, hash);
+        if (output == null) {
+            output = lens(backdrop, source, area, centerX, centerY, halfW, halfH, corner, bend, rim, spread, blur, glass);
+            if (key != null) glassCache.store(key, hash, output);
+        }
+        drawDevice(output, area.x, area.y, deviceClip);
+        // Specular edge: bright along the top, fading down the sides; a hairline grounds it on light backdrops.
+        float h = glass.highlight();
+        graphics.setStroke(new BasicStroke(1.2F));
+        graphics.setPaint(linearPaint(alpha(0xFFFFFF, Math.round(235 * h)), alpha(0xFFFFFF, Math.round(40 * h)), 90, x, y, width, height));
+        graphics.draw(roundShape(x + .6F, y + .6F, width - 1.2F, height - 1.2F, Math.max(0, radius - .6F)));
+        graphics.setPaint(linearPaint(alpha(0x000000, 0), alpha(0x000000, Math.round(60 * h)), 90, x, y, width, height));
+        graphics.setStroke(new BasicStroke(.7F));
+        graphics.draw(roundShape(x - .2F, y - .2F, width + .4F, height + .4F, radius + .2F));
+        graphics.setPaint(awtColor(0xFF000000));
+        return true;
+    }
+
+    /** One lens over a backdrop: refracted, dispersed rim and a softened, tinted body. Pixels outside stay clear. */
+    private static BufferedImage lens(int[] backdrop, Rectangle source, Rectangle area, double centerX, double centerY,
+                                      double halfW, double halfH, double corner, double bend, double rim, double spread,
+                                      int blur, UiGlass glass) {
+        int sw = source.width, sh = source.height;
+        // Frost is a low-pass filter, so blur at half resolution and sample it back bilinearly.
+        boolean half = blur >= 2;
+        int bw = half ? (sw + 1) / 2 : sw, bh = half ? (sh + 1) / 2 : sh;
+        int[] blurred = half ? halve(backdrop, sw, sh) : backdrop;
+        int radius = half ? Math.max(1, blur / 2) : blur;
+        if (blur > 0) { boxBlur(blurred, bw, bh, radius); boxBlur(blurred, bw, bh, Math.max(1, radius / 2)); }
+        double toBlur = half ? .5 : 1, blurOffset = half ? -.25 : 0;
+        var output = new BufferedImage(area.width, area.height, BufferedImage.TYPE_INT_ARGB);
+        int[] pixels = ((java.awt.image.DataBufferInt) output.getRaster().getDataBuffer()).getData();
+        float tintA = (glass.tint() >>> 24) / 255F;
+        int tintR = glass.tint() >>> 16 & 255, tintG = glass.tint() >>> 8 & 255, tintB = glass.tint() & 255;
+        double innerW = halfW - corner, innerH = halfH - corner, top = centerY - halfH;
+        rows(area.height, (long) area.width * area.height, row -> {
+            double py = area.y + row + .5, oy = py - centerY, qy = Math.abs(oy) - innerH, dy = Math.max(qy, 0);
+            float sheen = glass.highlight() * .07F * (float) Math.max(0, 1 - (py - top) / (halfH * 2));
+            double sy = (py - source.y - .5) * toBlur + blurOffset;
+            for (int column = 0; column < area.width; column++) {
+                double px = area.x + column + .5, ox = px - centerX, qx = Math.abs(ox) - innerW, dx = Math.max(qx, 0);
+                double edge = Math.sqrt(dx * dx + dy * dy);
+                double distance = edge + Math.min(Math.max(qx, qy), 0) - corner;
+                if (distance > .5) continue;
+                double coverage = Math.min(1, .5 - distance);
+                double depth = Math.min(1, Math.max(0, 1 + distance / rim));
+                double lens = depth * depth;
+                double sx = (px - source.x - .5) * toBlur + blurOffset;
+                int r, g, b;
+                if (lens <= 0.0005) {
+                    int pixel = half ? sampleRgb(blurred, bw, bh, sx, sy)
+                        : blurred[clampIndex((int) py - source.y, sh) * sw + clampIndex((int) px - source.x, sw)];
+                    r = pixel >>> 16 & 255; g = pixel >>> 8 & 255; b = pixel & 255;
+                } else {
+                    double nx, ny;
+                    if (qx > 0 && qy > 0) { nx = dx / edge * Math.signum(ox); ny = dy / edge * Math.signum(oy); }
+                    else if (qx > qy) { nx = Math.signum(ox); ny = 0; }
+                    else { nx = 0; ny = Math.signum(oy); }
+                    double shift = bend * lens * toBlur;
+                    r = sample(blurred, bw, bh, sx + nx * shift * (1 + spread), sy + ny * shift * (1 + spread), 16);
+                    g = sample(blurred, bw, bh, sx + nx * shift, sy + ny * shift, 8);
+                    b = sample(blurred, bw, bh, sx + nx * shift * (1 - spread), sy + ny * shift * (1 - spread), 0);
+                }
+                float lift = tintA + (float) lens * glass.highlight() * .1F;
+                r = Math.min(255, Math.round(r + (tintR - r) * tintA + (255 - r) * (lift - tintA + sheen)));
+                g = Math.min(255, Math.round(g + (tintG - g) * tintA + (255 - g) * (lift - tintA + sheen)));
+                b = Math.min(255, Math.round(b + (tintB - b) * tintA + (255 - b) * (lift - tintA + sheen)));
+                pixels[row * area.width + column] = (int) Math.round(coverage * 255) << 24 | r << 16 | g << 8 | b;
+            }
+        });
+        return output;
+    }
+
+    /** 2x2 box downsample of a straight-alpha raster; odd edges repeat the last pixel. */
+    private static int[] halve(int[] pixels, int width, int height) {
+        int hw = (width + 1) / 2, hh = (height + 1) / 2;
+        int[] out = new int[hw * hh];
+        for (int y = 0; y < hh; y++) {
+            int y0 = y * 2 * width, y1 = Math.min(height - 1, y * 2 + 1) * width;
+            for (int x = 0; x < hw; x++) {
+                int x0 = x * 2, x1 = Math.min(width - 1, x * 2 + 1);
+                int a = pixels[y0 + x0], b = pixels[y0 + x1], c = pixels[y1 + x0], d = pixels[y1 + x1];
+                out[y * hw + x] = ((a >>> 24) + (b >>> 24) + (c >>> 24) + (d >>> 24) >> 2) << 24
+                    | ((a >>> 16 & 255) + (b >>> 16 & 255) + (c >>> 16 & 255) + (d >>> 16 & 255) >> 2) << 16
+                    | ((a >>> 8 & 255) + (b >>> 8 & 255) + (c >>> 8 & 255) + (d >>> 8 & 255) >> 2) << 8
+                    | ((a & 255) + (b & 255) + (c & 255) + (d & 255) >> 2);
+            }
+        }
+        return out;
+    }
+
+    /** Bilinear sample of all three colour channels at once. */
+    private static int sampleRgb(int[] pixels, int width, int height, double x, double y) {
+        int x0 = (int) Math.floor(x), y0 = (int) Math.floor(y);
+        float fx = (float) (x - x0), fy = (float) (y - y0);
+        int ax = clampIndex(x0, width), bx = clampIndex(x0 + 1, width), ay = clampIndex(y0, height) * width, by = clampIndex(y0 + 1, height) * width;
+        int p = pixels[ay + ax], q = pixels[ay + bx], u = pixels[by + ax], v = pixels[by + bx];
+        float w0 = (1 - fx) * (1 - fy), w1 = fx * (1 - fy), w2 = (1 - fx) * fy, w3 = fx * fy;
+        int r = Math.round((p >>> 16 & 255) * w0 + (q >>> 16 & 255) * w1 + (u >>> 16 & 255) * w2 + (v >>> 16 & 255) * w3);
+        int g = Math.round((p >>> 8 & 255) * w0 + (q >>> 8 & 255) * w1 + (u >>> 8 & 255) * w2 + (v >>> 8 & 255) * w3);
+        int b = Math.round((p & 255) * w0 + (q & 255) * w1 + (u & 255) * w2 + (v & 255) * w3);
+        return r << 16 | g << 8 | b;
+    }
+
+    private static int clampIndex(int value, int size) { return Math.max(0, Math.min(size - 1, value)); }
+
+    /** Bilinear sample of one channel of a straight-alpha ARGB raster. */
+    private static int sample(int[] pixels, int width, int height, double x, double y, int shift) {
+        int x0 = (int) Math.floor(x), y0 = (int) Math.floor(y);
+        double fx = x - x0, fy = y - y0;
+        int ax = clampIndex(x0, width), bx = clampIndex(x0 + 1, width), ay = clampIndex(y0, height), by = clampIndex(y0 + 1, height);
+        double top = (pixels[ay * width + ax] >>> shift & 255) * (1 - fx) + (pixels[ay * width + bx] >>> shift & 255) * fx;
+        double bottom = (pixels[by * width + ax] >>> shift & 255) * (1 - fx) + (pixels[by * width + bx] >>> shift & 255) * fx;
+        return (int) Math.round(top * (1 - fy) + bottom * fy);
+    }
+
+    /** Separable running-sum box blur of an opaque-ish ARGB raster, in place. */
+    private static void boxBlur(int[] pixels, int width, int height, int radius) {
+        int[] scratch = new int[pixels.length];
+        blurPass(pixels, scratch, width, height, radius, 1, width);
+        blurPass(scratch, pixels, height, width, radius, width, 1);
+    }
+
+    /** Rasters at least this large split their rows across cores; smaller ones are not worth the hand-off. */
+    private static final int PARALLEL_PIXELS = 1 << 15;
+
+    /** Runs {@code row} for 0..count-1, in parallel when the work is large enough. Rows must be independent. */
+    private static void rows(int count, long pixels, java.util.function.IntConsumer row) {
+        if (pixels >= PARALLEL_PIXELS && count > 1) java.util.stream.IntStream.range(0, count).parallel().forEach(row);
+        else for (int i = 0; i < count; i++) row.accept(i);
+    }
+
+    private static void blurPass(int[] from, int[] to, int length, int lines, int radius, int step, int lineStep) {
+        int window = radius * 2 + 1;
+        rows(lines, (long) length * lines, line -> {
+            int base = line * lineStep, a = 0, r = 0, g = 0, b = 0;
+            for (int i = -radius; i <= radius; i++) {
+                int pixel = from[base + clampIndex(i, length) * step];
+                a += pixel >>> 24; r += pixel >>> 16 & 255; g += pixel >>> 8 & 255; b += pixel & 255;
+            }
+            for (int i = 0; i < length; i++) {
+                to[base + i * step] = (a / window) << 24 | (r / window) << 16 | (g / window) << 8 | (b / window);
+                int out = from[base + clampIndex(i - radius, length) * step], in = from[base + clampIndex(i + radius + 1, length) * step];
+                a += (in >>> 24) - (out >>> 24); r += (in >>> 16 & 255) - (out >>> 16 & 255);
+                g += (in >>> 8 & 255) - (out >>> 8 & 255); b += (in & 255) - (out & 255);
+            }
+        });
     }
 
     // ---------------------------------------------------------------- procedural texture
@@ -445,10 +921,13 @@ public final class UiCanvas {
         FontMetrics metrics = graphics.getFontMetrics(font);
         float baseline = top + metrics.getAscent();
         float cursor = x;
-        for (int i = 0; i < value.length(); i++) {
-            String glyph = String.valueOf(value.charAt(i));
+        var boundaries = UiTextBoundary.index(value);
+        for (int start = 0; start < value.length();) {
+            int end = boundaries.next(start);
+            String glyph = value.substring(start, end);
             graphics.drawString(glyph, cursor, baseline);
             cursor += metrics.stringWidth(glyph) + tracking;
+            start = end;
         }
     }
 
@@ -512,11 +991,12 @@ public final class UiCanvas {
         Font selected=font(size,style,family);
         float ascent=graphics.getFontMetrics(selected).getAscent();
         var result=new ArrayList<UiShapedText.Line>();
+        UiTextBoundary.Index boundaries=UiTextBoundary.index(value);
         int paragraphStart=0;
         while(paragraphStart<=value.length()) {
-            int newline=value.indexOf('\n',paragraphStart);
-            int end=newline<0?value.length():newline;
-            if(end==paragraphStart)result.add(new UiShapedText.Line(end,end,new UiShapedText(null,value,end,end,ascent)));
+            int end=paragraphStart;
+            while(end<value.length()&&value.charAt(end)!='\n'&&value.charAt(end)!='\r')end++;
+            if(end==paragraphStart)result.add(new UiShapedText.Line(end,end,new UiShapedText(null,value,end,end,ascent,boundaries)));
             else {
                 var attributed=new java.text.AttributedString(value.substring(paragraphStart,end));
                 attributed.addAttribute(java.awt.font.TextAttribute.FONT,selected);
@@ -526,18 +1006,18 @@ public final class UiCanvas {
                     int start=paragraphStart+measurer.getPosition();
                     var layout=measurer.nextLayout(Math.max(.01F,width));
                     int next=paragraphStart+measurer.getPosition();
-                    // JDK LineBreakMeasurer can split a surrogate pair when even one glyph cannot fit.
-                    if(UiTextBoundary.floor(value,next)!=next) {
-                        next=UiTextBoundary.next(value,next);
+                    // Even a tiny viewport must consume one complete grapheme, never half an emoji/mark sequence.
+                    if(!boundaries.contains(next)) {
+                        next=boundaries.ceil(next);
                         measurer.setPosition(next-paragraphStart);
                         layout=new java.awt.font.TextLayout(value.substring(start,next),selected,graphics.getFontRenderContext());
                     }
                     // Reuse the layout that chose the line break; do not shape each line twice.
-                    result.add(new UiShapedText.Line(start,next,new UiShapedText(layout,value,start,next,ascent)));
+                    result.add(new UiShapedText.Line(start,next,new UiShapedText(layout,value,start,next,ascent,boundaries)));
                 }
             }
-            if(newline<0)break;
-            paragraphStart=newline+1;
+            if(end==value.length())break;
+            paragraphStart=boundaries.next(end);
         }
         return List.copyOf(result);
     }
@@ -566,9 +1046,18 @@ public final class UiCanvas {
         return graphics.getFontMetrics(font(size, style, family)).getHeight();
     }
 
+    /** Advance of {@link #trackedText}: each grapheme is measured exactly as it is drawn. */
     public float trackedTextWidth(String value, float size, int style, String family, float tracking) {
         if (value == null || value.isEmpty()) return 0;
-        return textWidth(value, size, style, family) + tracking * (value.length() - 1);
+        FontMetrics metrics = graphics.getFontMetrics(font(size, style, family));
+        var boundaries = UiTextBoundary.index(value);
+        float width = -tracking;
+        for (int start = 0; start < value.length();) {
+            int end = boundaries.next(start);
+            width += metrics.stringWidth(value.substring(start, end)) + tracking;
+            start = end;
+        }
+        return width;
     }
 
     /**
@@ -642,6 +1131,9 @@ public final class UiCanvas {
         outer:
         for (UiRichText.Span span : value.spans()) {
             StringBuilder run = new StringBuilder();
+            UiRichText.Span ellipsisStyle = new UiRichText.Span("…", span.color(), span.bold(),
+                span.italic(), span.underlined(), span.strikethrough(), false);
+            float ellipsisWidth = formattedSpanWidth("…", ellipsisStyle, size, family);
             for (int offset = 0; offset < span.text().length();) {
                 int codePoint = span.text().codePointAt(offset);
                 if (codePoint == '\n' || codePoint == '\r') {
@@ -650,9 +1142,6 @@ public final class UiCanvas {
                 }
                 String glyph = new String(Character.toChars(codePoint));
                 float glyphWidth = formattedSpanWidth(glyph, span, size, family);
-                UiRichText.Span ellipsisStyle = new UiRichText.Span("…", span.color(), span.bold(),
-                    span.italic(), span.underlined(), span.strikethrough(), false);
-                float ellipsisWidth = formattedSpanWidth("…", ellipsisStyle, size, family);
                 if (ellipsisWidth > Math.max(0, maxWidth)) return UiRichText.plain("");
                 if (width + glyphWidth + ellipsisWidth > Math.max(0, maxWidth)) {
                     if (!run.isEmpty()) kept.add(copySpan(span, run.toString()));
@@ -709,8 +1198,9 @@ public final class UiCanvas {
     public String ellipsize(String value, float maxWidth, float size, int style, String family) {
         if (value == null || value.isEmpty() || textWidth(value, size, style, family) <= maxWidth) return value;
         String suffix = "…";
-        int end = value.length();
-        while (end > 0 && textWidth(value.substring(0, end) + suffix, size, style, family) > maxWidth) end--;
+        var boundaries = UiTextBoundary.index(value);
+        int end = boundaries.previous(value.length());
+        while (end > 0 && textWidth(value.substring(0, end) + suffix, size, style, family) > maxWidth) end = boundaries.previous(end);
         return end <= 0 ? suffix : value.substring(0, end) + suffix;
     }
 
@@ -777,70 +1267,49 @@ public final class UiCanvas {
     // ---------------------------------------------------------------- scoped state
 
     public void withClip(float x, float y, float width, float height, Runnable painter) {
-        Shape old = graphics.getClip();
-        graphics.clip(new Rectangle2D.Float(x, y, Math.max(0, width), Math.max(0, height)));
-        try {
-            painter.run();
-        } finally {
-            graphics.setClip(old);
-        }
+        withClipShape(new Rectangle2D.Float(x, y, Math.max(0, width), Math.max(0, height)), painter);
     }
 
     /** Clips to a rounded rectangle, for masking content inside a card. */
     public void withRoundedClip(float x, float y, float width, float height, float radius, Runnable painter) {
-        Shape old = graphics.getClip();
-        graphics.clip(roundShape(x, y, Math.max(0, width), Math.max(0, height), radius));
-        try {
-            painter.run();
-        } finally {
-            graphics.setClip(old);
-        }
+        withClipShape(roundShape(x, y, Math.max(0, width), Math.max(0, height), radius), painter);
+    }
+
+    /** Clips to a free-form outline, such as a custom button shape. */
+    public void withClip(UiPath outline, Runnable painter) {
+        withClipShape(outline.shape(), painter);
     }
 
     /** Clips to a circle, for avatars and badges. */
     public void withCircleClip(float centerX, float centerY, float radius, Runnable painter) {
+        withClipShape(new Ellipse2D.Float(centerX - radius, centerY - radius, radius * 2, radius * 2), painter);
+    }
+
+    private void withClipShape(Shape shape, Runnable painter) {
         Shape old = graphics.getClip();
-        graphics.clip(new Ellipse2D.Float(centerX - radius, centerY - radius, radius * 2, radius * 2));
-        try {
-            painter.run();
-        } finally {
-            graphics.setClip(old);
-        }
+        graphics.clip(shape);
+        try { painter.run(); } finally { graphics.setClip(old); }
     }
 
     /** Rotates everything drawn inside, in degrees clockwise about a pivot. */
     public void withRotation(float degrees, float pivotX, float pivotY, Runnable painter) {
-        AffineTransform old = graphics.getTransform();
-        graphics.rotate(Math.toRadians(degrees), pivotX, pivotY);
-        try {
-            painter.run();
-        } finally {
-            graphics.setTransform(old);
-        }
+        withMatrix(g -> g.rotate(Math.toRadians(degrees), pivotX, pivotY), painter);
     }
 
     /** Scales everything drawn inside about a pivot. */
     public void withScale(float scaleX, float scaleY, float pivotX, float pivotY, Runnable painter) {
-        AffineTransform old = graphics.getTransform();
-        graphics.translate(pivotX, pivotY);
-        graphics.scale(scaleX, scaleY);
-        graphics.translate(-pivotX, -pivotY);
-        try {
-            painter.run();
-        } finally {
-            graphics.setTransform(old);
-        }
+        withMatrix(g -> { g.translate(pivotX, pivotY); g.scale(scaleX, scaleY); g.translate(-pivotX, -pivotY); }, painter);
     }
 
     /** Translates everything drawn inside. Used by scroll containers and custom viewports. */
     public void withTranslation(float offsetX, float offsetY, Runnable painter) {
+        withMatrix(g -> g.translate(offsetX, offsetY), painter);
+    }
+
+    private void withMatrix(java.util.function.Consumer<Graphics2D> change, Runnable painter) {
         AffineTransform old = graphics.getTransform();
-        graphics.translate(offsetX, offsetY);
-        try {
-            painter.run();
-        } finally {
-            graphics.setTransform(old);
-        }
+        change.accept(graphics);
+        try { painter.run(); } finally { graphics.setTransform(old); }
     }
 
     /** Multiplies opacity per drawing operation. Use withLayer for overlapping shapes as one group. */
@@ -875,7 +1344,9 @@ public final class UiCanvas {
             child.transform(graphics.getTransform());
             Shape clip = graphics.getClip();
             if (clip != null) child.clip(clip);
-            painter.accept(new UiCanvas(child, image));
+            var group = new UiCanvas(child, image);
+            if (target != null) { group.backdropParent = this; group.backdropX = pixels.x; group.backdropY = pixels.y; }
+            painter.accept(group);
         } finally { child.dispose(); }
         Graphics2D output = (Graphics2D) graphics.create();
         try {
@@ -921,10 +1392,7 @@ public final class UiCanvas {
 
     /** Transforms drawing around a pivot. Interactive consumers should use UiContext.withTransform. */
     public void withTransform(UiTransform transform, float pivotX, float pivotY, Runnable painter) {
-        AffineTransform previous = graphics.getTransform();
-        graphics.transform(transform.matrix(pivotX, pivotY));
-        try { withOpacity(transform.opacity(), painter); }
-        finally { graphics.setTransform(previous); }
+        withMatrix(g -> g.transform(transform.matrix(pivotX, pivotY)), () -> withOpacity(transform.opacity(), painter));
     }
 
     /**
@@ -936,24 +1404,43 @@ public final class UiCanvas {
     public void cachedLayer(UiLayer layer, Object revision, UiRect bounds, java.util.function.Consumer<UiCanvas> painter) {
         if (layer == null || painter == null || bounds.width() <= 0 || bounds.height() <= 0) return;
         var matrix = graphics.getTransform();
-        float quality = Math.max(1, Math.min(4, Math.round(Math.max(
+        // Axis-aligned uniform drawing caches at the exact device scale and phase and is blitted 1:1.
+        // A reused revision keeps the scale and sub-pixel phase it was painted at: moving content
+        // snaps to the nearest device pixel and scaling or rotating content resamples, so motion
+        // never repaints the cache. Other transforms cache at a whole-number quality bucket.
+        double scale = matrix.getScaleX();
+        boolean axisAligned = matrix.getShearX() == 0 && matrix.getShearY() == 0
+            && matrix.getScaleY() == scale && scale > 0 && scale <= 4;
+        double originX = bounds.x() * scale + matrix.getTranslateX(), originY = bounds.y() * scale + matrix.getTranslateY();
+        boolean keep = layer.cached() && java.util.Objects.equals(layer.revision(), revision);
+        float quality = keep ? layer.quality : axisAligned ? (float) scale : Math.max(1, Math.min(4, Math.round(Math.max(
             Math.hypot(matrix.getScaleX(), matrix.getShearY()), Math.hypot(matrix.getShearX(), matrix.getScaleY())))));
-        int w = Math.max(1, (int) Math.ceil(bounds.width() * quality));
-        int h = Math.max(1, (int) Math.ceil(bounds.height() * quality));
+        float alignX = keep ? layer.alignX : axisAligned ? (float) (originX - Math.floor(originX)) : 0;
+        float alignY = keep ? layer.alignY : axisAligned ? (float) (originY - Math.floor(originY)) : 0;
+        int w = Math.max(1, (int) Math.ceil(bounds.width() * quality + alignX));
+        int h = Math.max(1, (int) Math.ceil(bounds.height() * quality + alignY));
         if (!layer.reuse(w, h, revision)) {
             var child = layer.image().createGraphics();
             try {
-                child.scale(quality, quality); child.translate(-bounds.x(), -bounds.y());
+                child.translate(alignX, alignY); child.scale(quality, quality); child.translate(-bounds.x(), -bounds.y());
                 painter.accept(new UiCanvas(child, layer.image()));
             } finally { child.dispose(); }
-            layer.finishCache();
+            layer.finishCache(quality, alignX, alignY);
         }
         if (layer.cachedImage() == null) return;
         var previous = graphics.getTransform();
-        graphics.translate(bounds.x(), bounds.y());
-        graphics.scale(bounds.width() / w, bounds.height() / h);
-        try { graphics.drawImage(layer.cachedImage(), layer.cachedX(), layer.cachedY(), null); }
-        finally { graphics.setTransform(previous); }
+        try {
+            if (axisAligned && scale == layer.quality) {
+                graphics.setTransform(new AffineTransform());
+                graphics.drawImage(layer.cachedImage(), (int) Math.round(originX - layer.alignX) + layer.cachedX(),
+                    (int) Math.round(originY - layer.alignY) + layer.cachedY(), null);
+            } else {
+                graphics.translate(bounds.x(), bounds.y());
+                graphics.scale(1 / layer.quality, 1 / layer.quality);
+                graphics.translate(-layer.alignX, -layer.alignY);
+                graphics.drawImage(layer.cachedImage(), layer.cachedX(), layer.cachedY(), null);
+            }
+        } finally { graphics.setTransform(previous); }
     }
 
     /**
@@ -977,7 +1464,7 @@ public final class UiCanvas {
             sourceH = Math.max(1, Math.round(sourceW / targetAspect));
             sourceY = (image.getHeight() - sourceH) / 2;
         }
-        drawMinecraftImage(image, sourceX, sourceY, sourceW, sourceH, x, y, width, height);
+        drawMinecraftImage(image, sourceX, sourceY, sourceW, sourceH, x, y, width, height, UiImageOptions.Sampling.NEAREST);
         return true;
     }
 
@@ -1068,10 +1555,6 @@ public final class UiCanvas {
     }
 
     private void drawMinecraftImage(BufferedImage image, int sourceX, int sourceY, int sourceWidth,
-                                    int sourceHeight, float x, float y, float width, float height) {
-        drawMinecraftImage(image,sourceX,sourceY,sourceWidth,sourceHeight,x,y,width,height,UiImageOptions.Sampling.NEAREST);
-    }
-    private void drawMinecraftImage(BufferedImage image, int sourceX, int sourceY, int sourceWidth,
                                     int sourceHeight, float x, float y, float width, float height,UiImageOptions.Sampling sampling) {
         Object old = graphics.getRenderingHint(RenderingHints.KEY_INTERPOLATION);
         graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, interpolation(sampling));
@@ -1112,12 +1595,8 @@ public final class UiCanvas {
             if (pixels == null || pixels.isClosed()) return null;
             int width = pixels.getWidth(), height = pixels.getHeight();
             BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
-            int[] source = pixels.getPixelsABGR();
-            int[] target = new int[source.length];
-            for (int i = 0; i < source.length; i++) {
-                int abgr = source[i];
-                target[i] = (abgr & 0xFF00FF00) | ((abgr & 0x000000FF) << 16) | ((abgr >>> 16) & 0x000000FF);
-            }
+            int[] target = pixels.getPixelsABGR();
+            for (int i = 0; i < target.length; i++) target[i] = UiPixelTransfer.swapRedBlue(target[i]);
             image.setRGB(0, 0, width, height, target, 0, width);
             return image;
         } catch (RuntimeException ignored) {
@@ -1170,7 +1649,7 @@ public final class UiCanvas {
     private static Font font(float size, int style, String family) {
         float quantised = Math.max(1F, Math.min(512F, Math.round(size * 16F) / 16F));
         String resolved = family == null || family.isEmpty() ? SANS : family;
-        String key = resolved + '|' + style + '|' + Math.round(quantised * 16F);
+        var key = new FontKey(resolved, style, Math.round(quantised * 16F));
         Font cached = FONTS.get(key);
         if (cached != null) return cached;
         if (FONTS.size() >= FONT_CACHE_LIMIT) FONTS.clear();

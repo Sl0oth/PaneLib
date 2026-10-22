@@ -222,7 +222,75 @@ other controls. Painting uses the surrounding layout coordinates.
 Labels become tooltips and are available through `UiScreen.buttonState(id)` as
 semantic metadata from the last paint, including retained virtual rows. This is
 not an automatic narrator or screen-reader bridge. Pointer shape remains the
-registered rectangle, including for circular artwork.
+registered rectangle, including for circular artwork; use `shapedButton` when it should not.
+
+### Custom-shaped buttons
+
+`shapedButton` takes an outline built with `canvas().path()`, and that outline is the exact
+pointer target: the empty corners of a hexagon, chevron or ring segment never take hover or
+clicks. The focus ring follows the outline; keyboard, tooltip and disabled behaviour match
+`paintedButton`. `UiPath.arc` builds ring segments, and `canvas.withClip(path, ...)` keeps
+effects such as a hover sheen inside the shape.
+
+```java
+UiPath hex = ui.canvas().path();
+for (int i = 0; i < 6; i++) {
+    double a = Math.toRadians(60 * i - 90);
+    hex.lineTo(cx + (float) Math.cos(a) * 24, cy + (float) Math.sin(a) * 24);
+}
+hex.close();
+ui.shapedButton("map", "World map", "open-map", hex, true, (g, state) -> {
+    hex.fill(state.hovered() ? 0xFF1D2A3F : 0xFF121C2B);
+    UiIcon.COLUMNS.draw(g, 0xFFEAF0F8, cx - 9, cy - 9, 18, 1.7F);
+});
+
+// A 56-degree ring segment for a radial menu: outer arc forward, inner arc back.
+UiPath wedge = ui.canvas().path().arc(cx, cy, 100, -118, 56).arc(cx, cy, 50, -62, -56).close();
+```
+
+PaneOS (open `runExamples`, then PaneOS) uses circular traffic lights, round calculator keys and
+circular Control Center buttons whose empty corners never take the pointer.
+
+## Liquid glass
+
+`canvas.liquidGlass(x, y, width, height, radius, UiGlass)` turns a rounded rectangle into glass over
+whatever was painted before it. The rim refracts the backdrop along the edge normal, strongest at
+the edge and with slight colour separation; the body is frosted and lifted toward a tint; a
+specular edge catches light from above and an optional shadow falls only outside the shape.
+
+```java
+UiGlass dock = UiGlass.regular().withTint(0x40FFFFFF);   // refraction, rim, blur, tint, dispersion, highlight, shadow
+g.liquidGlass(x, y, width, 70, 26, dock);
+UiGlass control = UiGlass.clear();                       // thinner rim, almost no frost, for small controls
+```
+
+Paint glass after what it should bend. It reads the surface itself, so it costs work only when the
+page repaints, and Pane keeps each lens between paints: a lens whose geometry, appearance and every
+backdrop pixel are unchanged is reused instead of recomputed, and frost is blurred at half resolution.
+`backdropBlur` gets the same reuse. A partial repaint that touches what a lens or blur reads grows to
+cover all of it, so a hovered dock icon never leaves the glass sampling its own stale output.
+
+Inside a `withLayer` group, glass sees the group composited over everything behind it, so a fading
+panel keeps refracting the desktop. Inside `cachedLayer` and `gpuLayer` painting it sees only what
+that layer drew first; put the backdrop in the same cache when both are static, as PaneOS does with
+its wallpaper and widgets. Rotated or sheared drawing falls back to a blurred, tinted panel.
+
+## Menu rows and context menus
+
+Menu rows can show a right-aligned shortcut hint, be disabled, or start a new group with a divider:
+
+```java
+List.of(new UiMenuItem("new", "New Window", "new-window").shortcut("⌘N"),
+    new UiMenuItem("undo", "Undo", "undo").shortcut("⌘Z").enabled(false),
+    new UiMenuItem("close", "Close Window", "close").shortcut("⌘W").startsGroup());
+```
+
+Disabled rows are dimmed, take no pointer and are skipped by arrow keys. Shortcut text is a hint
+only; handle the keys themselves in your key handler.
+
+`ui.contextMenu(targetId, items, style)` attaches a menu to a control painted just before it, such
+as a desktop background, a file icon or a dock tile. Right-clicking opens it where the pointer is,
+sized to its rows; the topmost control under the pointer decides which context menu opens.
 
 ## Popup menu styling
 

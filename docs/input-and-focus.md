@@ -20,8 +20,18 @@ The same final style parameter is available on the explicit-height `passwordFiel
 A null family inherits `UiTheme.fontFamily()`. Multiline spacing is at least the font metric
 height; text and carets stay clipped when a control is shorter than its text. `UiCanvas.textHeight`
 complements `textWidth` for custom layout. Public lengths and caret indices use UTF-16 units,
-but pointer positions, navigation, deletion, and truncated insertion never split a surrogate pair.
-This is codepoint safety, not full grapheme-cluster or IME composition support.
+but editing stops at extended grapheme boundaries: an accented letter, emoji with skin tone,
+flag or joined emoji sequence stays together during navigation, selection, deletion and truncation.
+This behavior is in **1.0.0-beta.1** and later; 0.9.9-beta.1 still uses codepoint
+boundaries. No consumer API change is needed. Segmentation follows Java 25's Unicode 16 rules;
+see [Unicode editing validation](audits/grapheme-editing-2026-10-21.md).
+
+Insertion limits still count UTF-16 units, not visible characters. If the remaining capacity cannot
+fit a complete cluster, the inserted text is shortened at the preceding cluster boundary. Existing
+programmatic/fallback values are not truncated. Inserting or deleting text can join neighboring
+clusters, so the resulting caret moves to the end of the joined cluster. Undo restores the previous
+text and selection. Password masking still uses one bullet per UTF-16 unit, with pointer and keyboard
+positions restricted to the original text's cluster edges.
 
 ## Editing behavior and limits
 
@@ -39,8 +49,8 @@ textarea lines by a viewport with one line of overlap, preserving the preferred 
 These are not a claim of complete native platform shortcut parity. Textareas retain wheel
 browsing independently of the caret and reveal it when editing or navigating. Wheel movement is
 immediate, three line heights per unit; overflowing end stops consume the wheel, while a short
-editor lets its parent scroll. Fields use shaped text and one bounded focused-layout cache. Full grapheme editing,
-IME composition and narrator semantics are still missing.
+editor lets its parent scroll. Fields use shaped text and one bounded focused-layout cache.
+IME composition, visual bidi navigation and narrator semantics are still missing.
 
 ## Editing and undo
 
@@ -140,7 +150,7 @@ will cover every later native item. See [Minecraft integration](minecraft-integr
 
 ## Scope and limits
 
-Keyboard controls are available, but narrator roles/labels/announcements and IME composition are not implemented. Codepoint-safe editing does not imply complete grapheme-cluster support. Windows/Linux hardware, multiplayer and universal accessibility claims require separate validation.
+Keyboard controls are available, but narrator roles/labels/announcements and IME composition are not implemented. Grapheme-safe plain-text editing does not implement IME composition or visual bidi navigation. Windows/Linux hardware, multiplayer and universal accessibility claims require separate validation.
 
 ## Slider keys and control coverage
 
@@ -154,10 +164,10 @@ Slider rail/thumb colors follow the theme's raised surface and text colors.
 | --- | --- |
 | Buttons, toggles, radio/segmented choices | Tab focus and Enter/Space activation |
 | Sliders | Tab, arrows, Page Up/Down, Home/End |
-| Fields/textareas | Caret, selection, clipboard, undo/redo, Unicode codepoint boundaries |
+| Fields/textareas | Caret, selection, clipboard, undo/redo, Unicode 16 grapheme boundaries (1.0.0-beta.1 and later) |
 | Custom painted/virtual list rows | Consumer supplies ids/actions and application selection policy |
 | Narrator roles, labels, values and announcements | Not implemented; keyboard support is not narrator support |
-| IME composition and grapheme-cluster editing | Not implemented; use cases requiring these need another input path |
+| IME composition and visual bidi navigation | Not implemented; use cases requiring these need another input path |
 
 ## Multiline and popup keyboard navigation
 
@@ -175,7 +185,7 @@ Tab and Shift-Tab visit controls registered by an ordinary `ui.scroll` painter, 
 
 Virtual lists only register their painted rows. A consumer controls selection across unpainted virtual rows using `scrollVirtualItemIntoView`; Tab does not materialize every row in a large virtual list.
 
-Textareas wrap at Unicode line-break opportunities, keeping ordinary words intact. Oversized words fall back to codepoint boundaries; this is not grapheme-aware editing. Explicit newlines and whitespace remain in the value. At a soft boundary, End uses the end of the preceding visual line and Home uses the current visual line; pointer placement preserves that distinction. Right/Left move a codepoint rather than spending a keypress switching visual sides. End includes any trailing spaces at the shared wrap boundary, and Shift-End selects them. Text inserted there uses that logical position and may reflow onto the next visual line.
+Textareas wrap at Unicode line-break opportunities, keeping ordinary words intact. Oversized words fall back to whole grapheme boundaries, even when a cluster is wider than the viewport. Explicit newlines and whitespace remain in the value. At a soft boundary, End uses the end of the preceding visual line and Home uses the current visual line; pointer placement preserves that distinction. Right/Left move a grapheme rather than spending a keypress switching visual sides. End includes any trailing spaces at the shared wrap boundary, and Shift-End selects them. Text inserted there uses that logical position and may reflow onto the next visual line.
 
 Text keys should be absent or contain a String. Painting preserves values of other types, but
 editing replaces them with text; do not bind a text control to an object-valued key. Textareas
@@ -237,5 +247,5 @@ reveal when focused; background value changes on an unfocused editor only clamp.
 and removal clear editor offsets. Cached virtual rows retain them until those rows are recycled.
 No new texture, smoothing animation or idle timer is allocated for editor browsing.
 
-Full grapheme/IME/RTL editing, Page Up/Down navigation, held-pointer edge autoscroll, and revealing
+IME composition, visual bidi navigation, held-pointer edge autoscroll, and revealing
 a caret through a parent shorter than the textarea remain tracked follow-ups.

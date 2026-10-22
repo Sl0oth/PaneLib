@@ -2,9 +2,6 @@ package dev.pane.ui;
 
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.FilterMode;
-import java.awt.image.BufferedImage;
-import java.awt.image.DataBufferInt;
-import java.nio.ByteOrder;
 import java.util.*;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
@@ -12,7 +9,6 @@ import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.Identifier;
 
 /**
@@ -41,9 +37,7 @@ public final class UiHud implements AutoCloseable {
     private boolean enabled = true, visible = true, showOnScreens, dirty = true, animating, presentationAnimating, closed;
     private float motionScale, lastOpacity = -1;
     private Identifier id;
-    private DynamicTexture texture;
-    private BufferedImage image;
-    private int[] pixels;
+    private UiRetainedTexture surface;
     private long frames, paints, uploadedPixels, allocations, lastPaint, lastRasterNanos, lastUploadNanos;
     private long totalRasterNanos, totalUploadNanos, maximumRasterNanos;
     private UiRect lastBounds = new UiRect(0, 0, 0, 0);
@@ -118,7 +112,7 @@ public final class UiHud implements AutoCloseable {
         if (visible) return true;
         // The vanilla callbacks may run before our renderer. Evaluate the same visibility track
         // here so restoration does not depend on last frame's texture or callback ordering.
-        return texture != null && visibilityOpacity(System.nanoTime()) > 0;
+        return surface != null && visibilityOpacity(System.nanoTime()) > 0;
     }
     private float visibilityOpacity(long now) {
         return new UiAnimationClock(animations, now, motionScale)
@@ -147,7 +141,7 @@ public final class UiHud implements AutoCloseable {
         if (Float.isFinite(value)) { motionScale = Math.max(0, Math.min(2, value)); dirty = true; }
     }
     public Snapshot snapshot() {
-        return new Snapshot(frames, paints, uploadedPixels, allocations, texture != null, animating || presentationAnimating,
+        return new Snapshot(frames, paints, uploadedPixels, allocations, surface != null, animating || presentationAnimating,
             lastBounds, lastRasterNanos, lastUploadNanos, totalRasterNanos, totalUploadNanos, maximumRasterNanos);
     }
     public record Snapshot(long frames, long paints, long uploadedPixels, long allocations, boolean hasSurface,
@@ -186,14 +180,12 @@ public final class UiHud implements AutoCloseable {
         float desired = (float)Math.max(target.width()*client.getWindow().getGuiScale()/width,
             target.height()*client.getWindow().getGuiScale()/height);
         UiRasterQuality nextRaster=raster;
-        if(texture==null||desired!=raster.desiredScale()||!renderSettings.equals(measuredSettings))
+        if(surface==null||desired!=raster.desiredScale()||!renderSettings.equals(measuredSettings))
             nextRaster=UiHudRaster.resolve(width,height,desired,renderSettings);
         int pixelWidth=nextRaster.pixelWidth(),pixelHeight=nextRaster.pixelHeight();
-        if (texture == null || image.getWidth() != pixelWidth || image.getHeight() != pixelHeight) {
+        if (surface == null || !surface.matches(pixelWidth, pixelHeight)) {
             releaseSurface();
-            texture = new DynamicTexture(() -> "pane-hud", pixelWidth, pixelHeight, true);
-            image = new BufferedImage(pixelWidth, pixelHeight, BufferedImage.TYPE_INT_ARGB);
-            pixels = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
+            surface = new UiRetainedTexture("pane-hud", pixelWidth, pixelHeight);
             dirty = true; allocations++;
         }
         raster=nextRaster;measuredSettings=renderSettings;
@@ -206,7 +198,7 @@ public final class UiHud implements AutoCloseable {
         graphics.pose().pushMatrix();
         graphics.pose().translate(x, y + (1 - opacity) * 6 / pointsPerGui);
         graphics.pose().scale(target.width() / width, target.height() / height);
-        graphics.blit(texture.getTextureView(), sampler, 0, 0, width, height, 0, 1, 0, 1);
+        graphics.blit(surface.texture.getTextureView(), sampler, 0, 0, width, height, 0, 1, 0, 1);
         graphics.pose().popMatrix();
         if (nativeOverlay != NativeOverlayRenderer.NONE && !nativeSlots.isEmpty()) {
             double guiScale = client.getWindow().getGuiScale();
@@ -229,7 +221,8 @@ public final class UiHud implements AutoCloseable {
 
     private void paint(long now, float opacity) {
         long started = System.nanoTime();
-        Arrays.fill(pixels, 0);
+        surface.clear();
+        var image = surface.image;
         var graphics = image.createGraphics();
         var clock = new UiAnimationClock(animations, now, motionScale);
         var nextSlots = new LinkedHashMap<String, NativeBounds>();
@@ -250,21 +243,19 @@ public final class UiHud implements AutoCloseable {
         animating = clock.active();
         lastRasterNanos = System.nanoTime() - started;
         long uploadStarted = System.nanoTime();
-        var target = texture.getPixels().getPixelBytes().order(ByteOrder.nativeOrder()).asIntBuffer();
-        UiPixelTransfer.copy(pixels, target, image.getWidth(), 0, 0, image.getWidth(), image.getHeight());
-        texture.upload();
+        surface.upload();
         lastUploadNanos = System.nanoTime() - uploadStarted;
         totalRasterNanos += lastRasterNanos; totalUploadNanos += lastUploadNanos;
         maximumRasterNanos = Math.max(maximumRasterNanos, lastRasterNanos);
-        uploadedPixels += pixels.length; paints++; lastPaint = now; lastOpacity = opacity; dirty = false;
+        uploadedPixels += surface.pixels.length; paints++; lastPaint = now; lastOpacity = opacity; dirty = false;
     }
 
     private void worldChanged() {
         releaseSurface(); values.clear(); animations.clear(); animating = presentationAnimating = false; dirty = true;
     }
     private void releaseSurface() {
-        if (texture != null) texture.close();
-        texture = null; image = null; pixels = null; nativeSlots.clear(); nativePlacement.clear(); nativeText.clear(); clearNativeCounts(); opacityLayer.clear(); lastOpacity = -1;
+        if (surface != null) surface.close();
+        surface = null; nativeSlots.clear(); nativePlacement.clear(); nativeText.clear(); clearNativeCounts(); opacityLayer.clear(); lastOpacity = -1;
         if(raster.pixelWidth()!=0)raster=new UiRasterQuality(width,height,0,0,raster.desiredScale(),0);
     }
     @Override public void close() {

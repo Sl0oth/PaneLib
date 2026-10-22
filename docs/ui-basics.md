@@ -85,8 +85,8 @@ ui.virtualList("log", viewport, entries.size(), 24, 2,
     UiScrollFollow.WHEN_AT_END, (row, item) -> paintEntry(row, entries.get(item.index())));
 ```
 
-Use separate stable IDs for different conversations/datasets. For example, Gather uses
-`history:general` and `history:dm:Maya`; selecting a channel explicitly scrolls its own ID to zero,
+Use separate stable IDs for different conversations/datasets, for example `history:general` and
+`history:dm:Maya`; selecting a channel explicitly scrolls its own ID to zero,
 which also cancels any old pending command for that channel. Ordinary and virtual views share the
 same end-scrolling behavior. No scrollbar-specific controller or consumer timer is needed.
 
@@ -114,7 +114,7 @@ ui.canvas().text("A matching heading", x, y, 18, ui.theme().text(), Font.BOLD,
 ```
 
 If loading fails, Pane safely falls back to its normal sans-serif font. Include the font's license
-next to the resource when you redistribute it. Pane Mail, Gather, and Wayfarer share the bundled
+next to the resource when you redistribute it. Pane Mail and Wayfarer share the bundled
 Roboto family under the SIL Open Font License.
 
 ## Minecraft-formatted text
@@ -479,8 +479,14 @@ button groups and retained virtual rows use the existing shared input/compositio
 
 These APIs add no polling loop or independent textures. Painter callbacks run when their retained
 page/row needs painting, not once per game frame. Keep painters side-effect-free and reuse styles
-when their values do not change. See Gather's server heading/role selector, Wayfarer's deploy button,
-and the video example's icon menus for migrations.
+when their values do not change. See Wayfarer's deploy button and the PaneOS Control Center for examples.
+
+`paintedSlider(id, key, x, y, w, h, min, max, fallback, painter)` is a slider drawn entirely by
+your painter from a `UiSliderState` (0..1 position, value, hover, press, focus). The whole rectangle
+is the pointer target and its width is the track; pointer, drag and keyboard steps match `slider`.
+
+`UiDocument.builder(...).tooltipStyle(UiTooltipStyle.defaults().background(...).font(12, Font.PLAIN)
+.shape(26, 8).preferAbove(true))` restyles native tooltips for a document.
 
 ## Dropdowns
 

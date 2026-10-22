@@ -33,12 +33,12 @@ final class ExamplesAuditTest {
                 case 1 -> { capture(c,"example-shelf");check(c.level==null,"gallery needs no world");check(gallery.buttonState("wayfarer").orElseThrow().label().equals("Open Wayfarer menu"),"gallery exposes named keyboard targets");paints=gallery.paintCount();advance(900); }
                 case 2 -> {check(gallery.paintCount()==paints,"idle gallery does not repaint");click(gallery,"wayfarer");advance(1200);}
                 case 3 -> {var s=current(c);check(s.regionBounds("deploy").isPresent(),"Wayfarer opens from gallery");check(c.level==null,"player menu stays world-free");capture(c,"wayfarer-current");escape(s);advance(600);}
-                case 4 -> {check(c.gui.screen()==gallery,"Wayfarer restores gallery parent");click(gallery,"gather");advance(900);}
-                case 5 -> {var s=current(c);check(s.regionBounds("server-menu").isPresent(),"Gather opens from gallery");capture(c,"gather-current");escape(s);advance(500);}
-                case 6 -> {check(c.gui.screen()==gallery,"Gather restores gallery parent");click(gallery,"mail");advance(900);}
+                case 4 -> {check(c.gui.screen()==gallery,"Wayfarer restores gallery parent");click(gallery,"paneos");advance(2600);}
+                case 5 -> {var s=current(c);check(s.regionBounds("lock:avatar").isPresent(),"PaneOS boots to its lock screen from gallery");capture(c,"paneos-current");escape(s);advance(500);}
+                case 6 -> {check(c.gui.screen()==gallery,"PaneOS restores gallery parent");click(gallery,"mail");advance(900);}
                 case 7 -> {var s=current(c);check(s.regionBounds("compose").isPresent(),"Pane Mail opens from gallery");capture(c,"mail-current");escape(s);advance(500);}
                 case 8 -> {check(c.gui.screen()==gallery,"Pane Mail restores gallery parent");c.getWindow().setWindowed(860,600);advance(800);}
-                case 9 -> {for(String id:new String[]{"wayfarer","gather","mail","wayfarer-hud","vanilla-hud","back"}){var r=gallery.regionBounds(id).orElseThrow();check(r.x()>=0&&r.y()>=0&&r.right()<=gallery.width*gallery.layoutScale()&&r.bottom()<=gallery.height*gallery.layoutScale(),id+" fits compact window");}capture(c,"example-shelf-compact");click(gallery,"wayfarer-hud");advance(500);}
+                case 9 -> {for(String id:new String[]{"paneos","wayfarer","mail","wayfarer-hud","vanilla-hud","back"}){var r=gallery.regionBounds(id).orElseThrow();check(r.x()>=0&&r.y()>=0&&r.right()<=gallery.width*gallery.layoutScale()&&r.bottom()<=gallery.height*gallery.layoutScale(),id+" fits compact window");}capture(c,"example-shelf-compact");click(gallery,"wayfarer-hud");advance(500);}
                 case 10 -> {check(ExampleHudController.selected().equals("wayfarer-hud"),"HUD selection creates live owner");check(c.level==null&&c.gui.screen()==gallery,"HUD selection does not load a world");click(gallery,"back");advance(500);}
                 case 11 -> {
                     check(c.gui.screen()==parent,"back restores Minecraft title");

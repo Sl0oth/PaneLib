@@ -69,7 +69,7 @@ final class DemoPerformanceTest {
         Probe() { this(new int[1]); }
 
         Probe(int[] callbacks) {
-            super(NativeDemoShowcase.createScreen(null).document(), NativeOverlayRenderer.NONE,
+            super(GmailShowcase.createScreen(null).document(), NativeOverlayRenderer.NONE,
                 UiEventListener.NONE, UiScreenOptions.builder()
                     .performanceDiagnostics(sample -> callbacks[0]++).build());
             this.callbacks = callbacks;

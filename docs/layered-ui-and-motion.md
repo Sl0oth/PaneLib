@@ -54,8 +54,8 @@ explicit user/consumer preference; automatic OS preference detection is not impl
 Minecraft's world/panorama or separately composed virtual rows. Apply it before painting a panel,
 then paint opaque text afterward. Calling it on an empty scratch layer will not blur the parent.
 
-The Design Lab's optional Soft glass switch blurs only retained decoration behind its panels.
-Blur is off by default and only runs on invalidation, with no animation loop of its own. It still
+Blur only blurs retained decoration already painted behind a panel. It is off unless you call it
+and only runs on invalidation, with no animation loop of its own. It still
 allocates convolution images when visible; reserve it for small panels. Transparency works with
 blur disabled. A gameplay-world blur would need a separate GPU integration and is not provided.
 
@@ -72,17 +72,48 @@ toast schedules no frames. While a menu/dialog is open, toast visuals/input are 
 continue expiring. Menus and dialogs still use the older page path and temporarily suspend atlas
 composition. Tooltip overlays remain independent.
 
-## Try the three designs
+## Keeping big interfaces fast
 
-```sh
-./gradlew :pane-demo:runClient -PdesignLab
-./gradlew :pane-demo:runClient -PdesignTest
-```
+Pane rasterizes on the CPU and uploads only what changed, so the cost of a change is the area it
+repaints. These APIs keep that area small, and keep motion on the GPU, on every platform:
 
-The first opens the interactive title-panorama showcase. Use 1/2/3 or the top navigation. All three
-styles select routes, scroll the journal, toggle a briefing, change ready state, and show toasts.
-Trailcraft uses a square inventory grid; Skybound uses large open typography and floating cards;
-Blackline uses a command rail, sparse linework, and compact rows. Artwork is original code-drawn
-geometry. The second command exercises interactions, fade reversals, moving targets, reduced
-motion, toast/scroll composition, optional blur, resize, and settled idle. It captures screenshots
-and quits. Inspect `[DesignLab] complete PASS`; Gradle's exit code alone is not the verdict.
+- `ui.gpuTransition(id, bounds, revision, shown, hidden, ms, easing, painter)` shows or hides a panel
+  or overlay with the GPU animating it. Settled, the group paints normally and takes input; while it
+  animates, the page does not repaint at all.
+- `ui.gpuGroup(id, bounds, revision, from, target, ms, easing, painter)` animates any group, controls
+  and glass included, as a GPU layer, such as a window opening or minimizing into a dock.
+- `ui.dragLayer(key, bounds, revision, painter)` lifts a group onto the GPU while its `dragArea`
+  moves, so dragging a window costs one repaint when it lifts and one when it drops.
+- `ui.repaintScope(keyPrefix, bounds)` tells Pane that state keys with that prefix only affect one
+  region, so `setValue`, selectables, toggles and sliders repaint that region instead of the page.
+- `UiDocument.builder(...).localFocusRepaint(true)` makes focus changes, including the one every
+  click causes, repaint only the two controls involved.
+- `canvas.shadowOutside(...)` draws a shadow only outside its shape; large windows and glass skip
+  the covered interior entirely, and on the screen surface the bands are reused between paints.
+
+Glass, frost and outside shadows are also reused between paints while nothing beneath them changes,
+blur costs the same at any radius, and large lenses, blurs and shadows split their rows across CPU
+cores. On a 3024×1890 surface PaneOS repaints a click in one window in about 20 ms, animates
+windows and panels on the GPU, and moves a dragged window with no repaints between lift and drop.
+
+## Pointer, time and drag driven painting
+
+- `ui.pointer(x, y, w, h)` returns where the pointer is over a region painted from it, in local
+  coordinates through translations and affine groups. Moving inside it, or leaving it, repaints only
+  that region. PaneOS magnifies its dock toward the cursor this way.
+- `ui.refreshAfter(millis, bounds)` repaints `bounds` once after a delay. Call it on every paint that
+  should keep refreshing; each request repaints only its own bounds when due. A clock asks for the
+  next second or minute and an idle screen otherwise does nothing.
+- `ui.dragArea(id, key, x, y, w, h, moves)` makes a title bar draggable. The travel accumulates in
+  `key:x` and `key:y`; naming what the drag `moves` lets each step repaint only where the window was
+  and where it goes instead of the page.
+- `ui.withPresentation(transform, pivotX, pivotY, painter)` paints any group through a transform,
+  editors, sliders and scroll viewports included, for an open, close or minimize effect. Nothing
+  inside takes input while presented; paint the group normally once the transition settles.
+- `screen.requestFocus(id)` focuses a control as soon as a paint registers it, such as a search
+  field in a panel the same event opened or an editor still animating in.
+
+PaneOS (`./gradlew :pane-demo:runExamples`, then PaneOS) opens windows with a spring presentation,
+minimizes them into the dock, and drags them with bounded repaints.
+`-Pisolated -PpaneOsTest` checks windows, drag cost, Control Center, Spotlight, the apps, dock
+magnification and settled idle in a real client.

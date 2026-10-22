@@ -17,6 +17,8 @@ public final class UiContext {
     private UiInteractionState interactions = new UiInteractionState();
     private UiRect focusClip;
     private java.awt.Shape affineFocusClip;
+    /** Local-to-document mapping inside affine groups (after this context's offset); null when only translated. */
+    private java.awt.geom.AffineTransform documentMatrix;
     private final UiCanvas canvas;
     private final UiTheme theme;
     private final int width;
@@ -104,16 +106,22 @@ public final class UiContext {
     }
 
     UiContext withInteractions(UiInteractionState shared) { interactions = shared; return this; }
-    private UiContext inherit(UiContext child) {
-        child.interactions = interactions; child.focusClip = focusClip; child.affineFocusClip = affineFocusClip; return child;
+
+    /** Child sharing every output list and the retained interaction/focus state. */
+    private UiContext derive(UiCanvas canvas, UiRect content, float offsetX, float offsetY, UiRect inputClip,
+                             List<UiVirtualListRequest> virtualLists) {
+        var child = new UiContext(canvas, theme, width, height, accent, content, hoveredId, pressedId,
+            motion, interactionMotion, animating, paintCount, state, hitRegions, nativeBounds, nativeOverlayLayers, animationBounds, scrollRegions,
+            inputRegions, textInput, tooltips, menus, dialogs, animationClock, nativeScale,
+            offsetX, offsetY, inputClip, virtualLists);
+        child.interactions = interactions; child.focusClip = focusClip; child.affineFocusClip = affineFocusClip;
+        child.documentMatrix = documentMatrix;
+        return child;
     }
 
     /** Same drawing surface and state, re-aimed at a different content rectangle. */
     UiContext withContent(UiRect newContent) {
-        return inherit(new UiContext(canvas, theme, width, height, accent, newContent, hoveredId, pressedId,
-            motion, interactionMotion, animating, paintCount, state, hitRegions, nativeBounds, nativeOverlayLayers, animationBounds, scrollRegions,
-            inputRegions, textInput, tooltips, menus, dialogs, animationClock, nativeScale,
-            offsetX, offsetY, inputClip, virtualLists));
+        return derive(canvas, newContent, offsetX, offsetY, inputClip, virtualLists);
     }
 
     public UiCanvas canvas() { return canvas; }
@@ -194,6 +202,20 @@ public final class UiContext {
      * Compose with withLayer for one group opacity rather than per-operation opacity.
      */
     public void withTransform(UiTransform transform, float pivotX, float pivotY, Consumer<UiContext> painter) {
+        transformed(transform, pivotX, pivotY, painter, true);
+    }
+
+    /**
+     * Paints any group through a transform for an entrance, exit or minimize effect: text editors,
+     * sliders and scroll viewports included, exactly as they look untransformed. Unlike
+     * {@link #withTransform} nothing inside takes pointer or keyboard input while presented, and
+     * native slots are hidden; paint the group normally once the transition settles.
+     */
+    public void withPresentation(UiTransform transform, float pivotX, float pivotY, Consumer<UiContext> painter) {
+        transformed(transform, pivotX, pivotY, painter, false);
+    }
+
+    private void transformed(UiTransform transform, float pivotX, float pivotY, Consumer<UiContext> painter, boolean interactive) {
         if (transform == null || painter == null || transform.opacity() <= 0) return;
         var hits = new java.util.ArrayList<UiHitRegion>();
         var natives = new java.util.LinkedHashMap<String, NativeBounds>();
@@ -207,6 +229,10 @@ public final class UiContext {
         UiContext child = new UiContext(canvas, theme, width, height, accent, content, hoveredId, pressedId,
             motion, interactionMotion, animating, paintCount, state, hits, natives, covers, bounds, scrolls,
             inputs, tips, textInput, nextMenus, nextDialogs, animationClock, nativeScale, null);
+        child.interactions.live = interactions.live;
+        child.documentMatrix = java.awt.geom.AffineTransform.getTranslateInstance(offsetX, offsetY);
+        child.documentMatrix.concatenate(transform.matrix(pivotX, pivotY));
+        if (documentMatrix != null) child.documentMatrix.preConcatenate(documentMatrix);
         java.awt.Shape ringClip = focusRingClip();
         if (ringClip != null) {
             try {
@@ -216,11 +242,14 @@ public final class UiContext {
             }
         }
         canvas.withTransform(transform, pivotX, pivotY, () -> painter.accept(child));
-        if (!inputs.isEmpty() || !scrolls.isEmpty() || !natives.isEmpty() || !covers.isEmpty()
-                || hits.stream().anyMatch(hit -> hit.action().startsWith(INTERNAL_ACTION_PREFIX + "slider:")))
-            throw new IllegalArgumentException("Affine groups support drawing/buttons; keep editors, sliders, scrolls and native slots outside");
         var matrix = java.awt.geom.AffineTransform.getTranslateInstance(offsetX, offsetY);
         matrix.concatenate(transform.matrix(pivotX, pivotY));
+        // Bounds supplied inside the group are transformed back to document coordinates.
+        for (var entry : bounds.entrySet()) animationBounds.put(entry.getKey(), transformedRect(matrix, entry.getValue()));
+        if (!interactive) return;
+        if (!inputs.isEmpty() || !scrolls.isEmpty() || !natives.isEmpty() || !covers.isEmpty()
+                || hits.stream().anyMatch(hit -> hit.action().startsWith(INTERNAL_ACTION_PREFIX + "slider:")))
+            throw new IllegalArgumentException("Affine groups support drawing/buttons; keep editors, sliders, scrolls and native slots outside, or use withPresentation");
         for (UiHitRegion hit : hits) {
             java.awt.Shape shape = hit.hitShape() == null
                 ? new java.awt.geom.Rectangle2D.Float(hit.x(), hit.y(), hit.width(), hit.height()) : hit.hitShape();
@@ -246,8 +275,6 @@ public final class UiContext {
         }
         interactions.buttons.putAll(child.interactions.buttons);
         dialogs.addAll(nextDialogs);
-        // Bounds supplied inside the group are transformed back to document coordinates.
-        for (var entry : bounds.entrySet()) animationBounds.put(entry.getKey(), transformedRect(matrix, entry.getValue()));
     }
 
     private static UiRect transformedRect(java.awt.geom.AffineTransform matrix, UiRect source) {
@@ -288,22 +315,122 @@ public final class UiContext {
      */
     public void withTranslation(float x, float y, Consumer<UiContext> painter) {
         if (painter == null) return;
-        UiContext translated = inherit(new UiContext(canvas, theme, width, height, accent, content,
-            hoveredId, pressedId, motion, interactionMotion, animating, paintCount, state, hitRegions,
-            nativeBounds, nativeOverlayLayers, animationBounds, scrollRegions, inputRegions, textInput, tooltips, menus, dialogs,
-            animationClock, nativeScale, offsetX + x, offsetY + y, inputClip, virtualLists));
+        UiContext translated = derive(canvas, content, offsetX + x, offsetY + y, inputClip, virtualLists);
         canvas.withTranslation(x, y, () -> painter.accept(translated));
+    }
+
+    /**
+     * Paints a group once into its own texture and lets the GPU move, scale, rotate and fade it
+     * toward {@code target} on every frame, without repainting the page. Change {@code revision}
+     * whenever the content changes; a new {@code target} on a later paint starts a fresh animation
+     * from the transform currently on screen. Transforms pivot on the centre of {@code bounds}.
+     * Bounds must include shadows plus a small transparent margin, which also keeps rotated edges
+     * antialiased; anything painted outside them is cut off.
+     * Drawing only: register interactive targets outside the layer. Inside HUDs, virtual-list rows,
+     * affine groups and manual canvas transforms the group is drawn in place at {@code target}.
+     */
+    public void gpuLayer(String id, UiRect bounds, Object revision, UiTransform target, int durationMillis,
+                         UiEasing easing, Consumer<UiCanvas> painter) {
+        if (id == null || id.isBlank() || bounds == null || target == null || painter == null
+                || bounds.width() <= 0 || bounds.height() <= 0) return;
+        var collector = interactions.gpuLayers;
+        if (collector != null && collector.accepts(canvas, offsetX, offsetY)) {
+            collector.requests.add(new UiGpuLayers.Request(id, bounds, bounds.translate(offsetX, offsetY), revision,
+                null, target, durationMillis, easing, inputClip, null, painter));
+            return;
+        }
+        canvas.withTransform(target, bounds.centerX(), bounds.centerY(), () -> painter.accept(canvas));
+    }
+
+    /**
+     * {@link #gpuLayer} for a whole group of controls, such as a window opening, closing or
+     * minimizing: the group is painted once exactly as {@link #withPresentation} would, editors and
+     * glass included and without taking input, and the GPU animates it from {@code from} (or, for a
+     * layer already on screen, from where it is) to {@code target} with no page repaints. Glass in
+     * the group reads the page behind it as that page was painted. The layer draws above the page.
+     * Where GPU layers are unavailable the group is presented in place at {@code target}.
+     */
+    public void gpuGroup(String id, UiRect bounds, Object revision, UiTransform from, UiTransform target, int durationMillis,
+                         UiEasing easing, Consumer<UiContext> painter) {
+        if (id == null || id.isBlank() || bounds == null || target == null || painter == null
+                || bounds.width() <= 0 || bounds.height() <= 0) return;
+        var collector = interactions.gpuLayers;
+        if (collector != null && collector.accepts(canvas, offsetX, offsetY)) {
+            collector.requests.add(new UiGpuLayers.Request(id, bounds, bounds.translate(offsetX, offsetY), revision,
+                from, target, durationMillis, easing, inputClip, canvas, layer -> painter.accept(detached(layer))));
+            return;
+        }
+        withPresentation(target, bounds.centerX(), bounds.centerY(), painter);
+    }
+
+    /**
+     * Shows or hides a group, such as a panel or overlay, with the GPU animating between
+     * {@code hidden} and its natural place, so the page never repaints during the transition.
+     * Settled and shown, the group paints normally and takes input; settled and hidden, it paints
+     * nothing. The first paint of an id is already settled. Call it on every paint with the current
+     * {@code shown}; reversing mid-way continues from where the group is.
+     */
+    public void gpuTransition(String id, UiRect bounds, Object revision, boolean shown, UiTransform hidden,
+                              int durationMillis, UiEasing easing, Consumer<UiContext> painter) {
+        if (id == null || bounds == null || hidden == null || painter == null) return;
+        var transition = interactions.transitions.computeIfAbsent(id, key -> new UiInteractionState.Transition(shown));
+        long now = System.nanoTime();
+        if (transition.shown != shown) { transition.shown = shown; transition.changedAt = now; }
+        long elapsed = (now - transition.changedAt) / 1_000_000;
+        if (elapsed >= durationMillis) { if (shown) painter.accept(this); return; }
+        UiTransform settled = UiTransform.identity();
+        gpuGroup("transition:" + id, bounds, revision, shown ? hidden : settled, shown ? settled : hidden, durationMillis, easing, painter);
+        refreshAfter(durationMillis - elapsed + 16, bounds);
+    }
+
+    /**
+     * Paints a group the pointer drags smoothly, such as a window, with a {@link #dragArea} for
+     * {@code key} inside it. While that drag moves, the group is lifted into a GPU layer that follows
+     * the pointer with no page repaints and is drawn above the page; otherwise it paints normally.
+     * {@code bounds} must hold the group and its shadow; change {@code revision} when its content changes.
+     */
+    public void dragLayer(String key, UiRect bounds, Object revision, Consumer<UiContext> painter) {
+        if (painter == null) return;
+        var collector = interactions.gpuLayers;
+        if (dragging(key) && bounds != null && collector != null && collector.accepts(canvas, offsetX, offsetY)) {
+            gpuGroup(UiGpuLayers.DRAG_PREFIX + key, bounds, revision, null, UiTransform.identity(), 0, null, painter);
+            return;
+        }
+        painter.accept(this);
+    }
+
+    /**
+     * Declares that state keys starting with {@code keyPrefix} only change what is painted inside
+     * {@code bounds}, such as one window's own selection and fields. Changing such a key, by
+     * {@link UiScreen#setValue}, a selectable, toggle or slider, then repaints only that region
+     * instead of the page. Declare it on every paint; keys read anywhere outside the region must
+     * not use the prefix. Several declarations of one prefix combine.
+     */
+    public void repaintScope(String keyPrefix, UiRect bounds) {
+        if (keyPrefix == null || keyPrefix.isEmpty() || bounds == null) return;
+        UiRect area = documentRect(bounds);
+        interactions.live.scopes.merge(keyPrefix, area, UiRect::union);
+    }
+
+    /** True while the pointer is moving a {@link #dragArea} for {@code key}. */
+    public boolean dragging(String key) {
+        return key != null && key.equals(interactions.live.draggingKey) && interactions.live.dragMoved;
+    }
+
+    /** A context over another canvas, such as a GPU layer, whose controls paint but take no input. */
+    private UiContext detached(UiCanvas target) {
+        var child = new UiContext(target, theme, width, height, accent, content, null, null, motion, interactionMotion, animating,
+            paintCount, state, new java.util.ArrayList<>(), new java.util.LinkedHashMap<>(), new java.util.LinkedHashMap<>(),
+            new java.util.HashMap<>(), new java.util.ArrayList<>(), new java.util.ArrayList<>(), new java.util.ArrayList<>(),
+            new UiTextInputState(null, 0, 0), new java.util.ArrayList<>(), new java.util.ArrayList<>(), animationClock, nativeScale, null);
+        return child;
     }
 
     /** True group fade with shared input/layout state. A fully transparent group has no hit targets. */
     public void withLayer(UiLayer layer, float opacity, UiRect bounds, Consumer<UiContext> painter) {
         if (painter == null) return;
         canvas.withLayer(layer, opacity, bounds, group -> {
-            UiContext child = inherit(new UiContext(group, theme, width, height, accent, content,
-                hoveredId, pressedId, motion, interactionMotion, animating, paintCount, state, hitRegions,
-                nativeBounds, nativeOverlayLayers, animationBounds, scrollRegions, inputRegions, textInput,
-                tooltips, menus, dialogs, animationClock, nativeScale, offsetX, offsetY,
-                intersect(inputClip, bounds.translate(offsetX, offsetY)), null));
+            UiContext child = derive(group, content, offsetX, offsetY, intersect(inputClip, bounds.translate(offsetX, offsetY)), null);
             child.focusClip = intersect(focusClip, bounds.translate(offsetX, offsetY));
             painter.accept(child);
         });
@@ -373,7 +500,7 @@ public final class UiContext {
         UiRect bounds = new UiRect(x + offsetX, y + offsetY, width, height);
         // Native overlays render after the cached surface and cannot be clipped by AWT. Hide a
         // partially scrolled slot rather than letting an item or entity escape its viewport.
-        if (inputClip != null && !contains(inputClip, bounds)) return;
+        if (inputClip != null && !inputClip.contains(bounds)) return;
         nativeBounds.put(id, new NativeBounds(bounds.x() * nativeScale, bounds.y() * nativeScale,
             bounds.width() * nativeScale, bounds.height() * nativeScale));
     }
@@ -434,11 +561,8 @@ public final class UiContext {
         UiRect visibleViewport = intersect(inputClip, actualViewport);
         scrollRegions.add(new UiScrollRegion(id, actualViewport, contentHeight, visibleViewport));
 
-        UiContext scrolled = inherit(new UiContext(canvas, theme, width, height, accent,
-            new UiRect(viewport.x(), viewport.y(), viewport.width(), contentHeight), hoveredId, pressedId,
-            motion, interactionMotion, animating, paintCount, state, hitRegions, nativeBounds, nativeOverlayLayers, animationBounds, scrollRegions,
-            inputRegions, textInput, tooltips, menus, dialogs, animationClock, nativeScale,
-            offsetX, offsetY - offset, visibleViewport, virtualLists));
+        UiContext scrolled = derive(canvas, new UiRect(viewport.x(), viewport.y(), viewport.width(), contentHeight),
+            offsetX, offsetY - offset, visibleViewport, virtualLists);
         canvas.withClip(viewport.x(), viewport.y(), viewport.width(), viewport.height(), () ->
             canvas.withTranslation(0, -offset, () -> interactions.inScroll(
                 new UiScrollRegion(id, actualViewport, contentHeight, visibleViewport), () -> painter.accept(scrolled))));
@@ -482,11 +606,8 @@ public final class UiContext {
 
         int first = Math.max(0, (int) Math.floor(offset / stride) - 1);
         int last = Math.min(itemCount, (int) Math.ceil((offset + viewport.height()) / stride) + 1);
-        UiContext scrolled = inherit(new UiContext(canvas, theme, width, height, accent,
-            new UiRect(viewport.x(), viewport.y(), viewport.width(), contentHeight), hoveredId, pressedId,
-            motion, interactionMotion, animating, paintCount, state, hitRegions, nativeBounds, nativeOverlayLayers, animationBounds, scrollRegions,
-            inputRegions, textInput, tooltips, menus, dialogs, animationClock, nativeScale,
-            offsetX, offsetY - offset, intersect(inputClip, actualViewport), null));
+        UiContext scrolled = derive(canvas, new UiRect(viewport.x(), viewport.y(), viewport.width(), contentHeight),
+            offsetX, offsetY - offset, intersect(inputClip, actualViewport), null);
         float finalRowHeight = rowHeight;
         canvas.withClip(viewport.x(), viewport.y(), viewport.width(), viewport.height(), () ->
             canvas.withTranslation(0, -offset, () -> {
@@ -532,6 +653,12 @@ public final class UiContext {
 
     private void addHit(String id, String action, float x, float y, float width, float height,
                         float trackX, float trackWidth) {
+        addHit(id, action, x, y, width, height, trackX, trackWidth, null);
+    }
+
+    /** {@code shape}, when present, is the exact pointer target in this context's coordinates. */
+    private void addHit(String id, String action, float x, float y, float width, float height,
+                        float trackX, float trackWidth, java.awt.Shape shape) {
         requireConsumerInteractionId(id);
         UiRect bounds = new UiRect(x + offsetX, y + offsetY, width, height);
         UiRect keyboardBounds = focusClip == null ? bounds : intersect(bounds, focusClip);
@@ -542,7 +669,8 @@ public final class UiContext {
         if (inputClip != null) bounds = intersect(bounds, inputClip);
         if (bounds.width() <= 0 || bounds.height() <= 0) return;
         hitRegions.add(new UiHitRegion(id, action, bounds.x(), bounds.y(), bounds.width(), bounds.height(),
-            trackX + offsetX, trackWidth));
+            trackX + offsetX, trackWidth, shape == null ? null
+                : java.awt.geom.AffineTransform.getTranslateInstance(offsetX, offsetY).createTransformedShape(shape)));
     }
 
     private static void requireConsumerInteractionId(String id) {
@@ -576,27 +704,26 @@ public final class UiContext {
     }
 
     private void addInput(String id, String key, float x, float y, float width, float height,
-                          int maxLength, boolean multiline, float[] caretXs, float[] caretYs) {
-        addInput(id, key, x, y, width, height, maxLength, multiline, caretXs, caretYs, List.of());
-    }
-
-    private void addInput(String id, String key, float x, float y, float width, float height,
-                          int maxLength, boolean multiline, float[] caretXs, float[] caretYs, List<UiTextLine> lines) {
-        addInput(id, key, x, y, width, height, maxLength, multiline, caretXs, caretYs, lines, false);
-    }
-
-    private void addInput(String id, String key, float x, float y, float width, float height,
                           int maxLength, boolean multiline, float[] caretXs, float[] caretYs, List<UiTextLine> lines, boolean masked) {
         UiRect bounds = new UiRect(x + offsetX, y + offsetY, width, height);
-        float[] movedXs = caretXs == null ? null : caretXs.clone();
-        float[] movedYs = caretYs == null ? null : caretYs.clone();
-        if (movedXs != null) for (int i = 0; i < movedXs.length; i++) movedXs[i] += offsetX;
-        if (movedYs != null) for (int i = 0; i < movedYs.length; i++) movedYs[i] += offsetY;
-        var movedLines = lines.stream().map(line -> line.translate(offsetX, offsetY)).toList();
-        interactions.inputs.put(id, new UiInputRegion(id, key, bounds, maxLength, multiline, movedXs, movedYs, movedLines, masked));
-        if (inputClip != null) bounds = intersect(bounds, inputClip);
-        if (bounds.width() > 0 && bounds.height() > 0)
-            inputRegions.add(new UiInputRegion(id, key, bounds, maxLength, multiline, movedXs, movedYs, movedLines, masked));
+        // UiInputRegion owns defensive copies. Only allocate a translated intermediate when needed.
+        float[] movedXs = caretXs, movedYs = caretYs;
+        if (caretXs != null && offsetX != 0) {
+            movedXs = caretXs.clone();
+            for (int i = 0; i < movedXs.length; i++) movedXs[i] += offsetX;
+        }
+        if (caretYs != null && offsetY != 0) {
+            movedYs = caretYs.clone();
+            for (int i = 0; i < movedYs.length; i++) movedYs[i] += offsetY;
+        }
+        var movedLines = offsetX == 0 && offsetY == 0 ? lines
+            : lines.stream().map(line -> line.translate(offsetX, offsetY)).toList();
+        var registered = new UiInputRegion(id, key, bounds, maxLength, multiline, movedXs, movedYs, movedLines, masked);
+        interactions.inputs.put(id, registered);
+        UiRect clipped = inputClip == null ? bounds : intersect(bounds, inputClip);
+        if (clipped.width() > 0 && clipped.height() > 0)
+            inputRegions.add(clipped.equals(bounds) ? registered
+                : new UiInputRegion(id, key, clipped, maxLength, multiline, movedXs, movedYs, movedLines, masked));
     }
 
     private void drawScrollBar(UiRect viewport, float contentHeight, float offset) {
@@ -611,19 +738,9 @@ public final class UiContext {
     }
 
 
+    /** Either rectangle may be an absent clip. */
     private static UiRect intersect(UiRect first, UiRect second) {
-        if (first == null) return second;
-        if (second == null) return first;
-        float left = Math.max(first.x(), second.x());
-        float top = Math.max(first.y(), second.y());
-        float right = Math.min(first.right(), second.right());
-        float bottom = Math.min(first.bottom(), second.bottom());
-        return new UiRect(left, top, right - left, bottom - top);
-    }
-
-    private static boolean contains(UiRect outer, UiRect inner) {
-        return inner.x() >= outer.x() && inner.y() >= outer.y()
-            && inner.right() <= outer.right() && inner.bottom() <= outer.bottom();
+        return first == null ? second : second == null ? first : first.intersection(second);
     }
 
     public void card(float x, float y, float width, float height) {
@@ -637,37 +754,7 @@ public final class UiContext {
 
     public void button(String id, String label, String action, float x, float y, float width, float height,
                        ButtonStyle style, Shape shape) {
-        boolean hover = hovered(id);
-        boolean down = pressed(id);
-        UiRect repaintBounds = controlRepaintBounds(x, y, width, height, 4);
-        float hoverAmount = animate("button:" + id + ":hover", hover, 120, UiEasing.PAPER, repaintBounds);
-        float pressAmount = animate("button:" + id + ":press", down, 90, UiEasing.PAPER, repaintBounds);
-        float radius = switch (shape) {
-            case SQUARE -> 2;
-            case ROUNDED -> theme.smallRadius();
-            case SOFT -> theme.mediumRadius();
-            case PILL -> height / 2;
-        };
-        int fill = switch (style) {
-            case PRIMARY -> accent;
-            case SECONDARY -> theme.raisedSurface();
-            case GHOST -> UiCanvas.alpha(theme.background(), 0);
-            case DANGER -> 0xFF3A1D20;
-        };
-        int border = switch (style) {
-            case PRIMARY -> UiCanvas.mix(accent, 0xFFFFFFFF, .15F);
-            case DANGER -> 0xFF7B3439;
-            default -> theme.border();
-        };
-        if (hoverAmount > 0) fill = UiCanvas.mix(fill, 0xFFFFFFFF,
-            (style == ButtonStyle.GHOST ? .05F : .08F) * hoverAmount);
-        if (pressAmount > 0) fill = UiCanvas.mix(fill, 0xFF000000, .12F * pressAmount);
-        canvas.roundRect(fill, x, y, width, height, radius);
-        canvas.strokeRoundRect(border, .8F, x, y, width, height, radius);
-        if (focused(id)) drawFocusRing(accent, x - 2, y - 2, width + 4, height + 4, radius + 2);
-        int textColor = style == ButtonStyle.PRIMARY ? theme.accentText()
-            : style == ButtonStyle.DANGER ? 0xFFFFB9BD : theme.text();
-        canvas.centeredText(label, x + width / 2, y + height / 2, 9, textColor, Font.BOLD, theme.fontFamily());
+        drawDefaultButton(id, label, x, y, width, height, style, shape);
         hit(id, action, x, y, width, height);
     }
 
@@ -740,22 +827,10 @@ public final class UiContext {
         UiRect repaintBounds = controlRepaintBounds(x, y, size, size, 4);
         float hoverAmount = animate("icon-button:" + id + ":hover", hover, 120, UiEasing.PAPER, repaintBounds);
         float pressAmount = animate("icon-button:" + id + ":press", down, 90, UiEasing.PAPER, repaintBounds);
-        float radius = switch (shape) {
-            case SQUARE -> 2;
-            case ROUNDED -> theme.smallRadius();
-            case SOFT -> theme.mediumRadius();
-            case PILL -> size / 2;
-        };
-        int fill = switch (style) {
-            case PRIMARY -> accent;
-            case SECONDARY -> theme.raisedSurface();
-            case GHOST -> UiCanvas.alpha(theme.background(), 0);
-            case DANGER -> 0xFF3A1D20;
-        };
-        fill = UiCanvas.mix(fill, 0xFFFFFFFF, (style == ButtonStyle.GHOST ? .06F : .08F) * hoverAmount);
+        float radius = radius(shape, size);
+        int fill = UiCanvas.mix(fill(style), 0xFFFFFFFF, (style == ButtonStyle.GHOST ? .06F : .08F) * hoverAmount);
         fill = UiCanvas.mix(fill, 0xFF000000, .12F * pressAmount);
-        int iconColor = style == ButtonStyle.PRIMARY ? theme.accentText()
-            : style == ButtonStyle.DANGER ? 0xFFFFB9BD : theme.text();
+        int iconColor = foreground(style);
         canvas.roundRect(fill, x, y, size, size, radius);
         if (style != ButtonStyle.GHOST) canvas.strokeRoundRect(theme.border(), .8F, x, y, size, size, radius);
         if (icon != null) icon.draw(canvas, iconColor, x + size * .25F, y + size * .25F, size * .5F, 1.6F);
@@ -900,6 +975,28 @@ public final class UiContext {
         state.putIfAbsent(key, stored);
         float normalized = (float) ((stored - minimum) / (maximum - minimum));
         paintSlider(id, key, x, y, width, normalized, minimum, maximum);
+        return stored;
+    }
+
+    /**
+     * Slider drawn entirely by {@code painter}, such as a thick pill with an icon. The whole
+     * rectangle is the pointer target and its width is the track: pointer, drag and keyboard
+     * steps behave exactly as {@link #slider}. Returns the stored value.
+     */
+    public double paintedSlider(String id, String key, float x, float y, float width, float height,
+                                double minimum, double maximum, double fallback,
+                                BiConsumer<UiCanvas, UiSliderState> painter) {
+        java.util.Objects.requireNonNull(painter, "painter");
+        if (!Double.isFinite(minimum) || !Double.isFinite(maximum) || !Double.isFinite(maximum - minimum) || maximum <= minimum)
+            throw new IllegalArgumentException("maximum must be greater than minimum");
+        requireConsumerInteractionId(id);
+        double current = numberValue(key, fallback);
+        double stored = Double.isFinite(current) ? Math.max(minimum, Math.min(maximum, current)) : minimum;
+        state.putIfAbsent(key, stored);
+        float position = (float) ((stored - minimum) / (maximum - minimum));
+        painter.accept(canvas, new UiSliderState(position, stored, hovered(id), pressed(id), focused(id)));
+        if (focused(id)) drawFocusRing(accent, x - 2, y - 2, width + 4, height + 4, Math.min(height / 2 + 2, 12));
+        hitTracked(id, internalAction("slider:" + key + ":" + minimum + ":" + maximum), x, y, width, height, x, width);
         return stored;
     }
 
@@ -1154,6 +1251,27 @@ public final class UiContext {
         }
     }
 
+    /**
+     * Custom-shaped control whose pointer target is exactly {@code outline}, so the empty corners of
+     * a hexagon, chevron or ring segment never take clicks or hover. Build the outline from
+     * {@code canvas().path()} in this context's coordinates; the painter may fill or stroke it.
+     * Focus ring, keyboard activation, tooltip and disabled opacity match {@link #paintedButton}.
+     */
+    public void shapedButton(String id, String label, String action, UiPath outline, boolean enabled,
+                             BiConsumer<UiCanvas, UiButtonState> painter) {
+        java.util.Objects.requireNonNull(outline, "outline");
+        java.util.Objects.requireNonNull(painter, "painter");
+        var state = recordButtonState(id, label, enabled);
+        canvas.withOpacity(enabled ? 1 : .42F, () -> painter.accept(canvas, state));
+        java.awt.Shape shape = outline.shape();
+        if (state.focused()) canvas.shapeFocusRing(accent, shape);
+        if (!enabled) return;
+        var bounds = shape.getBounds2D();
+        addHit(id, action, (float) bounds.getX(), (float) bounds.getY(), (float) bounds.getWidth(), (float) bounds.getHeight(),
+            (float) bounds.getX(), (float) bounds.getWidth(), shape);
+        tooltip(id, label);
+    }
+
     private UiButtonState recordButtonState(String id, String label, boolean enabled) {
         requireConsumerInteractionId(id);
         if (label == null || label.isBlank()) throw new IllegalArgumentException("A button needs a descriptive label");
@@ -1175,9 +1293,10 @@ public final class UiContext {
         String displayValue = masked ? "•".repeat(value.length()) : value;
         state.putIfAbsent(key, value);
         boolean focused = focused(id);
-        int cursor = focused && textInput != null ? UiTextBoundary.floor(value, textInput.cursor()) : value.length();
-        int selectionStart = focused && textInput != null ? UiTextBoundary.floor(value, textInput.selectionStart()) : cursor;
-        int selectionEnd = focused && textInput != null ? UiTextBoundary.floor(value, textInput.selectionEnd()) : cursor;
+        UiTextBoundary.Index boundaries = UiTextBoundary.index(value);
+        int cursor = focused && textInput != null ? boundaries.floor(textInput.cursor()) : value.length();
+        int selectionStart = focused && textInput != null ? boundaries.floor(textInput.selectionStart()) : cursor;
+        int selectionEnd = focused && textInput != null ? boundaries.floor(textInput.selectionEnd()) : cursor;
         paintInputSurface(paint, focused, x, y, width, height);
 
         float textHeight = canvas.textHeight(size, fontStyle, family);
@@ -1203,11 +1322,11 @@ public final class UiContext {
         internalHit(id, "input:" + key, x, y, width, height);
         float[] carets = new float[value.length() + 1];
         java.util.Arrays.fill(carets, Float.NaN);
-        // Masked display positions are indexed using the original value's valid codepoint boundaries.
+        // Masked display positions are indexed using the original value's grapheme boundaries.
         for (int i = 0; i <= value.length();) {
             carets[i] = textX - textOffset + shaped.x(i);
             if (i == value.length()) break;
-            i = UiTextBoundary.next(value, i);
+            i = boundaries.next(i);
         }
         float[] caretYs = new float[carets.length];
         java.util.Arrays.fill(caretYs, y + height / 2);
@@ -1243,11 +1362,12 @@ public final class UiContext {
         Object stored = state.get(key);
         if (stored == null || stored instanceof String && !value.equals(stored)) state.put(key, value);
         boolean focused = focused(id);
-        int cursor = focused && textInput != null ? UiTextBoundary.floor(value, textInput.cursor()) : value.length();
+        UiTextBoundary.Index boundaries = UiTextBoundary.index(value);
+        int cursor = focused && textInput != null ? boundaries.floor(textInput.cursor()) : value.length();
         int selectionStart = focused && textInput != null
-            ? UiTextBoundary.floor(value, textInput.selectionStart()) : cursor;
+            ? boundaries.floor(textInput.selectionStart()) : cursor;
         int selectionEnd = focused && textInput != null
-            ? UiTextBoundary.floor(value, textInput.selectionEnd()) : cursor;
+            ? boundaries.floor(textInput.selectionEnd()) : cursor;
         paintInputSurface(paint, focused, x, y, width, height);
 
         float textX = x + paddingX;
@@ -1269,7 +1389,7 @@ public final class UiContext {
                 caretYs[index] = baseline + textHeight / 2;
                 lineXs[index - line.start()] = caretXs[index];
                 if (index == line.end()) break;
-                index = UiTextBoundary.next(value, index);
+                index = boundaries.next(index);
             }
             visualLines.add(new UiTextLine(line.start(), line.end(), lineXs, baseline + textHeight / 2));
         }
@@ -1292,6 +1412,8 @@ public final class UiContext {
             for (int lineIndex = 0; lineIndex < lines.size(); lineIndex++) {
                 UiShapedText.Line line = lines.get(lineIndex);
                 float baseline = firstBaseline + lineIndex * lineHeight - offset;
+                // Selection is clipped to this same line-height box: hidden lines need no draw work.
+                if (baseline + textHeight < y + paddingY || baseline >= y + height - paddingY) continue;
                 int selectedFrom = Math.max(selectionStart, line.start());
                 int selectedTo = Math.min(selectionEnd, line.end());
                 if (selectedTo > selectedFrom) {
@@ -1299,16 +1421,73 @@ public final class UiContext {
                 }
                 if(line.start()==line.end() && selectionStart<=line.start() && selectionEnd>line.end())
                     canvas.fill(UiInputAppearance.color(paint.selection(), UiCanvas.fade(accent,.45F)),textX,baseline,1,textHeight);
-                if(baseline+textHeight>=y+paddingY&&baseline<y+height-paddingY)
-                    canvas.shapedText(line.text(),textX,baseline,UiInputAppearance.color(paint.text(), theme.text()));
+                canvas.shapedText(line.text(),textX,baseline,UiInputAppearance.color(paint.text(), theme.text()));
             }
             if (focused) canvas.line(UiInputAppearance.color(paint.caret(), accent), 1, caretXs[cursor], caretYs[cursor] - textHeight / 2,
                 caretXs[cursor], caretYs[cursor] + textHeight / 2);
         });
         internalHit(id, "input:" + key, x, y, width, height);
         addInput(id, key, x, y, width, height, maxLength, true, caretXs, caretYs,
-            visualLines.stream().map(line -> line.translate(0, -offset)).toList());
+            offset == 0 ? visualLines : visualLines.stream().map(line -> line.translate(0, -offset)).toList(), false);
         return value;
+    }
+
+    /**
+     * Pointer-draggable region, such as a window title bar. Pressing and moving adds the pointer's
+     * travel, in layout units, to the numbers {@code key + ":x"} and {@code key + ":y"} (zero until
+     * first dragged); paint whatever moves at those offsets. Each step repaints like setValue.
+     * A raw click handler can still react to the press, for example to raise a window.
+     */
+    public void dragArea(String id, String key, float x, float y, float width, float height) {
+        internalHit(id, "drag:" + UiValueKey.encode(key), x, y, width, height);
+    }
+
+    /**
+     * {@link #dragArea(String, String, float, float, float, float)} that names what the drag moves,
+     * such as the whole window, so each drag step repaints only where it was and where it goes
+     * instead of the page. Include shadows in {@code moves}; paint it at the dragged offsets.
+     */
+    public void dragArea(String id, String key, float x, float y, float width, float height, UiRect moves) {
+        dragArea(id, key, x, y, width, height);
+        if (moves != null) interactions.live.dragBounds.put(id, documentRect(moves));
+    }
+
+    /**
+     * Where the pointer is over a region painted from it, such as a dock that magnifies toward the
+     * cursor. Moving inside the region, or leaving it, repaints only the region. Coordinates are local
+     * to this context through translations and affine groups, and report the pointer whatever is
+     * painted above the region. Outside, or inside virtual-list rows and HUDs, it reports
+     * {@link UiPointer#OUTSIDE}.
+     */
+    public UiPointer pointer(float x, float y, float width, float height) {
+        UiRect area = documentRect(new UiRect(x, y, width, height));
+        if (inputClip != null) area = intersect(area, inputClip);
+        if (area.width() <= 0 || area.height() <= 0) return UiPointer.OUTSIDE;
+        var live = interactions.live;
+        live.pointerAreas.add(area);
+        if (!area.contains(live.pointerX, live.pointerY)) return UiPointer.OUTSIDE;
+        var point = new java.awt.geom.Point2D.Float(live.pointerX, live.pointerY);
+        if (documentMatrix != null) {
+            try { documentMatrix.inverseTransform(point, point); }
+            catch (java.awt.geom.NoninvertibleTransformException exception) { return UiPointer.OUTSIDE; }
+        }
+        return new UiPointer(true, point.x - offsetX, point.y - offsetY);
+    }
+
+    /**
+     * Repaints {@code bounds}, or the whole page when null, once {@code delayMillis} have passed.
+     * Call it on every paint that should keep refreshing, such as a clock asking for the next
+     * second; each request repaints only its own bounds when it falls due, and idle screens
+     * otherwise cost nothing.
+     */
+    public void refreshAfter(long delayMillis, UiRect bounds) {
+        interactions.live.requestRefresh(System.nanoTime() + Math.max(1, delayMillis) * 1_000_000L,
+            bounds == null ? null : documentRect(bounds));
+    }
+
+    private UiRect documentRect(UiRect local) {
+        UiRect moved = local.translate(offsetX, offsetY);
+        return documentMatrix == null ? moved : transformedRect(documentMatrix, moved);
     }
 
     /** Makes a custom-painted region switch to another page without reserving an action name. */
@@ -1323,31 +1502,57 @@ public final class UiContext {
         UiRect repaintBounds = controlRepaintBounds(x, y, width, height, 4);
         float hoverAmount = animate("button:" + id + ":hover", hover, 120, UiEasing.PAPER, repaintBounds);
         float pressAmount = animate("button:" + id + ":press", down, 90, UiEasing.PAPER, repaintBounds);
-        float radius = switch (shape) {
-            case SQUARE -> 2;
-            case ROUNDED -> theme.smallRadius();
-            case SOFT -> theme.mediumRadius();
-            case PILL -> height / 2;
-        };
-        int fill = switch (style) {
-            case PRIMARY -> accent;
-            case SECONDARY -> theme.raisedSurface();
-            case GHOST -> UiCanvas.alpha(theme.background(), 0);
-            case DANGER -> 0xFF3A1D20;
-        };
+        float radius = radius(shape, height);
         int border = switch (style) {
             case PRIMARY -> UiCanvas.mix(accent, 0xFFFFFFFF, .15F);
             case DANGER -> 0xFF7B3439;
             default -> theme.border();
         };
-        fill = UiCanvas.mix(fill, 0xFFFFFFFF, (style == ButtonStyle.GHOST ? .05F : .08F) * hoverAmount);
+        int fill = UiCanvas.mix(fill(style), 0xFFFFFFFF, (style == ButtonStyle.GHOST ? .05F : .08F) * hoverAmount);
         fill = UiCanvas.mix(fill, 0xFF000000, .12F * pressAmount);
         canvas.roundRect(fill, x, y, width, height, radius);
         canvas.strokeRoundRect(border, .8F, x, y, width, height, radius);
         if (focused(id)) drawFocusRing(accent, x - 2, y - 2, width + 4, height + 4, radius + 2);
-        int textColor = style == ButtonStyle.PRIMARY ? theme.accentText()
-            : style == ButtonStyle.DANGER ? 0xFFFFB9BD : theme.text();
-        canvas.centeredText(label, x + width / 2, y + height / 2, 9, textColor, Font.BOLD, theme.fontFamily());
+        canvas.centeredText(label, x + width / 2, y + height / 2, 9, foreground(style), Font.BOLD, theme.fontFamily());
+    }
+
+    private float radius(Shape shape, float height) {
+        return switch (shape) {
+            case SQUARE -> 2;
+            case ROUNDED -> theme.smallRadius();
+            case SOFT -> theme.mediumRadius();
+            case PILL -> height / 2;
+        };
+    }
+
+    private int fill(ButtonStyle style) {
+        return switch (style) {
+            case PRIMARY -> accent;
+            case SECONDARY -> theme.raisedSurface();
+            case GHOST -> UiCanvas.alpha(theme.background(), 0);
+            case DANGER -> 0xFF3A1D20;
+        };
+    }
+
+    private int foreground(ButtonStyle style) {
+        return style == ButtonStyle.PRIMARY ? theme.accentText() : style == ButtonStyle.DANGER ? 0xFFFFB9BD : theme.text();
+    }
+
+    /**
+     * Opens {@code items} at the pointer when the control already painted with {@code targetId} is
+     * right-clicked, such as a desktop background or a file icon. Call it after the control; the
+     * topmost control under the pointer decides which context menu opens.
+     */
+    public void contextMenu(String targetId, List<UiMenuItem> items, UiMenuStyle style) {
+        if (targetId == null || items == null || items.isEmpty() || style == null) return;
+        for (int i = hitRegions.size() - 1; i >= 0; i--) {
+            UiHitRegion region = hitRegions.get(i);
+            if (targetId.equals(region.id())) {
+                menus.add(new UiMenu(UiMenu.CONTEXT_PREFIX + targetId, new UiRect(region.x(), region.y(), region.width(), region.height()),
+                    items, null, style));
+                return;
+            }
+        }
     }
 
     /**
@@ -1378,6 +1583,4 @@ public final class UiContext {
         if (anchor.width() <= 0 || anchor.height() <= 0) return;
         tooltips.add(new UiTooltip(id, text, anchor));
     }
-
-    private static int clampIndex(int index, int length) { return Math.max(0, Math.min(length, index)); }
 }

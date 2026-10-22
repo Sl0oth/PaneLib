@@ -4,11 +4,12 @@ PaneLib is a 100% client-side Fabric UI library for building desktop-quality Min
 
 It is native and retained-mode. It does not start Chromium, load HTML, parse CSS, or require MCEF. A screen is rasterized only when something changes, uploaded to one reusable GPU texture, and then blitted while idle. Minecraft items and entities render in a separate native layer.
 
-Published beta: [`0.9.9-beta.1`](https://github.com/Sl0oth/PaneLib/releases/tag/v0.9.9-beta.1),
-for Minecraft 26.2, Fabric Loader 0.19.3+, Fabric API and Java 25. Developers can use
-`dev.pane:panelib:0.9.9-beta.1` from the anonymous Maven repository at
-`https://sl0oth.github.io/PaneLib/maven/`. See [installation](docs/installation.md) for the Gradle snippet.
-The submitted 0.9.8 snapshot is preserved. This GitHub beta does not update Modrinth.
+Latest beta: [`1.0.0-beta.1`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.1) on GitHub Releases, for Minecraft 26.2, Fabric Loader
+0.19.3+, Fabric API and Java 25. It adds liquid glass, GPU-animated groups of controls, region-only
+repaints and the PaneOS showcase. Developers can use `dev.pane:panelib:1.0.0-beta.1` from the
+anonymous Maven repository at `https://sl0oth.github.io/PaneLib/maven/`, or download the runtime and
+starter from the release page. See [installation](docs/installation.md). The submitted 0.9.8 snapshot is preserved. GitHub releases
+do not update Modrinth.
 
 ## First screen in your own mod
 
@@ -25,11 +26,11 @@ remain native overlays. The library alone intentionally adds no screen, command,
 ./gradlew :pane-demo:runExamples
 ```
 
-This opens the curated example shelf at the title screen. Try Wayfarer's game menu and HUD,
-Gather's chat layout, Pane Mail's inbox, or the vanilla HUD recipe. H opens examples; J toggles
-the selected HUD after you create or join a world. Public launchers require an installed Java 25,
-but no Python launcher, private save, or Mac-specific Java path.
-See the [example index](examples/README.md) for direct launch commands.
+This opens the showcase launcher at the title screen, the one place to reach every example:
+PaneOS (a whole Mac-like desktop with liquid glass and working apps), Wayfarer's game menu, and Pane Mail's inbox,
+plus the Wayfarer and vanilla HUD recipes. Esc returns to the launcher from each; H reopens it and
+J toggles the selected HUD after you create or join a world. It needs an installed Java 25, but no
+Python launcher, private save, or Mac-specific Java path. See the [example index](examples/README.md).
 
 ## What is included
 
@@ -125,7 +126,7 @@ Open the curated example shelf with Java 25:
 ./gradlew :pane-demo:runExamples
 ```
 
-Wayfarer, Gather, Pane Mail and the vanilla HUD recipe have distinct visual styles and dedicated launch commands. See the [example index](examples/README.md). Public launches need no private save, Python launcher or Mac-specific Java path. H opens examples; J toggles the selected HUD.
+PaneOS, Wayfarer and Pane Mail have distinct visual styles and all open from that one launcher. See the [example index](examples/README.md). It needs no private save, Python launcher or Mac-specific Java path. H opens the launcher; J toggles the selected HUD.
 
 The [independent starter](examples/first-screen/README.md) compiles against the packaged library and is the smallest place to begin your own mod.
 
@@ -134,11 +135,14 @@ Developer verification is separate:
 ```sh
 ./gradlew :pane:build :pane-demo:build
 ./gradlew :pane-demo:runExamples -PexampleTest
+./gradlew :pane-demo:runClient -Pisolated -PpaneOsTest
 ./gradlew :pane-demo:runClient -Pisolated -PgmailTest
-./gradlew :pane-demo:runClient -PstudioTest
 ```
 
-The examples fixture creates a fresh disposable world. The broader historical `-Pautotest` and Studio fixtures still exercise the 10,000-row directory, retained raster work and low-level controls. They are regression tools, not the public example lineup. See [performance](docs/performance.md) and [layered UI and motion](docs/layered-ui-and-motion.md).
+The examples fixture creates a fresh disposable world. Focused `-Pisolated` fixtures (API, review,
+popup, animation, editing, editor, dialog, GPU layer, PaneOS, idle/toast performance and more)
+exercise the library in a real client; see [performance](docs/performance.md) and
+[layered UI and motion](docs/layered-ui-and-motion.md).
 
 ## MCEF
 
@@ -146,12 +150,13 @@ The old MCEF experiment is preserved under `dev.pane.mcef` for a possible option
 
 ## Release state
 
-Current local candidate: `dev.pane:panelib:0.9.9-beta.1`. This checkout reproduces the published beta;
+Latest release: [`1.0.0-beta.1`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.1), a GitHub prerelease published from this source. The earlier
+`0.9.9-beta.1` artifacts remain unchanged; both versions are served by Maven. Each release has its own identity;
 the coordinate is also checked by the local packager against root `gradle.properties`.
 
-The published 0.9.9-beta.1 gives post-submission fixes their own identity. Root `gradle.properties`
-drives its runtime, sources, Javadoc, starter descriptor, and Maven coordinates. The preserved
-submitted 0.9.8 snapshot is never overwritten with newer bytes.
+Root `gradle.properties` drives the runtime, sources, Javadoc, starter descriptor and Maven
+coordinates for the current source version. Published beta.1 and the preserved submitted 0.9.8
+snapshot are never overwritten with newer bytes.
 
 Prepare and verify local release artifacts with:
 

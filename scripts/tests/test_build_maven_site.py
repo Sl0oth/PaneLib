@@ -226,6 +226,47 @@ class MavenSiteTests(unittest.TestCase):
             site.main(['--catalog', 'absent', '--output', 'absent'])
         self.assertEqual(error.exception.code, 2)
 
+    def test_empty_output_accepts_windows_directory_rename_semantics(self):
+        self.output.mkdir()
+        original_replace = site.os.replace
+        def windows_replace(source, destination):
+            if Path(destination).exists():
+                raise PermissionError('Windows cannot replace an existing directory')
+            self.assertEqual(site.load_catalog(Path(source) / 'catalog.json'), self.catalog)
+            return original_replace(source, destination)
+        with mock.patch.object(site.os, 'replace', side_effect=windows_replace) as replace:
+            self.build()
+        replace.assert_called_once()
+        self.assertEqual(site.load_catalog(self.output / 'catalog.json'), self.catalog)
+        self.assertFalse(list(self.root.glob('.panelib-maven-*')))
+
+    def test_failed_final_rename_preserves_prior_empty_or_absent_output(self):
+        for existed in (False, True):
+            with self.subTest(existing_empty_output=existed):
+                if existed:
+                    self.output.mkdir()
+                with mock.patch.object(site.os, 'replace', side_effect=PermissionError('rename denied')):
+                    with self.assertRaisesRegex(PermissionError, 'rename denied'):
+                        self.build()
+                self.assertEqual(self.output.exists(), existed)
+                if existed:
+                    self.assertEqual(list(self.output.iterdir()), [])
+                self.assertFalse(list(self.root.glob('.panelib-maven-*')))
+
+    def test_concurrent_content_before_placeholder_removal_is_preserved(self):
+        self.output.mkdir()
+        original_rmdir = Path.rmdir
+        marker = self.output / 'keep.txt'
+        def write_before_removal(path):
+            if path == self.output:
+                marker.write_text('concurrent content')
+            return original_rmdir(path)
+        with mock.patch.object(Path, 'rmdir', autospec=True, side_effect=write_before_removal):
+            with self.assertRaises(OSError):
+                self.build()
+        self.assertEqual(marker.read_text(), 'concurrent content')
+        self.assertFalse(list(self.root.glob('.panelib-maven-*')))
+
 
 if __name__ == '__main__':
     unittest.main()

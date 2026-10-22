@@ -1,5 +1,27 @@
 # Changelog
 
+## 1.0.0-beta.1 — liquid glass, GPU motion and PaneOS
+
+- Added `UiCanvas.liquidGlass` with `UiGlass`: rim refraction along the edge normal, colour
+  dispersion, frosted and tinted body, specular edge and an outside-only shadow. Lenses and
+  `backdropBlur` results are reused between paints while their backdrop pixels are unchanged, and
+  frost is blurred at half resolution.
+- Partial repaints now grow to cover everything glass or backdrop blur reads, so a lens never
+  samples its own stale output; glass inside `withLayer` groups sees what lies behind the group.
+- Added `UiContext.pointer` (bounded pointer-driven painting), `refreshAfter` (timed repaints),
+  `dragArea` with moved bounds (drag steps repaint only old and new positions), `withPresentation`
+  (transitions for groups that contain editors, sliders and scrolls) and `paintedSlider`.
+- Added `UiScreen.requestFocus` for controls that appear in a later paint, `UiDocument` tooltip
+  styling through `UiTooltipStyle`, and glass reuse diagnostics.
+- Added menu row shortcut hints, disabled rows and group dividers (`UiMenuItem.shortcut`,
+  `enabled`, `startsGroup`) and right-click context menus (`UiContext.contextMenu`).
+- Added `gpuGroup`, `gpuTransition` and `dragLayer` for GPU-animated groups of controls,
+  `repaintScope` for region-only state repaints, opt-in `localFocusRepaint`, and `shadowOutside`.
+- Blur now costs the same at any radius; large lenses, blurs, shadows and cache hashes split across
+  CPU cores; outside shadows are reused between paints. Interactions on controls that are not on the
+  page no longer fall back to repainting the page.
+- Replaced the Beacon example with PaneOS, a Mac-like desktop showcase with a real-client fixture.
+
 ## 0.9.8 — opt-in Minecraft-formatted text
 
 - Added immutable `UiRichText` preparation from styled Minecraft components, native section-sign

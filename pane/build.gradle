@@ -116,3 +116,35 @@ tasks.register('warmTextBenchmark', JavaExec) {
     mainClass = 'dev.pane.ui.WarmTextBenchmark'
     systemProperty 'java.awt.headless', 'true'
 }
+
+// Development-only retained editor repaint timings and pixel/geometry fingerprints; no timing gate.
+tasks.register('editorPaintBenchmark', JavaExec) {
+    dependsOn tasks.named('testClasses')
+    classpath = project.hasProperty('editorBaselineJar')
+        ? files(rootProject.file(project.property('editorBaselineJar')), sourceSets.test.runtimeClasspath)
+        : sourceSets.test.runtimeClasspath
+    mainClass = 'dev.pane.ui.EditorPaintBenchmark'
+    systemProperty 'java.awt.headless', 'true'
+    args project.findProperty('editorBenchmarkWarmup') ?: '20', project.findProperty('editorBenchmarkSamples') ?: '30'
+}
+
+// Explicit CPU pixel transfer comparison; the saved baseline may precede current implementation classes.
+tasks.register('pixelTransferBenchmark', JavaExec) {
+    dependsOn tasks.named('testClasses')
+    classpath = project.hasProperty('pixelBaselineJar')
+        ? files(rootProject.file(project.property('pixelBaselineJar')), sourceSets.test.runtimeClasspath)
+        : sourceSets.test.runtimeClasspath
+    mainClass = 'dev.pane.ui.PixelTransferBenchmark'
+}
+
+// Full-page retained repaint timing and pixel fingerprint; development comparison only, no timing gate.
+tasks.register('pagePaintBenchmark', JavaExec) {
+    dependsOn tasks.named('testClasses')
+    classpath = project.hasProperty('pageBaselineJar')
+        ? files(rootProject.file(project.property('pageBaselineJar')), sourceSets.test.runtimeClasspath)
+        : sourceSets.test.runtimeClasspath
+    mainClass = 'dev.pane.ui.PagePaintBenchmark'
+    systemProperty 'java.awt.headless', 'true'
+    if (project.hasProperty('pageProfile')) jvmArgs "-XX:StartFlightRecording=filename=${project.property('pageProfile')},settings=profile"
+    args project.findProperty('pageBenchmarkWarmup') ?: '40', project.findProperty('pageBenchmarkSamples') ?: '60'
+}

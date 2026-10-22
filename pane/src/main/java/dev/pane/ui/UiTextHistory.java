@@ -3,12 +3,13 @@ package dev.pane.ui;
 import java.util.ArrayDeque;
 import java.util.Optional;
 
-/** Bounded whole-edit undo/redo for plain text. Selection indices use UTF-16 codepoint boundaries. */
+/** Bounded whole-edit undo/redo for plain text. Selection indices use UTF-16 offsets at grapheme boundaries. */
 public final class UiTextHistory {
     public record Snapshot(String value, int cursor, int anchor) {
         public Snapshot {
             value = java.util.Objects.requireNonNull(value);
-            cursor = UiTextBoundary.floor(value, cursor); anchor = UiTextBoundary.floor(value, anchor);
+            UiTextBoundary.Index boundaries = UiTextBoundary.index(value);
+            cursor = boundaries.floor(cursor); anchor = boundaries.floor(anchor);
         }
     }
     private final int maximumEdits, maximumCharacters;

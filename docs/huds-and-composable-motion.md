@@ -86,6 +86,29 @@ and clipping of the surrounding canvas apply when the cache is drawn, not when i
 Bounds size should stay stable. Register interactive targets every paint outside this drawing-only
 cache. Never use a mutable object as a revision and expect mutations to invalidate it.
 
+### GPU-composited layers
+
+`cachedLayer` still repaints the page on every animation frame; only the group's own content is
+reused. When a group moves, scales, rotates or fades as a whole, `ui.gpuLayer` lets the GPU do it:
+
+```java
+boolean open = ui.booleanValue("details", false);
+ui.gpuLayer("details-card", new UiRect(46, 56, 208, 120), detailsRevision,
+    open ? new UiTransform(0, 0, 1, 1, 0, 1) : new UiTransform(0, 24, .96F, .96F, 0, 0),
+    260, UiEasing.EASE_OUT, card -> {
+        card.shadow(0x60000000, 10, 0, 3, 60, 70, 180, 90, 12);
+        card.roundRect(0xFF5B9BE3, 60, 70, 180, 90, 12);
+    });
+```
+
+The painter runs into the layer's own texture only when the revision, size or raster quality
+changes. A different target on a later paint starts a new animation from the transform on screen,
+and every frame of it is composited by the GPU with no page repaint or upload. Transforms pivot on
+the centre of the bounds, so include shadows and a small transparent margin in them. Layers are
+drawing-only (register controls outside them) and sit above the page and virtual lists, below
+native item slots and popups. In HUDs, virtual-list rows, affine groups or under a manual canvas
+transform the group is simply drawn in place at its target.
+
 Call `clear()` when discarding a long-lived cache. `withLayer` remains an uncached group compositor;
 use a separate `UiLayer` for each purpose. CPU bitmap transformation still has a cost; it is not a
 GPU-only scene graph.
@@ -263,7 +286,7 @@ claim elements again. Keep lifecycle calls on the client thread outside renderin
 Each widget owns its claims. If multiple HUDs claim the same element, vanilla remains suppressed
 while any eligible owner is presented. Hide/close one widget without releasing another widget's
 claim. For a multi-widget toggle, call `setEnabled` on each widget from one client-thread action;
-Wayfarer and Bramble demonstrate this with J. Disable immediately cancels pending fades/motion;
+The Wayfarer HUD demonstrates this with J. Disable immediately cancels pending fades/motion;
 it does not overwrite the widget's values or `visible` preference.
 
 Ordinary screens suppress custom HUDs by default, so the original callbacks resume behind those
@@ -301,30 +324,7 @@ a copyable example, custom resource fonts, diagnostics, scope and the real-Minec
 
 ## Try the supported examples
 
-- `./gradlew :pane-demo:runWayfarerHud` selects the textured Wayfarer HUD.
-- `./gradlew :pane-demo:runVanillaHud` selects the native font/item HUD recipe.
-- `./gradlew :pane-demo:runExamples` opens the full example shelf.
-
-Create or join a world, then use J to toggle the selected HUD. These public launch paths do not
-create a world, position the camera, modify inventory, or need a private save. H opens the shelf.
-See the [example index](../examples/README.md) for the remaining public recipes.
-
-## Developer reference: Atlas fixtures
-
-Atlas remains a historical regression fixture, separate from the curated public examples.
-The following commands intentionally prepare disposable test worlds:
-
-
-- `./gradlew :pane-demo:runClient -Pstudio` opens Atlas in a dedicated disposable field world.
-- H opens the console; J toggles the HUD. Return to world resumes normal movement/look/attack.
-- Motion Studio demonstrates interrupted card expansion, spring retargeting, a finite three-beat
-  sequence, animated selection, and staggered controls.
-- Field HUD exposes visibility, anchors, scale, and reduced motion with a live editor preview.
-- `-PstudioTest` runs the full automated world/input/lifecycle checks and quits.
-- `-PstudioRecord` runs those checks while sampling actual client frames at 20 Hz.
-- `-PstudioPreview` captures just the UI motion segment after clearing setup chat, then quits.
-- `python3 tools/export-studio-previews.py` makes the review GIFs using existing Pillow.
-
-The studio worlds (`pane_studio_scratch` and `pane_studio_autotest_20261016`) are reserved disposable
-fixtures. The launcher prepares a small field area there; use another world for anything you want
-to keep. No personal world is selected automatically.
+`./gradlew :pane-demo:runExamples` opens the showcase launcher; choose **Wayfarer HUD** (textured)
+or **Vanilla HUD** (native font/item recipe), create or join a world, then use J to toggle it. The
+launcher does not create a world, position the camera, modify inventory, or need a private save.
+H reopens it. See the [example index](../examples/README.md).
