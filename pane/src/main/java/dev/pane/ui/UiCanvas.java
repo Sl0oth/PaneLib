@@ -377,9 +377,12 @@ public final class UiCanvas {
             outsideShadow(matrix, caster, radius * scale, area, lookup, samples, centerX, centerY, halfW - corner, halfH - corner, corner, deviceClip);
             return true;
         }
-        if (shadowMask == null || shadowMask.getWidth() < area.width || shadowMask.getHeight() < area.height)
+        if (shadowMask == null && glassCache != null) shadowMask = glassCache.shadowMask;
+        if (shadowMask == null || shadowMask.getWidth() < area.width || shadowMask.getHeight() < area.height) {
             shadowMask = new BufferedImage(Math.max(area.width, shadowMask == null ? 0 : shadowMask.getWidth()),
                 Math.max(area.height, shadowMask == null ? 0 : shadowMask.getHeight()), BufferedImage.TYPE_INT_ARGB);
+            if (glassCache != null) glassCache.shadowMask = shadowMask;
+        }
         int stride = shadowMask.getWidth();
         int[] pixels = ((java.awt.image.DataBufferInt) shadowMask.getRaster().getDataBuffer()).getData();
         double innerW = halfW - corner, innerH = halfH - corner;
@@ -433,7 +436,7 @@ public final class UiCanvas {
             bands.add(new Rectangle(area.x, core.y, core.x - area.x, core.height));
             bands.add(new Rectangle(core.x + core.width, core.y, area.x + area.width - core.x - core.width, core.height));
         }
-        long ramp = glassCache == null ? 0 : UiGlassCache.hash(lookup);
+        long ramp = glassCache == null ? 0 : UiGlassCache.hash(lookup, lookup.length);
         Graphics2D output = (Graphics2D) graphics.create();
         try {
             output.setTransform(new AffineTransform());
@@ -509,10 +512,10 @@ public final class UiCanvas {
         if (glassCache != null && backdropParent == null) {
             // Screen surface: reuse the frost when nothing beneath it changed.
             Rectangle read = new Rectangle(left, top, pixelWidth, pixelHeight);
-            int[] backdrop = new int[pixelWidth * pixelHeight];
+            int[] backdrop = glassCache.scratch(pixelWidth * pixelHeight);
             readStraight(target, read, backdrop, 0, pixelWidth);
             var key = new UiGlassCache.Key(read, read, pixelRadius, 0, 0, 0, 0, null);
-            long hash = UiGlassCache.hash(backdrop);
+            long hash = UiGlassCache.hash(backdrop, pixelWidth * pixelHeight);
             BufferedImage frosted = glassCache.find(key, hash);
             if (frosted == null) {
                 boxBlur(backdrop, pixelWidth, pixelHeight, pixelRadius);
@@ -635,8 +638,10 @@ public final class UiCanvas {
      * that group composited over everything its parents hold there. Pixels off the surface are transparent.
      */
     private int[] backdropPixels(int x, int y, int width, int height) {
-        int[] pixels = new int[width * height];
+        // The screen's scratch serves one read at a time; it holds the previous read's pixels until filled.
+        int[] pixels = glassCache == null ? new int[width * height] : glassCache.scratch(width * height);
         Rectangle own = new Rectangle(x, y, width, height).intersection(new Rectangle(target.getWidth(), target.getHeight()));
+        if (glassCache != null && !own.equals(new Rectangle(x, y, width, height))) java.util.Arrays.fill(pixels, 0, width * height, 0);
         if (!own.isEmpty()) readStraight(target, own, pixels, (own.y - y) * width + own.x - x, width);
         if (backdropParent == null) return pixels;
         int[] under = backdropParent.backdropPixels(x + backdropX, y + backdropY, width, height);
@@ -699,7 +704,7 @@ public final class UiCanvas {
         int[] backdrop = backdropPixels(source.x, source.y, sw, sh);
         // Unchanged pixels under unchanged glass give the same lens: reuse it instead of recomputing.
         var key = glassCache == null ? null : new UiGlassCache.Key(area, source, centerX, centerY, halfW, halfH, corner, glass);
-        long hash = key == null ? 0 : UiGlassCache.hash(backdrop);
+        long hash = key == null ? 0 : UiGlassCache.hash(backdrop, sw * sh);
         var finished = finishedKey(key, deviceClip, area, source, scale);
         if (finished != null) {
             BufferedImage pixels = glassCache.find(finished, hash);
@@ -865,7 +870,7 @@ public final class UiCanvas {
 
     /** Separable running-sum box blur of an opaque-ish ARGB raster, in place. */
     private static void boxBlur(int[] pixels, int width, int height, int radius) {
-        int[] scratch = new int[pixels.length];
+        int[] scratch = new int[width * height];
         blurPass(pixels, scratch, width, height, radius, 1, width);
         blurPass(scratch, pixels, height, width, radius, width, 1);
     }

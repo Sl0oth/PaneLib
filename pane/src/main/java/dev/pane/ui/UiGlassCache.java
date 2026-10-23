@@ -33,6 +33,16 @@ final class UiGlassCache {
         ShadowKey { band = new Rectangle(band); }
     }
     private final Map<Object, Entry> entries = new HashMap<>();
+    /** Backdrop pixels of the latest read, reused so each paint does not allocate them again. */
+    private int[] scratch = new int[0];
+    /** Distance-shadow mask kept between paints. */
+    BufferedImage shadowMask;
+
+    /** An array of at least {@code size} pixels for one backdrop read; the next call may hand out the same array. */
+    int[] scratch(int size) {
+        if (scratch.length < size) scratch = new int[Math.max(size, scratch.length + scratch.length / 4)];
+        return scratch;
+    }
     private final Set<Object> used = new HashSet<>();
     private long pixels;
     long hits, misses;
@@ -70,7 +80,7 @@ final class UiGlassCache {
         used.clear();
     }
 
-    void clear() { entries.clear(); used.clear(); pixels = 0; }
+    void clear() { entries.clear(); used.clear(); pixels = 0; scratch = new int[0]; shadowMask = null; }
 
     /**
      * Glass and backdrop blur read pixels around what they draw. A partial repaint touching what
@@ -94,17 +104,18 @@ final class UiGlassCache {
         return region;
     }
 
-    static long hash(int[] pixels) {
+    /** Hash of the first {@code length} pixels. */
+    static long hash(int[] pixels, int length) {
         // Large backdrops hash in independent chunks across cores, then combine in order.
-        int chunks = pixels.length < 1 << 16 ? 1 : 16, size = (pixels.length + chunks - 1) / chunks;
+        int chunks = length < 1 << 16 ? 1 : 16, size = (length + chunks - 1) / chunks;
         long[] parts = new long[chunks];
         java.util.stream.IntStream range = java.util.stream.IntStream.range(0, chunks);
         (chunks > 1 ? range.parallel() : range).forEach(chunk -> {
             long hash = 0xCBF29CE484222325L;
-            for (int i = chunk * size, end = Math.min(pixels.length, i + size); i < end; i++) hash = (hash ^ pixels[i]) * 0x100000001B3L;
+            for (int i = chunk * size, end = Math.min(length, i + size); i < end; i++) hash = (hash ^ pixels[i]) * 0x100000001B3L;
             parts[chunk] = hash;
         });
-        long hash = pixels.length;
+        long hash = length;
         for (long part : parts) hash = (hash ^ part) * 0x9E3779B97F4A7C15L;
         return hash;
     }

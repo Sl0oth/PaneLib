@@ -80,10 +80,10 @@ class UiScopedRepaintTest {
     void largeBackdropHashesAreStableAndSensitive() {
         int[] pixels = new int[300_000];
         for (int i = 0; i < pixels.length; i++) pixels[i] = i * 2654435761L > 0 ? i : -i;
-        long first = UiGlassCache.hash(pixels), again = UiGlassCache.hash(pixels.clone());
+        long first = UiGlassCache.hash(pixels, pixels.length), again = UiGlassCache.hash(pixels.clone(), pixels.length);
         assertEquals(first, again, "chunked hashing is deterministic");
         pixels[123_457] ^= 1;
-        assertNotEquals(first, UiGlassCache.hash(pixels), "one changed bit changes the hash");
+        assertNotEquals(first, UiGlassCache.hash(pixels, pixels.length), "one changed bit changes the hash");
     }
 
     @Test
