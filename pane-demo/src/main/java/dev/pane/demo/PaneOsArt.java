@@ -4,6 +4,7 @@ import dev.pane.ui.*;
 import java.awt.Font;
 import java.time.LocalDate;
 import java.time.format.TextStyle;
+import java.util.List;
 import java.util.Locale;
 
 /** PaneOS artwork drawn from geometry: wallpapers, app icons and line symbols. No bitmaps. */
@@ -54,11 +55,25 @@ final class PaneOsArt {
     // ------------------------------------------------------------------ wallpapers
 
     static void wallpaper(UiCanvas g, int kind, boolean dark, float w, float h) {
+        art(g, kind, w, h);
+        finish(g, kind, dark, w, h);
+    }
+
+    /** The wallpaper with its painting kept in {@code art}, so switching appearance only re-tints it. */
+    static void wallpaper(UiCanvas g, UiLayer art, int kind, boolean dark, float w, float h) {
+        g.cachedLayer(art, List.of(Math.round(w), Math.round(h), kind), new UiRect(0, 0, w, h), c -> art(c, kind, w, h));
+        finish(g, kind, dark, w, h);
+    }
+
+    private static void art(UiCanvas g, int kind, float w, float h) {
         switch (kind) {
             case 1 -> sequoia(g, w, h);
             case 2 -> ivory(g, w, h);
             default -> tahoe(g, w, h);
         }
+    }
+
+    private static void finish(UiCanvas g, int kind, boolean dark, float w, float h) {
         if (dark) g.fill(kind == 2 ? 0x8A101114 : 0x6E000814, 0, 0, w, h);
         g.grain(0x09FFFFFF, .3F, 0, 0, w, h);
     }

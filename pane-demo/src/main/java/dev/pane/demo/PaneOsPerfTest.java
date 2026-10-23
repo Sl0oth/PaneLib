@@ -124,11 +124,16 @@ final class PaneOsPerfTest {
             if (screen.paintCount() >= waitPaints) waitPaints = 0;
             else return;
         }
-        if (scene < 0 || step == 4) {
+        if (scene < 0 || step >= 4) {
             if (step == 4 && !finishScene()) { step = 0; return; }
             scene++;
             step = 0;
             if (scene == SCENES.length) {
+                // The last scene ended on a partial repaint; the GPU texture must hold what the CPU painted.
+                if (!gpuAsked) { gpuAsked = true; SurfaceGpuCheck.verify(screen, line -> gpuResult = line); }
+                if (gpuResult == null) { scene--; step = 5; return; }
+                System.out.println("[PaneOsPerf] compare " + gpuResult);
+                if (!gpuResult.contains("PASS")) failures++;
                 System.out.println("[PaneOsPerf] compare " + compared + " scenes, " + failures + " differing");
                 System.out.println("[PaneOsPerf] complete " + (failures == 0 && compared == SCENES.length ? "PASS" : "FAIL"));
                 client.stop();
@@ -157,6 +162,8 @@ final class PaneOsPerfTest {
         }
     }
     private int settleUntil, retries;
+    private boolean gpuAsked;
+    private volatile String gpuResult;
 
     /** Returns false to repeat the scene when time-driven content changed between the two shortcut paints. */
     private boolean finishScene() {

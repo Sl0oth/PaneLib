@@ -55,7 +55,7 @@ public final class PaneOsShowcase {
 
     /** Caches that outlive individual paints. */
     static final class Caches {
-        final UiLayer wallpaper = new UiLayer(), desk = new UiLayer(), photos = new UiLayer(), map = new UiLayer(), lock = new UiLayer();
+        final UiLayer wallpaper = new UiLayer(), wallpaperArt = new UiLayer(), desk = new UiLayer(), photos = new UiLayer(), map = new UiLayer(), lock = new UiLayer();
         final UiLayer[] wallpaperThumbs = {new UiLayer(), new UiLayer(), new UiLayer()};
     }
 
@@ -166,11 +166,11 @@ public final class PaneOsShowcase {
         long sinceBoot = System.currentTimeMillis() - (long) ui.numberValue("boot:at", 0);
         if (sinceBoot < PaneOsLock.BOOT_MILLIS) { PaneOsLock.boot(ui, w, h, sinceBoot); return; }
         boolean locked = ui.booleanValue("locked", true);
-        if (locked) { PaneOsLock.lock(ui, caches.lock, caches.wallpaper, wallRevision, wallpaper, look, w, h); return; }
+        if (locked) { PaneOsLock.lock(ui, caches.lock, caches.wallpaper, caches.wallpaperArt, wallRevision, wallpaper, look, w, h); return; }
         long sinceUnlock = System.currentTimeMillis() - (long) ui.numberValue("unlockedAt", 0);
 
         g.cachedLayer(caches.desk, deskRevision, new UiRect(0, 0, w, h), c -> {
-            c.cachedLayer(caches.wallpaper, wallRevision, new UiRect(0, 0, w, h), wc -> PaneOsArt.wallpaper(wc, wallpaper, look.dark(), w, h));
+            c.cachedLayer(caches.wallpaper, wallRevision, new UiRect(0, 0, w, h), wc -> PaneOsArt.wallpaper(wc, caches.wallpaperArt, wallpaper, look.dark(), w, h));
             if (widgets) PaneOsWidgets.paintStatic(c, ui, look, h);
         });
         ui.hit("desk:bg", "desk:none", 0, MENU_H, w, h - MENU_H);
@@ -203,7 +203,7 @@ public final class PaneOsShowcase {
         if (sinceUnlock < UNLOCK_MILLIS) {
             // The lock screen lifts away on the GPU while the desktop beneath stays still.
             ui.gpuGroup("unlock", new UiRect(0, 0, w, h), wallRevision, UiTransform.identity(), new UiTransform(0, 0, 1.08F, 1.08F, 0, 0),
-                UNLOCK_MILLIS, UiEasing.EASE_IN_OUT, lock -> PaneOsLock.lock(lock, caches.lock, caches.wallpaper, wallRevision, wallpaper, look, w, h));
+                UNLOCK_MILLIS, UiEasing.EASE_IN_OUT, lock -> PaneOsLock.lock(lock, caches.lock, caches.wallpaper, caches.wallpaperArt, wallRevision, wallpaper, look, w, h));
             ui.refreshAfter(UNLOCK_MILLIS - sinceUnlock + 20, new UiRect(0, 0, w, h));
         }
         long shots = (long) ui.numberValue("shot:count", 0);

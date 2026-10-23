@@ -213,6 +213,8 @@ public class UiScreen extends Screen {
     private int partialPaintCount;
     private long lastPaintDurationNanos;
     private int lastUploadPixelCount;
+    /** Packed rows of the latest narrow partial upload, reused between paints. */
+    private ByteBuffer uploadScratch;
     private int mouseX;
     private int mouseY;
     private float layoutScale = 1;
@@ -2666,14 +2668,24 @@ public class UiScreen extends Screen {
         var bytes = surface.texture.getPixels().getPixelBytes().order(ByteOrder.nativeOrder());
         UiPixelTransfer.copy(surface.pixels, bytes.asIntBuffer(), surfaceWidth,
             region.x(), region.y(), region.width(), region.height());
-        // Full-width scanlines avoid subrectangle row-packing differences. Guard rows are copied
-        // from the unchanged native backing; they never rerasterize neighboring content.
-        int top = Math.max(0, region.y() - 1);
-        int bottom = Math.min(surfaceHeight, region.bottom() + 1);
-        ByteBuffer band = bytes.slice(top * surfaceWidth * 4, (bottom - top) * surfaceWidth * 4);
-        RenderSystem.getDevice().createCommandEncoder().writeToTexture(
-            surface.texture.getTexture(), band, 0, 0, 0, top, surfaceWidth, bottom - top);
-        lastUploadPixelCount = surfaceWidth * (bottom - top);
+        // A one-pixel guard on every side is copied from the unchanged native backing; it never
+        // rerasterizes neighbouring content. Narrow regions upload just their rectangle, packed
+        // row after row; regions spanning most of the width upload whole scanlines as they lie.
+        int left = Math.max(0, region.x() - 1), right = Math.min(surfaceWidth, region.x() + region.width() + 1);
+        int top = Math.max(0, region.y() - 1), bottom = Math.min(surfaceHeight, region.bottom() + 1);
+        var encoder = RenderSystem.getDevice().createCommandEncoder();
+        if ((right - left) * 4 >= surfaceWidth * 3) {
+            ByteBuffer band = bytes.slice(top * surfaceWidth * 4, (bottom - top) * surfaceWidth * 4);
+            encoder.writeToTexture(surface.texture.getTexture(), band, 0, 0, 0, top, surfaceWidth, bottom - top);
+            lastUploadPixelCount = surfaceWidth * (bottom - top);
+            return;
+        }
+        int width = right - left, height = bottom - top, size = width * height * 4;
+        if (uploadScratch == null || uploadScratch.capacity() < size)
+            uploadScratch = ByteBuffer.allocateDirect(Math.max(size, uploadScratch == null ? 0 : uploadScratch.capacity() * 3 / 2)).order(ByteOrder.nativeOrder());
+        UiPixelTransfer.pack(bytes, surfaceWidth, left, top, width, height, uploadScratch);
+        encoder.writeToTexture(surface.texture.getTexture(), uploadScratch.slice(0, size), 0, 0, left, top, width, height);
+        lastUploadPixelCount = width * height;
     }
 
     /**

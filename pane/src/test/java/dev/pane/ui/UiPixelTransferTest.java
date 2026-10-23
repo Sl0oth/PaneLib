@@ -25,6 +25,31 @@ final class UiPixelTransferTest {
         UiPixelTransfer.copy(source, target, 3, 0, 0, 3, 2);
         assertEquals(0xFF563412, target.get(0), "a second full copy must not swap colors back");
     }
+    @Test void packedRectanglesHoldExactlyTheirRowsBackToBack() {
+        int stride = 37, rows = 23;
+        var raster = ByteBuffer.allocateDirect(stride * rows * 4).order(ByteOrder.nativeOrder());
+        for (int i = 0; i < stride * rows; i++) raster.putInt(i * 4, i * 7919);
+        var packed = ByteBuffer.allocateDirect(stride * rows * 4).order(ByteOrder.nativeOrder());
+        UiPixelTransfer.pack(raster, stride, 5, 3, 11, 9, packed);
+        for (int row = 0; row < 9; row++) for (int column = 0; column < 11; column++)
+            assertEquals(raster.getInt(((3 + row) * stride + 5 + column) * 4), packed.getInt((row * 11 + column) * 4));
+        assertEquals(0, raster.position());
+        assertEquals(0, packed.position());
+    }
+
+    @Test void largeCopiesMatchTheirRowByRowResult() {
+        int stride = 700, rows = 400;
+        int[] source = new int[stride * rows];
+        var random = new java.util.Random(3);
+        for (int i = 0; i < source.length; i++) source[i] = random.nextInt();
+        var target = ByteBuffer.allocateDirect(source.length * 4).order(ByteOrder.nativeOrder()).asIntBuffer();
+        UiPixelTransfer.copy(source, target, stride, 13, 7, 650, 380);
+        for (int y = 0; y < rows; y++) for (int x = 0; x < stride; x++) {
+            boolean inside = x >= 13 && x < 663 && y >= 7 && y < 387;
+            assertEquals(inside ? UiPixelTransfer.swapRedBlue(source[y * stride + x]) : 0, target.get(y * stride + x));
+        }
+    }
+
     @Test void randomRectanglesPreserveChannelsUntouchedPixelsAndBufferPosition() {
         var random = new java.util.Random(0x50495845);
         for (boolean direct : new boolean[]{false, true}) for (int sample = 0; sample < 180; sample++) {

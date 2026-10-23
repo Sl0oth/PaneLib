@@ -29,10 +29,10 @@ final class PaneOsLock {
     }
 
     /** Blurred wallpaper, the time large at the top, the account and a glass password field at the bottom. */
-    static void lock(UiContext ui, UiLayer cache, UiLayer wallpaper, Object wallRevision, int kind, Look look, float w, float h) {
+    static void lock(UiContext ui, UiLayer cache, UiLayer wallpaper, UiLayer art, Object wallRevision, int kind, Look look, float w, float h) {
         UiCanvas g = ui.canvas();
         g.cachedLayer(cache, List.of(wallRevision, "lock"), new UiRect(0, 0, w, h), c -> {
-            c.cachedLayer(wallpaper, wallRevision, new UiRect(0, 0, w, h), wc -> PaneOsArt.wallpaper(wc, kind, look.dark(), w, h));
+            c.cachedLayer(wallpaper, wallRevision, new UiRect(0, 0, w, h), wc -> PaneOsArt.wallpaper(wc, art, kind, look.dark(), w, h));
             c.backdropBlur(24, 0, 0, w, h);
             c.backdropBlur(24, 0, 0, w, h);
             c.fill(0x1F000000, 0, 0, w, h);
