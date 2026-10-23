@@ -166,5 +166,11 @@ tasks.register('releaseClient', net.fabricmc.loom.task.prod.ClientProductionRunT
     doFirst {
         if (!releaseFiles.isPresent()) throw new GradleException('Pass -PreleaseFiles=<directory holding the release jars>.')
         delete gameDir
+        // A fresh game folder opens vanilla's first-launch accessibility screen; checks start at the title screen.
+        if (fixture.isPresent()) {
+            def options = gameDir.get().file('options.txt').asFile
+            options.parentFile.mkdirs()
+            options.text = 'onboardAccessibility:false\n'
+        }
     }
 }
