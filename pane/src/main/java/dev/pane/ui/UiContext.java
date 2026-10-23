@@ -154,8 +154,17 @@ public final class UiContext {
     /** How many times this screen has rasterized its surface. A diagnostic, not a frame count. */
     public int paintCount() { return paintCount; }
 
-    public boolean hovered(String id) { return id != null && id.equals(hoveredId); }
-    public boolean pressed(String id) { return id != null && id.equals(pressedId); }
+    public boolean hovered(String id) {
+        if (id == null) return false;
+        interactions.live.interactionReads.add(id);
+        return id.equals(hoveredId);
+    }
+
+    public boolean pressed(String id) {
+        if (id == null) return false;
+        interactions.live.interactionReads.add(id);
+        return id.equals(pressedId);
+    }
     /** True when this control has keyboard focus. */
     public boolean focused(String id) { return textInput != null && textInput.focused(id); }
 

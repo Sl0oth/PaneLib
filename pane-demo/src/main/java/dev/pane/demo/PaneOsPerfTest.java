@@ -59,9 +59,11 @@ final class PaneOsPerfTest {
             if (tick > 42 + loop && tick <= 42 + loop * 2) screen.repaintArea(new UiRect(700, 400, 8, 8));
             if (tick == 44 + loop * 2) { end(); screen.begin("loop: click a note"); }
             if (tick > 44 + loop * 2 && tick <= 44 + loop * 3) click("notes:item:" + (tick % 3));
-            if (tick == 46 + loop * 3) { end(); screen.begin("loop: toggle dark mode"); }
-            if (tick > 46 + loop * 3 && tick <= 46 + loop * 3 + 40 && tick % 2 == 0) PaneOsEvents.handleAction(screen, "darkmode");
-            if (tick == 48 + loop * 3 + 40) { end(); report.forEach(line -> System.out.println("[PaneOsPerf] " + line)); System.out.println("[PaneOsPerf] complete PASS"); client.stop(); }
+            if (tick == 46 + loop * 3) { end(); screen.begin("loop: clock widget"); }
+            if (tick > 46 + loop * 3 && tick <= 46 + loop * 4) screen.repaintArea(new UiRect(32, 58, 140, 140));
+            if (tick == 47 + loop * 4) { end(); screen.begin("loop: toggle dark mode"); }
+            if (tick > 47 + loop * 4 && tick <= 47 + loop * 4 + 40 && tick % 2 == 0) PaneOsEvents.handleAction(screen, "darkmode");
+            if (tick == 49 + loop * 4 + 40) { end(); report.forEach(line -> System.out.println("[PaneOsPerf] " + line)); System.out.println("[PaneOsPerf] complete PASS"); client.stop(); }
             return;
         }
         switch (tick) {
@@ -243,6 +245,8 @@ final class PaneOsPerfTest {
                 uploadNanos += snapshot.lastUploadNanos();
                 dirtyPixels += snapshot.lastDirtyPixels();
                 surfacePixels += snapshot.surfacePixels();
+                if (Boolean.getBoolean("pane.demo.perfVerbose")) System.out.printf(Locale.ROOT, "[PaneOsPerf] paint %-22s %s raster=%5.1fms dirty=%4.1f%%%n", phase,
+                    partialPaintCount() != partialBefore ? "partial" : "full   ", snapshot.lastRasterNanos() / 1e6, snapshot.lastDirtyPixels() * 100D / snapshot.surfacePixels());
             }
         }
 

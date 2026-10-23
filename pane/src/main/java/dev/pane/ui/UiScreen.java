@@ -181,6 +181,8 @@ public class UiScreen extends Screen {
     private boolean dragMoved;
     /** Key prefixes the latest paint scoped to a region; see {@link UiContext#repaintScope}. */
     private Map<String, UiRect> repaintScopes = Map.of();
+    /** Controls whose hover or press state the latest paint read. */
+    private Set<String> interactionPainted = Set.of();
     /** Timed repaints requested by the latest paint, each due on its own. */
     private List<UiInteractionState.Refresh> refreshes = List.of();
     /** Device rectangles glass and backdrop blur read in the latest paint. */
@@ -1600,8 +1602,8 @@ public class UiScreen extends Screen {
             popupDirty = true;
         } else if (!virtual.markRows(previous, next)) {
             UiRect bounds = interactionBounds(previous, next);
-            // Neither control is on the page, such as both inside a lifted drag layer: nothing to repaint.
-            if (bounds != null || !noneShown(previous, next)) requestPartialRepaint(bounds);
+            // Neither control is on the page, such as both inside a lifted drag layer, or neither paints its hover: nothing to repaint.
+            if ((bounds != null || !noneShown(previous, next)) && paintsInteraction(previous, next)) requestPartialRepaint(bounds);
         }
     }
 
@@ -2101,13 +2103,17 @@ public class UiScreen extends Screen {
         if (virtualOnly) {
             interactionRepaintBounds = continuingBase ? previousBounds : null;
             virtual.markRows(controlIds);
-        } else if (!continuingBase && interactionBounds(controlIds) == null && noneShown(controlIds)) {
-            // Controls not on the page right now, such as inside a lifted drag layer, have nothing to repaint.
+        } else if (!continuingBase && (!paintsInteraction(controlIds) || interactionBounds(controlIds) == null && noneShown(controlIds))) {
+            // Controls not on the page right now, such as inside a lifted drag layer, and controls that
+            // paint the same hovered or not, such as a plain background hit area, have nothing to repaint.
             interactionRepaintBounds = null;
             interactionPaintsBase = false;
             interactionStart = System.nanoTime();
             interactionEnd = interactionStart + duration;
             return;
+        } else if (!paintsInteraction(controlIds)) {
+            // A running interaction keeps animating its own controls.
+            requestInteractionRepaint();
         } else {
             interactionRepaintBounds = interactionBounds(controlIds);
             if (continuingBase) {
@@ -2152,6 +2158,23 @@ public class UiScreen extends Screen {
     }
 
     /**
+     * Whether a hover or press change of these controls can change any page pixel. A hit area whose
+     * hover and press state no painter read last paint, such as a background that only raises a
+     * window, paints the same either way, and a control that is not on the page paints nothing here.
+     * Anything else is assumed to.
+     */
+    private boolean paintsInteraction(String... controlIds) {
+        if (controlIds == null) return true;
+        for (String id : controlIds) {
+            if (id == null) continue;
+            if (interactionPainted.contains(id)) return true;
+            if (region(id).isPresent() || noneShown(id)) continue;
+            return true;
+        }
+        return false;
+    }
+
+    /**
      * Hover and press animations only change their old and new controls. Keep a conservative
      * margin for the normal two-pixel lift, focus ring, and card shadow without redrawing the
      * screen's retained surface.
@@ -2164,6 +2187,8 @@ public class UiScreen extends Screen {
             boolean found = false;
             for (UiHitRegion region : hitRegions) {
                 if (!id.equals(region.id())) continue;
+                found = true;
+                if (!interactionPainted.contains(id)) break;
                 UiRect bounds = new UiRect(region.x(), region.y(), region.width(), region.height());
                 result = result == null ? bounds : result.union(bounds);
                 found = true;
@@ -2293,6 +2318,7 @@ public class UiScreen extends Screen {
             var live = interactions.live;
             refreshes = List.copyOf(live.refreshes);
             repaintScopes = Map.copyOf(live.scopes);
+            interactionPainted = Set.copyOf(live.interactionReads);
             if (draggingKey != null) {
                 double x = numberValue(draggingKey + ":x", 0), y = numberValue(draggingKey + ":y", 0);
                 UiRect painted = live.dragBounds.get(draggingId);

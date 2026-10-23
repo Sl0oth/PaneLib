@@ -42,11 +42,13 @@ final class UiInteractionState {
         final Map<String, UiRect> scopes = new HashMap<>();
         /** Timed repaints painters asked for; null bounds means the page. */
         final List<Refresh> refreshes = new ArrayList<>();
+        /** Controls whose hover or press state this paint read; only they change when it changes. */
+        final Set<String> interactionReads = new HashSet<>();
 
         void requestRefresh(long atNanos, UiRect bounds) { refreshes.add(new Refresh(atNanos, bounds)); }
 
         void clear() {
-            pointerAreas.clear(); dragBounds.clear(); refreshes.clear(); scopes.clear();
+            pointerAreas.clear(); dragBounds.clear(); refreshes.clear(); scopes.clear(); interactionReads.clear();
         }
     }
 
