@@ -159,10 +159,12 @@ def main():
         parser.error('--ca-file requires --repository-url')
     candidate = args.candidate.resolve()
     subprocess.run([sys.executable, str(ROOT / 'scripts/prepare_release.py'), '--verify', str(candidate)], check=True)
-    runtimes = [p for p in candidate.glob('panelib-*.jar') if not p.name.endswith(('-sources.jar', '-javadoc.jar'))]
+    # The verified manifest names the runtime; the demo and other archives share its prefix.
+    manifest = json.loads((candidate / 'RELEASE_MANIFEST.json').read_text(encoding='utf-8'))
+    runtimes = [item['file'] for item in manifest['artifacts'] if item['role'] == 'runtime']
     if len(runtimes) != 1:
         raise ValueError('Expected one runtime JAR')
-    runtime = runtimes[0]
+    runtime = candidate / runtimes[0]
     with zipfile.ZipFile(runtime) as z:
         metadata = json.loads(z.read('fabric.mod.json'))
     version = metadata['version']
