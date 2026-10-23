@@ -1,0 +1,5 @@
+# Keep the repository's line endings on every system, so a Windows checkout builds the same
+# bytes as macOS and Linux. Only Windows scripts use CRLF.
+* text=auto eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
