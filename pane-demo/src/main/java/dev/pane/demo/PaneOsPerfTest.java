@@ -48,6 +48,19 @@ final class PaneOsPerfTest {
             if (tick == 200) { end(); report.forEach(line -> System.out.println("[PaneOsPerf] " + line)); System.out.println("[PaneOsPerf] complete PASS"); client.stop(); }
             return;
         }
+        if (Boolean.getBoolean("pane.demo.perfLoop")) {
+            // Profiling aid: long runs of one kind of paint, so a sampling profiler sees enough of each.
+            int loop = 150;
+            if (tick == 10) for (String id : new String[] {"files", "settings", "notes"}) PaneOsEvents.openApp(screen, id);
+            if (tick == 40) screen.begin("loop: full repaint");
+            if (tick > 40 && tick <= 40 + loop) screen.invalidate();
+            if (tick == 42 + loop) { end(); PaneOsEvents.raise(screen, "notes"); screen.begin("loop: tiny repaint"); }
+            if (tick > 42 + loop && tick <= 42 + loop * 2) screen.repaintArea(new UiRect(700, 400, 8, 8));
+            if (tick == 44 + loop * 2) { end(); screen.begin("loop: click a note"); }
+            if (tick > 44 + loop * 2 && tick <= 44 + loop * 3) click("notes:item:" + (tick % 3));
+            if (tick == 46 + loop * 3) { end(); report.forEach(line -> System.out.println("[PaneOsPerf] " + line)); System.out.println("[PaneOsPerf] complete PASS"); client.stop(); }
+            return;
+        }
         switch (tick) {
             case 10 -> { for (String id : new String[] {"files", "settings", "notes"}) PaneOsEvents.openApp(screen, id); }
             case 40 -> screen.begin("full repaint");
@@ -100,9 +113,11 @@ final class PaneOsPerfTest {
 
     static final class Probe extends UiScreen {
         private final ArrayList<Long> rasters = new ArrayList<>();
+        private long uploadNanos, dirtyPixels, surfacePixels;
         private String phase;
         private int full, partial, startPaints, startPartials;
         private int pointerX = -100, pointerY = -100;
+        private long phaseStartedMillis;
 
         Probe(UiDocument document, UiScreenEventHandler handler, UiScreenOptions options) {
             this(document, handler, options, new UiScreen[1]);
@@ -118,10 +133,25 @@ final class PaneOsPerfTest {
         @Override public void extractRenderState(GuiGraphicsExtractor graphics, int x, int y, float delta) {
             int before = paintCount(), partialBefore = partialPaintCount();
             super.extractRenderState(graphics, pointerX, pointerY, delta);
-            if (phase != null && paintCount() != before) rasters.add(performanceSnapshot().lastRasterNanos());
+            if (phase != null && paintCount() != before) {
+                var snapshot = performanceSnapshot();
+                rasters.add(snapshot.lastRasterNanos());
+                uploadNanos += snapshot.lastUploadNanos();
+                dirtyPixels += snapshot.lastDirtyPixels();
+                surfacePixels += snapshot.surfacePixels();
+            }
         }
 
-        void begin(String name) { phase = name; rasters.clear(); startPaints = paintCount(); startPartials = partialPaintCount(); }
+        /** Queues a partial repaint of one layout rectangle, as a small state change would. */
+        void repaintArea(UiRect area) {
+            try {
+                var method = UiScreen.class.getDeclaredMethod("requestPartialRepaint", UiRect.class);
+                method.setAccessible(true);
+                method.invoke(this, area);
+            } catch (ReflectiveOperationException error) { throw new IllegalStateException(error); }
+        }
+
+        void begin(String name) { phase = name; phaseStartedMillis = System.currentTimeMillis(); rasters.clear(); uploadNanos = dirtyPixels = surfacePixels = 0; startPaints = paintCount(); startPartials = partialPaintCount(); }
 
         String summary() {
             var sorted = new ArrayList<>(rasters);
@@ -129,7 +159,10 @@ final class PaneOsPerfTest {
             int paints = paintCount() - startPaints, partials = partialPaintCount() - startPartials;
             double average = sorted.stream().mapToLong(Long::longValue).average().orElse(0) / 1e6;
             double worst = sorted.isEmpty() ? 0 : sorted.getLast() / 1e6;
-            String line = String.format(Locale.ROOT, "%-22s paints=%3d (full %3d) avg=%6.1fms max=%6.1fms", phase, paints, paints - partials, average, worst);
+            String line = String.format(Locale.ROOT, "%-22s paints=%3d (full %3d) avg=%6.1fms max=%6.1fms upload=%5.1fms dirty=%3.0f%%", phase, paints, paints - partials,
+                average, worst, rasters.isEmpty() ? 0 : uploadNanos / 1e6 / rasters.size(), surfacePixels == 0 ? 0 : dirtyPixels * 100D / surfacePixels);
+            // Wall-clock bounds let a profiler recording be cut to one phase.
+            System.out.printf(Locale.ROOT, "[PaneOsPerf] window %d %d %s%n", phaseStartedMillis, System.currentTimeMillis(), phase);
             phase = null;
             return line;
         }

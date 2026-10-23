@@ -24,10 +24,11 @@ dependencies {
 
 tasks.named('runClient') {
     if (project.hasProperty('adoptionTest')) systemProperty 'pane.demo.adoptionTest', 'true'
-    // Dev-only JFR capture for any fixture run, e.g. -Pjfr=paneos.
+    // Dev-only JFR capture for any fixture run, e.g. -Pjfr=paneos; -PjfrSettings=<file.jfc> samples finer.
     if (project.hasProperty('jfr')) {
         def label = project.property('jfr').toString().replaceAll('[^a-zA-Z0-9_-]', '_')
-        jvmArgs "-XX:StartFlightRecording=filename=${rootProject.file("build/performance/${label}.jfr").absolutePath},settings=profile,dumponexit=true,maxsize=128m"
+        def settings = project.hasProperty('jfrSettings') ? rootProject.file(project.property('jfrSettings')).absolutePath : 'profile'
+        jvmArgs "-XX:StartFlightRecording=filename=${rootProject.file("build/performance/${label}.jfr").absolutePath},settings=${settings},dumponexit=true,maxsize=256m"
     }
     if (project.hasProperty('wayfarer')) systemProperty 'pane.demo.wayfarer', 'true'
     if (project.hasProperty('wayfarerTest')) systemProperty 'pane.demo.wayfarerTest', 'true'
@@ -43,6 +44,7 @@ tasks.named('runClient') {
     if (project.hasProperty('windowHudTest')) systemProperty 'pane.demo.windowHudTest', 'true'
     if (project.hasProperty('paneOsPerf')) systemProperty 'pane.demo.paneOsPerf', 'true'
     if (project.hasProperty('perfClicks')) systemProperty 'pane.demo.perfClicks', 'true'
+    if (project.hasProperty('perfLoop')) systemProperty 'pane.demo.perfLoop', 'true'
     if (project.hasProperty('size')) systemProperty 'pane.demo.size', project.property('size').toString()
     if (project.hasProperty('paneOsKeepOpen')) systemProperty 'pane.demo.paneOsKeepOpen', 'true'
     if (project.hasProperty('dialogTest')) systemProperty 'pane.demo.dialogTest', 'true'
