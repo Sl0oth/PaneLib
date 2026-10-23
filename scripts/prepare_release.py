@@ -12,7 +12,7 @@ import re
 import shutil
 import stat
 import sys
-import tempfile
+import uuid
 import xml.etree.ElementTree as ET
 import zipfile
 
@@ -540,7 +540,10 @@ def stage(root=ROOT, output=None):
         require(existing == payload, f'Immutable candidate differs: {destination}. Use --output with a fresh candidate directory.')
         return destination, False
     destination.parent.mkdir(parents=True, exist_ok=True)
-    temporary = Path(tempfile.mkdtemp(prefix='.' + destination.name + '-staging-', dir=destination.parent))
+    # A plain unique directory, not mkdtemp: its owner-only mode (an owner-only ACL on Windows) would
+    # carry over to the finished candidate and hide it from other processes of the same user.
+    temporary = destination.parent / ('.' + destination.name + '-staging-' + uuid.uuid4().hex)
+    temporary.mkdir()
     try:
         for name, data in payload.items():
             (temporary / name).write_bytes(data)
