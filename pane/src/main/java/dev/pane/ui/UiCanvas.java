@@ -135,9 +135,13 @@ public final class UiCanvas {
 
     public void roundRect(int color, float x, float y, float width, float height, float radius) {
         graphics.setColor(awtColor(color));
-        RoundRectangle2D.Float shape = roundShape(x, y, width, height, radius);
-        float corner = Math.min(shape.archeight / 2, height / 2);
-        UiBands.fill(graphics, shape, y + corner, y + height - corner);
+        fillStraightSides(roundShape(x, y, width, height, radius));
+    }
+
+    /** Fills a rounded rectangle with the current paint; only the rows between its corners have straight sides. */
+    private void fillStraightSides(RoundRectangle2D.Float shape) {
+        float corner = Math.min(shape.archeight / 2, shape.height / 2);
+        UiBands.fill(graphics, shape, shape.y + corner, shape.y + shape.height - corner);
     }
 
     /** Rounded rectangle with independent corner radii, clockwise from the top left. */
@@ -254,7 +258,7 @@ public final class UiCanvas {
     public void gradientRect(int from, int to, float degrees,
                              float x, float y, float width, float height, float radius) {
         graphics.setPaint(linearPaint(from, to, degrees, x, y, width, height));
-        graphics.fill(roundShape(x, y, width, height, radius));
+        fillStraightSides(roundShape(x, y, width, height, radius));
         graphics.setPaint(awtColor(0xFF000000));
     }
 
@@ -265,7 +269,7 @@ public final class UiCanvas {
         graphics.setPaint(new RadialGradientPaint(new Point2D.Float(centerX, centerY), radius,
             new float[]{0F, 1F}, new Color[]{awtColor(inner), awtColor(outer)},
             MultipleGradientPaint.CycleMethod.NO_CYCLE));
-        graphics.fill(roundShape(x, y, width, height, cornerRadius));
+        fillStraightSides(roundShape(x, y, width, height, cornerRadius));
         graphics.setPaint(awtColor(0xFF000000));
     }
 
@@ -1576,7 +1580,7 @@ public final class UiCanvas {
 
     private void paintTexture(BufferedImage tile, float x, float y, float width, float height) {
         graphics.setPaint(new TexturePaint(tile, new Rectangle2D.Float(x, y, tile.getWidth(), tile.getHeight())));
-        graphics.fill(new Rectangle2D.Float(x, y, width, height));
+        UiBands.fill(graphics, new Rectangle2D.Float(x, y, width, height));
         graphics.setPaint(awtColor(0xFF000000));
     }
 

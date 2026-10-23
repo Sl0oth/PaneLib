@@ -59,7 +59,9 @@ final class PaneOsPerfTest {
             if (tick > 42 + loop && tick <= 42 + loop * 2) screen.repaintArea(new UiRect(700, 400, 8, 8));
             if (tick == 44 + loop * 2) { end(); screen.begin("loop: click a note"); }
             if (tick > 44 + loop * 2 && tick <= 44 + loop * 3) click("notes:item:" + (tick % 3));
-            if (tick == 46 + loop * 3) { end(); report.forEach(line -> System.out.println("[PaneOsPerf] " + line)); System.out.println("[PaneOsPerf] complete PASS"); client.stop(); }
+            if (tick == 46 + loop * 3) { end(); screen.begin("loop: toggle dark mode"); }
+            if (tick > 46 + loop * 3 && tick <= 46 + loop * 3 + 40 && tick % 2 == 0) PaneOsEvents.handleAction(screen, "darkmode");
+            if (tick == 48 + loop * 3 + 40) { end(); report.forEach(line -> System.out.println("[PaneOsPerf] " + line)); System.out.println("[PaneOsPerf] complete PASS"); client.stop(); }
             return;
         }
         switch (tick) {
@@ -172,9 +174,16 @@ final class PaneOsPerfTest {
         }
         if (SCENES[scene].equals("after a click")) {
             // The click repainted part of the surface; the plain full repaint must agree with it too.
-            int partial = 0;
-            for (int i = 0; i < plain.length; i++) if (plain[i] != first[i]) partial++;
-            System.out.printf(Locale.ROOT, "[PaneOsPerf] compare partial repaint vs plain full repaint: %d differing pixels%n", partial);
+            int partial = 0, width = screen.surfacePixelWidth(), left = Integer.MAX_VALUE, top = Integer.MAX_VALUE, right = -1, bottom = -1;
+            for (int i = 0; i < plain.length; i++) if (plain[i] != first[i]) {
+                partial++;
+                left = Math.min(left, i % width); right = Math.max(right, i % width);
+                top = Math.min(top, i / width); bottom = Math.max(bottom, i / width);
+            }
+            float scale = screen.surfacePixelWidth() / (float) screen.rasterQuality().layoutWidth();
+            System.out.printf(Locale.ROOT, "[PaneOsPerf] compare partial repaint vs plain full repaint: %d differing pixels%s%n", partial,
+                partial == 0 ? "" : String.format(Locale.ROOT, " in layout %.0f,%.0f to %.0f,%.0f (clock widget %s)", left / scale, top / scale, right / scale, bottom / scale,
+                    String.format(Locale.ROOT, "%.0f,%.0f to %.0f,%.0f", PaneOsWidgets.X, PaneOsWidgets.Y, PaneOsWidgets.X + PaneOsWidgets.S, PaneOsWidgets.Y + PaneOsWidgets.S)));
         }
         System.out.printf(Locale.ROOT, "[PaneOsPerf] compare %-15s %d of %d pixels differ, worst channel %d%n", SCENES[scene], differing, plain.length, worst);
         if (differing != 0) failures++;

@@ -24,6 +24,8 @@ import java.util.function.Consumer;
 final class UiBands {
     /** Draws smaller than this many device pixels are not worth handing to other cores. */
     static final int MIN_PIXELS = 1 << 17;
+    /** Image strips need no clip of their own, so smaller batches already pay off. */
+    static final int MIN_IMAGE_PIXELS = 1 << 15;
     private static final int MIN_ROWS = 24;
     private static final int WORKERS = Math.min(8, Runtime.getRuntime().availableProcessors());
     /**
@@ -40,16 +42,46 @@ final class UiBands {
     }
 
     /**
-     * Fills {@code shape} with the current solid colour, in bands when it is large. Its outline is
-     * straight in user-space rows {@code straightTop} to {@code straightBottom}; band edges fall only there.
+     * Fills {@code shape} with the current paint, in bands when it is large. Its outline is straight
+     * in user-space rows {@code straightTop} to {@code straightBottom}; band edges fall only there.
+     * Solid colours and linear gradients qualify: those compute each row afresh from its device
+     * position. A texture carries its position from row to row of each 32-row tile the rasterizer
+     * paints, so a texture fills only a rectangle and its band edges land on those tile edges.
      */
     static void fill(Graphics2D graphics, Shape shape, double straightTop, double straightBottom) {
-        if (!(graphics.getPaint() instanceof Color) || straightBottom <= straightTop) { graphics.fill(shape); return; }
+        var paint = graphics.getPaint();
+        boolean texture = paint instanceof java.awt.TexturePaint;
+        // A radial gradient steps its position from row to row under scaling, so it draws once.
+        boolean rowwise = paint instanceof Color || paint instanceof java.awt.GradientPaint || paint instanceof java.awt.LinearGradientPaint;
+        if (!rowwise && !(texture && TILE_ROWS > 0 && shape instanceof Rectangle2D) || straightBottom <= straightTop) { graphics.fill(shape); return; }
         Rectangle device = deviceBounds(graphics, shape.getBounds2D());
         Rectangle straight = deviceBounds(graphics, new Rectangle2D.Double(0, straightTop, 1, straightBottom - straightTop));
         if (device == null || straight == null) { graphics.fill(shape); return; }
+        int grid = 0, origin = 0;
+        if (texture) {
+            // The rasterizer's first tile starts at the first row whose centre lies inside both the rectangle and the clip.
+            AffineTransform m = graphics.getTransform();
+            Rectangle2D bounds = shape.getBounds2D();
+            double top = Math.min(bounds.getMinY() * m.getScaleY(), bounds.getMaxY() * m.getScaleY()) + m.getTranslateY();
+            origin = (int) Math.floor(top);
+            Shape clip = graphics.getClip();
+            if (clip instanceof Rectangle2D rectangle) {
+                double clipTop = Math.min(rectangle.getMinY() * m.getScaleY(), rectangle.getMaxY() * m.getScaleY()) + m.getTranslateY();
+                origin = Math.max(origin, (int) Math.ceil(clipTop - .5));
+            }
+            grid = TILE_ROWS;
+        }
         // deviceBounds grows by a pixel for antialiasing; shrink two more so a band edge never touches a curved row.
-        draw(graphics, device, straight.y + 3, straight.y + straight.height - 3, g -> g.fill(shape));
+        draw(graphics, device, straight.y + 3, straight.y + straight.height - 3, origin, grid, g -> g.fill(shape));
+    }
+
+    /** Height of the rasterizer's antialiasing tiles, or 0 when it is configured in a way not known here. */
+    private static final int TILE_ROWS = tileRows();
+
+    private static int tileRows() {
+        String engine = System.getProperty("sun.java2d.renderer"), size = System.getProperty("sun.java2d.renderer.tileSize_log2");
+        if (engine != null && !engine.contains("Marlin") || size != null && !size.equals("5")) return 0;
+        return 32;
     }
 
     /** One image drawn at a device position. */
@@ -68,8 +100,8 @@ final class UiBands {
     static void images(Graphics2D graphics, List<Placed> images) {
         long pixels = 0;
         for (Placed placed : images) pixels += (long) placed.image().getWidth() * placed.image().getHeight();
-        int workers = !shortcuts || WORKERS < 2 || pixels < MIN_PIXELS || !(graphics.getComposite() instanceof AlphaComposite)
-            || !graphics.getTransform().isIdentity() ? 1 : (int) Math.min(WORKERS, pixels * 2 / MIN_PIXELS);
+        int workers = !shortcuts || WORKERS < 2 || pixels < MIN_IMAGE_PIXELS || !(graphics.getComposite() instanceof AlphaComposite)
+            || !graphics.getTransform().isIdentity() ? 1 : (int) Math.min(WORKERS, pixels / MIN_IMAGE_PIXELS + 1);
         if (workers <= 1) {
             for (Placed placed : images) graphics.drawImage(placed.image(), placed.x(), placed.y(), null);
             return;
@@ -107,20 +139,29 @@ final class UiBands {
      */
     static void draw(Graphics2D graphics, Rectangle device, Consumer<Graphics2D> draw) {
         if (device == null) { draw.accept(graphics); return; }
-        draw(graphics, device, device.y, device.y + device.height, draw);
+        draw(graphics, device, device.y, device.y + device.height, 0, 0, draw);
     }
 
-    /** As {@link #draw(Graphics2D, Rectangle, Consumer)}, with band edges only between device rows {@code splitTop} and {@code splitBottom}. */
-    private static void draw(Graphics2D graphics, Rectangle device, int splitTop, int splitBottom, Consumer<Graphics2D> draw) {
+    /**
+     * As {@link #draw(Graphics2D, Rectangle, Consumer)}, with band edges only between device rows
+     * {@code splitTop} and {@code splitBottom}, and with a nonzero {@code grid} only on rows {@code origin + k * grid}.
+     */
+    private static void draw(Graphics2D graphics, Rectangle device, int splitTop, int splitBottom, int origin, int grid, Consumer<Graphics2D> draw) {
         int top = Math.max(device.y, splitTop), bottom = Math.min(device.y + device.height, splitBottom);
         int bands = device.isEmpty() || bottom - top < MIN_ROWS ? 1 : Math.min(bands(graphics, device), (bottom - top) / MIN_ROWS + 1);
         if (bands <= 1) { draw.accept(graphics); return; }
+        int[] edges = new int[bands + 1];
+        edges[0] = device.y; edges[bands] = device.y + device.height;
+        for (int i = 1; i < bands; i++) {
+            int edge = top + (int) ((long) (bottom - top) * i / bands);
+            if (grid > 0) edge = origin + Math.floorDiv(edge - origin, grid) * grid;
+            edges[i] = Math.clamp(edge, edges[i - 1], edges[bands]);
+        }
         Graphics2D[] workers = new Graphics2D[bands];
         try {
             for (int i = 0; i < bands; i++) {
-                int from = i == 0 ? device.y : top + (int) ((long) (bottom - top) * i / bands);
-                int to = i == bands - 1 ? device.y + device.height : top + (int) ((long) (bottom - top) * (i + 1) / bands);
-                int bandTop = from, bandBottom = to;
+                int bandTop = edges[i], bandBottom = edges[i + 1];
+                if (bandBottom <= bandTop) continue;
                 Graphics2D band = (Graphics2D) graphics.create();
                 AffineTransform transform = band.getTransform();
                 band.setTransform(new AffineTransform());
@@ -129,7 +170,7 @@ final class UiBands {
                 band.setTransform(transform);
                 workers[i] = band;
             }
-            java.util.stream.IntStream.range(0, bands).parallel().forEach(i -> draw.accept(workers[i]));
+            java.util.stream.IntStream.range(0, bands).parallel().forEach(i -> { if (workers[i] != null) draw.accept(workers[i]); });
         } finally {
             for (Graphics2D band : workers) if (band != null) band.dispose();
         }

@@ -45,6 +45,32 @@ class UiBandsTest {
     }
 
     @Test
+    void bandedGradientAndTextureFillsMatchOneDraw() {
+        var tile = noise(64, 64, 5, true, BufferedImage.TYPE_INT_ARGB);
+        var random = new Random(9);
+        for (double scale : new double[] {1, 1.05, 1.5, 2.1}) for (int trial = 0; trial < 6; trial++) {
+            float x = random.nextFloat() * 40, y = random.nextFloat() * 40 - 10, w = 500 + random.nextFloat() * 300, h = 500 + random.nextFloat() * 300;
+            java.awt.Paint[] paints = {
+                new java.awt.GradientPaint(x, y, new Color(0x80FF3300, true), x + w * .3F, y + h, new Color(0xF00033FF, true)),
+                new java.awt.LinearGradientPaint(x, y + 3, x + 10, y + h, new float[] {0, 1}, new Color[] {new Color(0xFFBFDDF8, true), new Color(0x6E2E6FD8, true)}),
+                new java.awt.RadialGradientPaint(x + w * .2F, y - h * .05F, w * .5F, new float[] {0, 1}, new Color[] {new Color(0xCCFFFFFF, true), new Color(0x00FFFFFF, true)}),
+                new java.awt.TexturePaint(tile, new Rectangle2D.Float(x + .37F, y + .61F, 64, 64))};
+            for (java.awt.Paint paint : paints) for (int clip = 0; clip < 2; clip++) for (int round = 0; round < 2; round++) {
+                if (round == 1 && paint instanceof java.awt.TexturePaint) continue;
+                // Radial gradients always draw once; the comparison still holds.
+                Shape shape = round == 1 ? new RoundRectangle2D.Float(x, y, w, h, 36, 36) : new Rectangle2D.Float(x, y, w, h);
+                double corner = round == 1 ? 18 : 0;
+                int k = clip;
+                Consumer<Graphics2D> setup = g -> { g.scale(scale, scale); clip(g, k); g.setPaint(paint); };
+                int[] expected = paint(setup, g -> g.fill(shape));
+                int[] actual = paint(setup, g -> UiBands.fill(g, shape, y + corner, y + h - corner));
+                assertArrayEquals(expected, actual, "scale=" + scale + " trial=" + trial + " paint=" + paint.getClass().getSimpleName()
+                    + " clip=" + clip + " round=" + round);
+            }
+        }
+    }
+
+    @Test
     void bandedImagesMatchOneDraw() {
         BufferedImage translucent = noise(SIZE - 40, SIZE - 70, 3, true, BufferedImage.TYPE_INT_ARGB);
         BufferedImage premultiplied = noise(SIZE - 10, SIZE - 30, 4, false, BufferedImage.TYPE_INT_ARGB_PRE);
