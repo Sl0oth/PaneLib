@@ -51,20 +51,39 @@ public final class UiLayer {
     /** Scan once per revision. Keep a transparent guard pixel for bilinear sampling at crop edges. */
     void finishCache() {
         int width = image.getWidth(), height = image.getHeight();
+        // Rows are scanned on several cores in runs; each run reports its extent and whether it is all opaque.
+        int runs = Math.max(1, Math.min(32, height / 16));
+        int[][] found = new int[runs][];
+        boolean[] solid = new boolean[runs];
+        UiParallel.forEach(runs, run -> {
+            int from = (int) ((long) height * run / runs), to = (int) ((long) height * (run + 1) / runs);
+            int left = width, top = height, right = -1, bottom = -1;
+            boolean all = true;
+            for (int y = from; y < to; y++) for (int x = 0, at = y * width; x < width; x++, at++) {
+                int a = pixels[at] >>> 24;
+                if (a != 255) all = false;
+                if (a == 0) continue;
+                if (x < left) left = x;
+                if (x > right) right = x;
+                if (top == height) top = y;
+                bottom = y;
+            }
+            found[run] = new int[] {left, top, right, bottom};
+            solid[run] = all;
+        });
         int left = width, top = height, right = -1, bottom = -1;
-        for (int y = 0; y < height; y++) for (int x = 0; x < width; x++) {
-            if ((pixels[y * width + x] >>> 24) == 0) continue;
-            left = Math.min(left, x); top = Math.min(top, y);
-            right = Math.max(right, x); bottom = Math.max(bottom, y);
+        opaque = true;
+        for (int run = 0; run < runs; run++) {
+            int[] f = found[run];
+            if (f[2] >= 0) { left = Math.min(left, f[0]); top = Math.min(top, f[1]); right = Math.max(right, f[2]); bottom = Math.max(bottom, f[3]); }
+            opaque &= solid[run];
         }
         cached = true;
-        if (right < 0) { cachedImage = null; return; }
+        if (right < 0) { cachedImage = null; opaque = false; return; }
         cachedX = Math.max(0, left - 1); cachedY = Math.max(0, top - 1);
         right = Math.min(width - 1, right + 1); bottom = Math.min(height - 1, bottom + 1);
         cachedImage = image.getSubimage(cachedX, cachedY, right - cachedX + 1, bottom - cachedY + 1);
-        opaque = true;
-        for (int y = cachedY; y <= bottom && opaque; y++)
-            for (int x = cachedX; x <= right; x++) if ((pixels[y * width + x] >>> 24) != 255) { opaque = false; break; }
+        // A crop smaller than the layer keeps a transparent guard pixel, so only a layer opaque everywhere is opaque.
     }
     BufferedImage cachedImage() { return cachedImage; }
     /** Every cached pixel is fully opaque, so drawing it over anything leaves exactly its own pixels. */

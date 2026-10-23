@@ -531,7 +531,7 @@ public final class UiCanvas {
                 if (backdrop == null) backdrop = readBackdrop(read);
                 boxBlur(backdrop, pixelWidth, pixelHeight, pixelRadius);
                 frosted = new BufferedImage(pixelWidth, pixelHeight, BufferedImage.TYPE_INT_ARGB);
-                frosted.setRGB(0, 0, pixelWidth, pixelHeight, backdrop, 0, pixelWidth);
+                System.arraycopy(backdrop, 0, ((java.awt.image.DataBufferInt) frosted.getRaster().getDataBuffer()).getData(), 0, pixelWidth * pixelHeight);
                 glassCache.store(key, hash, frosted);
             }
             drawDevice(frosted, left, top, deviceClip);
@@ -546,7 +546,7 @@ public final class UiCanvas {
             int[] backdrop = backdropPixels(left, top, pixelWidth, pixelHeight);
             boxBlur(backdrop, pixelWidth, pixelHeight, pixelRadius);
             var blurredLayer = new BufferedImage(pixelWidth, pixelHeight, BufferedImage.TYPE_INT_ARGB);
-            blurredLayer.setRGB(0, 0, pixelWidth, pixelHeight, backdrop, 0, pixelWidth);
+            System.arraycopy(backdrop, 0, ((java.awt.image.DataBufferInt) blurredLayer.getRaster().getDataBuffer()).getData(), 0, pixelWidth * pixelHeight);
             drawDevice(blurredLayer, left, top, deviceClip);
             return true;
         }
