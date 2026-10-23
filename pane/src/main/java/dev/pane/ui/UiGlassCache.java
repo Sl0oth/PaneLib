@@ -18,6 +18,14 @@ final class UiGlassCache {
                double corner, UiGlass glass) {
         Key { area = new Rectangle(area); source = new Rectangle(source); }
     }
+    /**
+     * A finished lens: the surface pixels around it once the lens and its specular edges were drawn
+     * at {@code opacity} under the rectangular device {@code clip} (null when unclipped). Over a
+     * backdrop with the same hash, drawing it again would leave exactly these pixels.
+     */
+    record Finished(Key lens, Rectangle snapshot, double scale, float opacity, java.awt.geom.Rectangle2D clip) {
+        Finished { snapshot = new Rectangle(snapshot); clip = clip == null ? null : (java.awt.geom.Rectangle2D) clip.clone(); }
+    }
     private record Entry(long hash, BufferedImage image) { }
     /** One band of an outside-only shadow: its device rectangle, the caster and shadow geometry, and its alpha ramp. */
     record ShadowKey(Rectangle band, double casterX, double casterY, double casterHalfW, double casterHalfH, double casterCorner,
@@ -36,6 +44,9 @@ final class UiGlassCache {
         misses++;
         return null;
     }
+
+    /** Keeps an entry through the next full paint without looking it up. */
+    void touch(Object key) { used.add(key); }
 
     void store(Object key, long hash, BufferedImage image) {
         long size = (long) image.getWidth() * image.getHeight();

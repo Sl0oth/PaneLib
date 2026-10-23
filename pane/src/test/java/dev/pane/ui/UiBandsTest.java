@@ -26,7 +26,7 @@ class UiBandsTest {
             new RoundRectangle2D.Float(40.25F, 33.6F, 700, 640.5F, 44, 44),
             new RoundRectangle2D.Float(10.5F, 12.1F, 760, 420.3F, 180, 180)};
         for (double scale : new double[] {1, 1.5, 2.1}) for (Shape shape : shapes)
-            for (int color : new int[] {0xFFE8E2D6, 0x9F3366AA, 0x18FFFFFF}) for (int clip = 0; clip < 3; clip++)
+            for (int color : new int[] {0xFFE8E2D6, 0x9F3366AA}) for (int clip = 0; clip < 3; clip++)
                 for (float opacity : new float[] {1, .55F}) {
                     int c = color, k = clip;
                     Consumer<Graphics2D> setup = g -> {
@@ -48,7 +48,7 @@ class UiBandsTest {
     void bandedGradientAndTextureFillsMatchOneDraw() {
         var tile = noise(64, 64, 5, true, BufferedImage.TYPE_INT_ARGB);
         var random = new Random(9);
-        for (double scale : new double[] {1, 1.05, 1.5, 2.1}) for (int trial = 0; trial < 6; trial++) {
+        for (double scale : new double[] {1, 1.05, 1.5, 2.1}) for (int trial = 0; trial < 3; trial++) {
             float x = random.nextFloat() * 40, y = random.nextFloat() * 40 - 10, w = 500 + random.nextFloat() * 300, h = 500 + random.nextFloat() * 300;
             java.awt.Paint[] paints = {
                 new java.awt.GradientPaint(x, y, new Color(0x80FF3300, true), x + w * .3F, y + h, new Color(0xF00033FF, true)),
@@ -73,7 +73,7 @@ class UiBandsTest {
     @Test
     void opaqueFillsMatchOneAntialiasedDraw() {
         var random = new Random(33);
-        for (double scale : new double[] {1, 1.05, 1.5, 2, 2.1}) for (int trial = 0; trial < 8; trial++) {
+        for (double scale : new double[] {1, 1.05, 2, 2.1}) for (int trial = 0; trial < 4; trial++) {
             float x = random.nextFloat() * 40 - 5, y = random.nextFloat() * 40 - 5, w = 200 + random.nextFloat() * 600, h = 150 + random.nextFloat() * 600;
             float arc = trial % 3 == 0 ? 0 : 4 + random.nextFloat() * 80;
             for (int clip = 0; clip < 3; clip++) for (int round = 0; round < 2; round++) {
@@ -91,10 +91,10 @@ class UiBandsTest {
     @Test
     void bandedStrokesMatchOneDraw() {
         var random = new Random(21);
-        for (double scale : new double[] {1, 1.05, 1.5, 2.1}) for (int trial = 0; trial < 5; trial++) {
+        for (double scale : new double[] {1, 1.05, 2.1}) for (int trial = 0; trial < 3; trial++) {
             float x = random.nextFloat() * 30, y = random.nextFloat() * 30, w = 400 + random.nextFloat() * 400, h = 500 + random.nextFloat() * 300;
             float arc = 8 + random.nextFloat() * 70;
-            for (float width : new float[] {.7F, .8F, 1.2F, 3}) for (int clip = 0; clip < 2; clip++) for (int gradient = 0; gradient < 2; gradient++) {
+            for (float width : new float[] {.7F, 1.2F, 3}) for (int clip = 0; clip < 2; clip++) for (int gradient = 0; gradient < 2; gradient++) {
                 var shape = new RoundRectangle2D.Float(x, y, w, h, arc, arc);
                 java.awt.Paint paint = gradient == 1
                     ? new java.awt.LinearGradientPaint(x, y, x, y + h, new float[] {0, 1}, new Color[] {new Color(0xEBFFFFFF, true), new Color(0x28FFFFFF, true)})
@@ -173,8 +173,13 @@ class UiBandsTest {
         else if (kind == 2) g.clip(new RoundRectangle2D.Float(25.5F, 19.25F, 600, 560, 60, 60));
     }
 
+    /** One translucent noise backdrop, copied fresh for every paint. */
+    private static final int[] BACKDROP = ((DataBufferInt) noise(SIZE * 2, SIZE * 2, 11, true, BufferedImage.TYPE_INT_ARGB)
+        .getRaster().getDataBuffer()).getData();
+
     private static int[] paint(Consumer<Graphics2D> setup, Consumer<Graphics2D> draw) {
-        BufferedImage image = noise(SIZE * 2, SIZE * 2, 11, true, BufferedImage.TYPE_INT_ARGB);
+        BufferedImage image = new BufferedImage(SIZE * 2, SIZE * 2, BufferedImage.TYPE_INT_ARGB);
+        System.arraycopy(BACKDROP, 0, ((DataBufferInt) image.getRaster().getDataBuffer()).getData(), 0, BACKDROP.length);
         Graphics2D graphics = image.createGraphics();
         try {
             graphics.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);

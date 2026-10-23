@@ -55,14 +55,15 @@ class UiGlassTest {
         paint(first, canvas -> { canvas.glassCache = cache; canvas.liquidGlass(30, 20, 100, 60, 20, GLASS); });
         var second = stripes();
         paint(second, canvas -> { canvas.glassCache = cache; canvas.liquidGlass(30, 20, 100, 60, 20, GLASS); });
+        // The first paint misses both the lens and its finished pixels; the second reuses the finished pixels.
         assertEquals(1, cache.hits);
-        assertEquals(1, cache.misses);
+        assertEquals(2, cache.misses);
         assertArrayEquals(first.getRGB(0, 0, 160, 100, null, 0, 160), second.getRGB(0, 0, 160, 100, null, 0, 160),
             "a reused lens is pixel-identical");
         var changed = stripes();
         changed.setRGB(70, 50, 0xFFFFFFFF);
         paint(changed, canvas -> { canvas.glassCache = cache; canvas.liquidGlass(30, 20, 100, 60, 20, GLASS); });
-        assertEquals(2, cache.misses, "one changed backdrop pixel recomputes the lens");
+        assertEquals(4, cache.misses, "one changed backdrop pixel recomputes the lens and its finished pixels");
     }
 
     @Test

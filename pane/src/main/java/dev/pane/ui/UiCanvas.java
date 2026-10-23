@@ -700,6 +700,18 @@ public final class UiCanvas {
         // Unchanged pixels under unchanged glass give the same lens: reuse it instead of recomputing.
         var key = glassCache == null ? null : new UiGlassCache.Key(area, source, centerX, centerY, halfW, halfH, corner, glass);
         long hash = key == null ? 0 : UiGlassCache.hash(backdrop);
+        var finished = finishedKey(key, deviceClip, area, source, scale);
+        if (finished != null) {
+            BufferedImage pixels = glassCache.find(finished, hash);
+            if (pixels != null) {
+                copyDevice(pixels, finished.snapshot());
+                glassCache.touch(key);
+                // Leave the drawing state as the drawn path does.
+                graphics.setStroke(new BasicStroke(.7F));
+                graphics.setPaint(awtColor(0xFF000000));
+                return true;
+            }
+        }
         BufferedImage output = key == null ? null : glassCache.find(key, hash);
         if (output == null) {
             output = lens(backdrop, source, area, centerX, centerY, halfW, halfH, corner, bend, rim, spread, blur, glass);
@@ -714,8 +726,43 @@ public final class UiCanvas {
         graphics.setPaint(linearPaint(alpha(0x000000, 0), alpha(0x000000, Math.round(60 * h)), 90, x, y, width, height));
         graphics.setStroke(new BasicStroke(.7F));
         strokeStraightSides(roundShape(x - .2F, y - .2F, width + .4F, height + .4F, radius + .2F));
+        if (finished != null) glassCache.store(finished, hash, deviceSnapshot(finished.snapshot()));
         graphics.setPaint(awtColor(0xFF000000));
         return true;
+    }
+
+    /**
+     * The cache key for a finished lens on the screen surface, or null when its pixels cannot be
+     * reused exactly. Everything a lens and its edges draw depends only on the backdrop pixels the
+     * hash covers, the lens geometry and look, the scale, the opacity and the clip; every pixel it
+     * leaves untouched still holds that same backdrop. So when all of these match, copying the
+     * pixels it left reproduces drawing it. Shaped clips and other composites draw every time.
+     */
+    private UiGlassCache.Finished finishedKey(UiGlassCache.Key key, Shape deviceClip, Rectangle area, Rectangle source, double scale) {
+        if (key == null || !UiBands.shortcuts || backdropParent != null || target.getType() != BufferedImage.TYPE_INT_ARGB
+                || !(graphics.getComposite() instanceof AlphaComposite alpha) || alpha.getRule() != AlphaComposite.SRC_OVER
+                || deviceClip != null && !(deviceClip instanceof Rectangle2D)) return null;
+        // The hairline reaches just over half a unit beyond the lens.
+        int reach = (int) Math.ceil(.6 * scale) + 1;
+        Rectangle snapshot = new Rectangle(area.x - reach, area.y - reach, area.width + reach * 2, area.height + reach * 2)
+            .intersection(new Rectangle(target.getWidth(), target.getHeight()));
+        if (!source.contains(snapshot)) return null;
+        return new UiGlassCache.Finished(key, snapshot, scale, alpha.getAlpha(), (Rectangle2D) deviceClip);
+    }
+
+    private BufferedImage deviceSnapshot(Rectangle area) {
+        var copy = new BufferedImage(area.width, area.height, BufferedImage.TYPE_INT_ARGB);
+        readStraight(target, area, ((java.awt.image.DataBufferInt) copy.getRaster().getDataBuffer()).getData(), 0, area.width);
+        return copy;
+    }
+
+    /** Writes an earlier {@link #deviceSnapshot} back over the surface pixels it was taken from. */
+    private void copyDevice(BufferedImage snapshot, Rectangle area) {
+        int[] from = ((java.awt.image.DataBufferInt) snapshot.getRaster().getDataBuffer()).getData();
+        int[] to = ((java.awt.image.DataBufferInt) target.getRaster().getDataBuffer()).getData();
+        int stride = target.getWidth();
+        for (int row = 0; row < area.height; row++)
+            System.arraycopy(from, row * area.width, to, (area.y + row) * stride + area.x, area.width);
     }
 
     /** One lens over a backdrop: refracted, dispersed rim and a softened, tinted body. Pixels outside stay clear. */
