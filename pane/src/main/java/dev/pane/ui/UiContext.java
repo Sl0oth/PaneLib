@@ -1311,7 +1311,7 @@ public final class UiContext {
         float textHeight = canvas.textHeight(size, fontStyle, family);
         float textX = x + paddingX, textY = y + (height - textHeight) / 2;
         float innerWidth = Math.max(0, width - paddingX * 2);
-        UiShapedText shaped=canvas.shapeText(displayValue,size,fontStyle,family,focused?interactions.textLayouts:null);
+        UiShapedText shaped=canvas.shapeText(displayValue,size,fontStyle,family,focused?interactions.textLayouts:interactions.restingLayouts);
         float cursorX = shaped.x(cursor);
         float textOffset = Math.max(0, cursorX - innerWidth + 3);
         canvas.withClip(textX, y + paddingY, innerWidth, Math.max(0, height - paddingY * 2), () -> {
@@ -1383,7 +1383,7 @@ public final class UiContext {
         float firstBaseline = y + paddingY;
         float innerWidth = Math.max(0, width - paddingX * 2);
         float lineHeight = Math.max(textHeight, style.lineHeight());
-        List<UiShapedText.Line> lines = canvas.wrapShapedText(value,innerWidth,size,fontStyle,family,focused?interactions.textLayouts:null);
+        List<UiShapedText.Line> lines = canvas.wrapShapedText(value,innerWidth,size,fontStyle,family,focused?interactions.textLayouts:interactions.restingLayouts);
         List<UiTextLine> visualLines = new java.util.ArrayList<>();
         float[] caretXs = new float[value.length() + 1];
         float[] caretYs = new float[value.length() + 1];

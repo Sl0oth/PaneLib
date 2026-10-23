@@ -167,7 +167,9 @@ final class PaneOsPerfTest {
 
     /** Returns false to repeat the scene when time-driven content changed between the two shortcut paints. */
     private boolean finishScene() {
-        if (!java.util.Arrays.equals(first, again) && !SCENES[scene].equals("after a click")) {
+        // Two shortcut paints that disagree mean time-driven content moved, or, after a click, that a
+        // partial repaint differs from a full one; either way repeat, and fail if it keeps happening.
+        if (!java.util.Arrays.equals(first, again)) {
             if (++retries < 4) return false;
             System.out.println("[PaneOsPerf] compare " + SCENES[scene] + ": the scene would not hold still");
             failures++;
@@ -176,7 +178,7 @@ final class PaneOsPerfTest {
         retries = 0;
         compared++;
         int differing = 0, worst = 0;
-        int[] reference = SCENES[scene].equals("after a click") ? again : first;
+        int[] reference = again;
         for (int i = 0; i < plain.length; i++) if (plain[i] != reference[i]) {
             differing++;
             for (int shift = 0; shift < 32; shift += 8) worst = Math.max(worst, Math.abs((plain[i] >>> shift & 255) - (reference[i] >>> shift & 255)));

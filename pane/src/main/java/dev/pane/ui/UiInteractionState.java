@@ -6,6 +6,8 @@ import java.util.*;
 final class UiInteractionState {
     final Map<String, UiButtonState> buttons = new HashMap<>();
     final UiTextLayoutCache textLayouts;
+    /** Layouts of text inputs that are not focused. */
+    final UiTextLayoutCache restingLayouts = new UiTextLayoutCache(32);
     final Map<String,UiEditorViewport> editors;
     final Map<String, Double> offsets;
     final UiScrollEndState scrollEnds;

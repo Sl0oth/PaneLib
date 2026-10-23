@@ -2416,10 +2416,12 @@ public class UiScreen extends Screen {
     }
 
     private void clearPixels(PixelRect region) {
-        for (int y = region.y(); y < region.bottom(); y++) {
+        java.util.function.IntConsumer row = y -> {
             int start = y * surfaceWidth + region.x();
             Arrays.fill(surface.pixels, start, start + region.width(), 0);
-        }
+        };
+        var rows = java.util.stream.IntStream.range(region.y(), region.bottom());
+        ((long) region.width() * region.height() >= 1 << 17 ? rows.parallel() : rows).forEach(row);
     }
 
     private void drawDialog(UiCanvas canvas, List<UiDialogRequest> candidates, List<UiHitRegion> hits,
@@ -2819,6 +2821,7 @@ public class UiScreen extends Screen {
         animations.clear();rootAnimationIds=Set.of();customAnimationsActive=false;
         interactions.editors.clear();
         interactions.textLayouts.clear();
+        interactions.restingLayouts.clear();
         closeSurface();
         openMenuId = null; activeMenu = null; menuLayout = null; menuOffset = 0;
         openDialogId = null;

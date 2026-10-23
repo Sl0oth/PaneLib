@@ -264,7 +264,7 @@ final class UiBands {
         if (area.isEmpty()) return 1;
         long pixels = (long) area.width * area.height;
         if (pixels < MIN_PIXELS) return 1;
-        return (int) Math.max(1, Math.min(Math.min(WORKERS, area.height / MIN_ROWS), pixels * 2 / MIN_PIXELS));
+        return (int) Math.max(1, Math.min(Math.min(WORKERS, area.height / MIN_ROWS), pixels * 8 / MIN_PIXELS));
     }
 
     /** Device pixels covered by user-space {@code bounds} under an axis-aligned transform, grown one pixel for antialiasing. */
