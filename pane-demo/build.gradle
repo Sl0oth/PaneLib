@@ -76,9 +76,9 @@ if (!expectedMarkers.isEmpty()) {
     tasks.named('runClient') {
         finalizedBy(saveFixtureLog)
         timeout = java.time.Duration.ofMinutes(5)
-        // A fresh run folder opens vanilla's first-launch accessibility screen; fixtures start at the title screen.
+        // Automated clients must reach the title screen on a fresh worker, past vanilla's first-launch screen.
         doFirst {
-            def options = new File(workingDir, 'options.txt')
+            def options = file("${loom.runs.getByName('client').runDir}/options.txt")
             options.parentFile.mkdirs()
             def lines = options.exists() ? options.readLines().findAll { !it.startsWith('onboardAccessibility:') } : []
             options.text = (lines + 'onboardAccessibility:false').join('\n') + '\n'
@@ -95,13 +95,6 @@ if (!expectedMarkers.isEmpty()) {
         errorOutput = tee
         doFirst {
             captured.reset()
-            // Isolated automated clients must reach the title screen on a fresh CI worker.
-            if (project.hasProperty('isolated') || project.hasProperty('adoptionTest')) {
-                def options = file(project.hasProperty('adoptionTest') ? 'run-adoption/options.txt' : 'run-benchmark/options.txt')
-                options.parentFile.mkdirs()
-                def lines = options.exists() ? options.readLines().findAll { !it.startsWith('onboardAccessibility:') } : []
-                options.text = (lines + 'onboardAccessibility:false').join('\n') + '\n'
-            }
         }
         doLast {
             def output = captured.toString('UTF-8')
