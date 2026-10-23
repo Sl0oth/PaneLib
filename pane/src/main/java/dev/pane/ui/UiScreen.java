@@ -2420,8 +2420,8 @@ public class UiScreen extends Screen {
             int start = y * surfaceWidth + region.x();
             Arrays.fill(surface.pixels, start, start + region.width(), 0);
         };
-        var rows = java.util.stream.IntStream.range(region.y(), region.bottom());
-        ((long) region.width() * region.height() >= 1 << 17 ? rows.parallel() : rows).forEach(row);
+        if ((long) region.width() * region.height() >= 1 << 17) UiParallel.forEach(region.height(), r -> row.accept(region.y() + r));
+        else for (int y = region.y(); y < region.bottom(); y++) row.accept(y);
     }
 
     private void drawDialog(UiCanvas canvas, List<UiDialogRequest> candidates, List<UiHitRegion> hits,

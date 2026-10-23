@@ -109,8 +109,7 @@ final class UiGlassCache {
         // Large backdrops hash in independent chunks across cores, then combine in order.
         int chunks = length < 1 << 16 ? 1 : 16, size = (length + chunks - 1) / chunks;
         long[] parts = new long[chunks];
-        java.util.stream.IntStream range = java.util.stream.IntStream.range(0, chunks);
-        (chunks > 1 ? range.parallel() : range).forEach(chunk -> {
+        UiParallel.forEach(chunks, chunk -> {
             long hash = 0xCBF29CE484222325L;
             for (int i = chunk * size, end = Math.min(length, i + size); i < end; i++) hash = (hash ^ pixels[i]) * 0x100000001B3L;
             parts[chunk] = hash;

@@ -22,7 +22,7 @@ final class UiRetainedTexture {
     void clear() {
         int width = image.getWidth();
         if (pixels.length < 1 << 17) { Arrays.fill(pixels, 0); return; }
-        java.util.stream.IntStream.range(0, image.getHeight()).parallel().forEach(row -> Arrays.fill(pixels, row * width, row * width + width, 0));
+        UiParallel.forEach(image.getHeight(), row -> Arrays.fill(pixels, row * width, row * width + width, 0));
     }
     void upload() {
         var target = texture.getPixels().getPixelBytes().order(ByteOrder.nativeOrder()).asIntBuffer();

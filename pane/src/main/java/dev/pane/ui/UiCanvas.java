@@ -880,7 +880,7 @@ public final class UiCanvas {
 
     /** Runs {@code row} for 0..count-1, in parallel when the work is large enough. Rows must be independent. */
     private static void rows(int count, long pixels, java.util.function.IntConsumer row) {
-        if (pixels >= PARALLEL_PIXELS && count > 1) java.util.stream.IntStream.range(0, count).parallel().forEach(row);
+        if (pixels >= PARALLEL_PIXELS && count > 1) UiParallel.forEach(count, row);
         else for (int i = 0; i < count; i++) row.accept(i);
     }
 

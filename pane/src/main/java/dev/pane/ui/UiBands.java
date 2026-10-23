@@ -199,7 +199,7 @@ final class UiBands {
         Graphics2D[] copies = new Graphics2D[workers];
         try {
             for (int i = 0; i < workers; i++) copies[i] = (Graphics2D) graphics.create();
-            java.util.stream.IntStream.range(0, workers).parallel().forEach(i -> {
+            UiParallel.forEach(workers, i -> {
                 for (Placed strip : shares.get(i)) copies[i].drawImage(strip.image(), strip.x(), strip.y(), null);
             });
         } finally {
@@ -244,7 +244,7 @@ final class UiBands {
                 band.setTransform(transform);
                 workers[i] = band;
             }
-            java.util.stream.IntStream.range(0, bands).parallel().forEach(i -> { if (workers[i] != null) draw.accept(workers[i]); });
+            UiParallel.forEach(bands, i -> { if (workers[i] != null) draw.accept(workers[i]); });
         } finally {
             for (Graphics2D band : workers) if (band != null) band.dispose();
         }

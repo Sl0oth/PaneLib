@@ -16,7 +16,7 @@ final class UiPixelTransfer {
             for (int i = start; i < start + width; i++) rgba.put(i, swapRedBlue(argb[i]));
         };
         // Absolute puts on disjoint rows never share a buffer position.
-        if ((long) width * height >= PARALLEL_PIXELS && height > 1 && UiBands.shortcuts) java.util.stream.IntStream.range(0, height).parallel().forEach(row);
+        if ((long) width * height >= PARALLEL_PIXELS && height > 1 && UiBands.shortcuts) UiParallel.forEach(height, row);
         else for (int r = 0; r < height; r++) row.accept(r);
     }
 
