@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 1.0.0-beta.2 — readable tooltips, the demo mod and Windows verification
 
 - Fixed default tooltips on light themes: the near-black plate drew the theme's dark text, so the
   tip showed as an empty pill. Unset tooltip text now keeps the theme colour only when it reads on

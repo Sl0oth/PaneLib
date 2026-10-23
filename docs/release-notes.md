@@ -3,25 +3,21 @@
 Client-side Fabric UI library for Minecraft 26.2, Java 25, Fabric Loader 0.19.3+ and Fabric API.
 The runtime installs no standalone screen or hotkey; a consuming mod supplies those.
 
-This candidate separates the current fixes from the preserved submitted 0.9.8 artifact.
+This beta fixes a tooltip bug and ships the demo as its own mod.
 
-- Liquid glass (`UiGlass`, `liquidGlass`) that refracts and frosts what lies behind it, reused between paints.
-- GPU-animated groups of controls (`gpuGroup`, `gpuTransition`, `dragLayer`), region-only state repaints
-  (`repaintScope`), opt-in local focus repaints and outside-only shadows; blur costs the same at any radius
-  and large glass, blur and shadow work splits across CPU cores.
-- Pointer-driven painting, timed refreshes, bounded drags, presentation groups, painted sliders, deferred
-  focus, tooltip styling, menu shortcut hints, disabled rows, group dividers and right-click context menus.
-- Grapheme-safe text editing.
-- PaneOS, a desktop showcase with working windowed apps, replaces the Beacon example.
-- Supported player preview appearance/framing and world-free title-screen use.
-- Native HUD items and font labels, ownership, placement, quality controls and vanilla restoration.
-- Shared styled popup triggers/dialog typography and reusable font/image support.
-- Smooth reusable animation and explicit scroll-to-end/follow behavior.
-- Owner-aware screen callbacks and opt-in singleplayer pause, with existing constructors preserved.
-- Fixed stale slider dragging after screen/control changes; repeated equal scalar state stays idle.
-- Curated PaneOS, Wayfarer, Pane Mail and HUD recipes use the public APIs.
-- Independent starter with real saved/draft settings, matching binary dependency and isolated smoke test.
-- Reproducible archives, exact dependency/version checks, checksums and a local Maven repository bundle.
+- Default tooltips on light themes are readable again. Their near-black plate used to draw the theme's
+  dark text, so the tip showed as an empty pill. Unset tooltip text now keeps the theme colour only when
+  it reads on the plate (`UiTooltipStyle.plate()`, `textOn(themeText)`).
+- `panelib-demo-{{version}}.jar` is the PaneOS, Wayfarer, Pane Mail and HUD examples as a separate mod.
+- Verified on a Windows 11 desktop alongside macOS: unit tests, every client fixture (also at 150%
+  display scale), the starter consumers and the release jars in a clean production client.
+- New `windowHudTest` fixture: maximize, restore, fullscreen and GUI scale with real clicks, then vanilla
+  HUD hiding and restoration in a fresh survival world.
+- Release tooling: LF line endings in every checkout so Windows builds match macOS byte for byte,
+  ordinary candidate folders, and `--upload` to collect exactly the files a release attaches.
+
+Everything from 1.0.0-beta.1 is included: liquid glass, GPU-animated groups of controls, region-only
+repaints, live input, menus, grapheme-safe editing and PaneOS.
 
 The starter ZIP includes its exact runtime JAR, build wrapper, source, license and version descriptor.
 Unpack it, install Java 25, then use its README. Runtime, source and Javadoc JARs have different roles;

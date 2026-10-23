@@ -4,9 +4,10 @@ PaneLib is a 100% client-side Fabric UI library for building desktop-quality Min
 
 It is native and retained-mode. It does not start Chromium, load HTML, parse CSS, or require MCEF. A screen is rasterized only when something changes, uploaded to one reusable GPU texture, and then blitted while idle. Minecraft items and entities render in a separate native layer.
 
-Latest beta: [`1.0.0-beta.1`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.1) on GitHub Releases, for Minecraft 26.2, Fabric Loader
-0.19.3+, Fabric API and Java 25. It adds liquid glass, GPU-animated groups of controls, region-only
-repaints and the PaneOS showcase. Developers can use `dev.pane:panelib:1.0.0-beta.1` from the
+Latest beta: [`1.0.0-beta.2`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.2) on GitHub Releases, for Minecraft 26.2, Fabric Loader
+0.19.3+, Fabric API and Java 25. It fixes invisible default tooltips on light themes, ships the demo
+as its own mod and is verified on Windows 11; 1.0.0-beta.1 added liquid glass, GPU-animated groups of
+controls, region-only repaints and the PaneOS showcase. Developers can use `dev.pane:panelib:1.0.0-beta.2` from the
 anonymous Maven repository at `https://sl0oth.github.io/PaneLib/maven/`, or download the runtime JAR
 from the release page. To try it, put the runtime JAR and the demo JAR from the release in your
 `mods` folder with Fabric API; the demos open on the title screen and H reopens them. See [installation](docs/installation.md). The submitted 0.9.8 snapshot is preserved. GitHub releases
@@ -152,8 +153,8 @@ The old MCEF experiment is preserved under `dev.pane.mcef` for a possible option
 
 ## Release state
 
-Latest release: [`1.0.0-beta.1`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.1), a GitHub prerelease published from this source. The earlier
-`0.9.9-beta.1` artifacts remain unchanged; both versions are served by Maven. Each release has its own identity;
+Latest release: [`1.0.0-beta.2`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.2), a GitHub prerelease published from this source. The earlier
+`1.0.0-beta.1` and `0.9.9-beta.1` artifacts remain unchanged; all three versions are served by Maven. Each release has its own identity;
 the coordinate is also checked by the local packager against root `gradle.properties`.
 
 Root `gradle.properties` drives the runtime, sources, Javadoc, starter descriptor and Maven

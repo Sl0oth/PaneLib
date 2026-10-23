@@ -11,6 +11,9 @@ caches were reused; fresh endpoint downloads were checked separately. See the
 [publication audit](audits/public-maven-publication-2026-10-21.md) and
 [installation guide](installation.md).
 
+**`1.0.0-beta.2` was added on October 22, 2026.** Its [release](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.2)
+Maven ZIP is appended to the catalog after `1.0.0-beta.1`; all three versions stay available.
+
 **`1.0.0-beta.1` was added on October 22, 2026.** Its [release](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.1) Maven ZIP is pinned in the
 catalog; all 25 of its version files downloaded anonymously matched the candidate, and the public Maven
 consumer built and passed its Minecraft smoke check. Both versions stay available.
