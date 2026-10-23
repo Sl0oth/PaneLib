@@ -75,6 +75,13 @@ if (!expectedMarkers.isEmpty()) {
     tasks.named('runClient') {
         finalizedBy(saveFixtureLog)
         timeout = java.time.Duration.ofMinutes(5)
+        // A fresh run folder opens vanilla's first-launch accessibility screen; fixtures start at the title screen.
+        doFirst {
+            def options = new File(workingDir, 'options.txt')
+            options.parentFile.mkdirs()
+            def lines = options.exists() ? options.readLines().findAll { !it.startsWith('onboardAccessibility:') } : []
+            options.text = (lines + 'onboardAccessibility:false').join('\n') + '\n'
+        }
         def console = System.out
         def tee = new OutputStream() {
             @Override void write(int value) { captured.write(value); console.write(value) }
