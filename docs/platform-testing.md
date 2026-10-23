@@ -54,7 +54,7 @@ are recorded because `*-latest` labels can change. The matrix and cross-platform
 ## Windows desktop checks
 
 On October 22, 2026, a real Windows desktop ran the automated client suite at source commits
-`a1e1667` to `a533360`: Windows 11 Pro x64, AMD Ryzen 7 3700X, NVIDIA GeForce RTX 2080 SUPER (driver
+`a1e1667` to `03aba39`: Windows 11 Pro x64, AMD Ryzen 7 3700X, NVIDIA GeForce RTX 2080 SUPER (driver
 32.0.15.9649), 3440x1440 at 100% display scale, Temurin Java 25.0.4.1, Minecraft 26.2 and Fabric
 Loader 0.19.3. Clients ran in the signed-in desktop session, not a hosted runner.
 
@@ -93,7 +93,18 @@ toggled off with J or removed. The HUD stays on screen across a GUI-scale change
 The PC was reached through Parsec, so the active display was Parsec's virtual 1920x1200 monitor; it
 passes the same way on macOS ARM64.
 
-Still to try by hand: display scaling above 100%, moving between monitors with different DPI, and
-actual narrator and IME behavior.
+### 150% display scale
+
+With Windows display scale at 150% (GLFW content scale 1.50), every fixture above passed again: the 16
+development fixtures and `windowHudTest`, with no failed check. Windows reports the window in physical
+pixels, so the framebuffer matched the window and Minecraft chose GUI scale 3 automatically; PaneLib's
+surfaces stayed at full resolution at every size. PaneOS timings matched 100% within a few
+milliseconds (full repaint 33.6 ms, scoped click 25.8 ms, window drag 28.1 ms).
+
+Screenshots from that run showed a library bug on both platforms: default tooltips on a light theme
+drew the theme's dark text on their near-black plate, so the launcher's card tips were empty pills.
+Unset tooltip text now switches to a readable colour; `windowHudTest` hovers a card and captures it.
+
+Still to try by hand: moving between monitors with different DPI, and actual narrator and IME behavior.
 macOS and Linux desktop/GPU combinations also need their own recorded runs; an automated build or
 Ubuntu Xvfb pass cannot substitute for them.

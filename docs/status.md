@@ -92,7 +92,7 @@ source.
 - Large popup lists, arbitrary native-layer composition, and cross-mod HUD conflicts need their
   documented constraints respected; a showcase does not prove every combination.
 - Real-client evidence is macOS ARM64 and one Windows 11 desktop (RTX 2080 SUPER). Linux GPU
-  behavior, Windows display scaling above 100%, general performance guarantees, and broad automated
+  behavior, moving between monitors with different DPI, general performance guarantees, and broad automated
   visual-regression coverage remain unproven.
 - Some internal historical fixtures still rely on private disposable saves or duplicated launcher
   helpers. That remaining developer-tooling debt does not affect the curated public launch tasks.
