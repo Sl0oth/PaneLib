@@ -105,6 +105,30 @@ Screenshots from that run showed a library bug on both platforms: default toolti
 drew the theme's dark text on their near-black plate, so the launcher's card tips were empty pills.
 Unset tooltip text now switches to a readable colour; `windowHudTest` hovers a card and captures it.
 
-Still to try by hand: moving between monitors with different DPI, and actual narrator and IME behavior.
+## 1.0.0-beta.3 branch (October 23, 2026)
+
+The `overnight/beta3` branch at `19eda34` ran every development fixture on the Mac (macOS ARM64,
+3024×1890 surface) and on the Windows 11 desktop above (100% display scale), 19 fixtures each,
+including the new `narrationTest` (16 checks) and `imeTest` (15 checks).
+
+| Check | Mac | Windows |
+| --- | --- | --- |
+| Library unit tests | 1,325 passed | (CI) |
+| 19 development fixtures | 18 passed in the batch; `windowHudTest` missed "hovering a card shows its tooltip" once, then passed 72/72 alone | 18 passed in the batch; `exampleTest` missed "idle gallery does not repaint" once, as the first fixture after a fresh build, then passed 33/33 three times alone |
+| Pixel comparison (`-PperfCompare`) | Six PaneOS scenes identical with raster shortcuts on and off; GPU texture matches | Not run |
+| Release dry run as 1.0.0-beta.3, in a separate worktree | `prepareRelease verifyRelease` staged and verified; both starter consumers passed their Minecraft smoke | Not run |
+
+Both single misses moved or depended on the real pointer or the first frames after a build and did
+not repeat; neither is root-caused, so treat them as intermittent rather than fixed. The dry run
+first failed because the Javadoc no longer listed the mixin and internal types; they are listed again,
+marked internal.
+
+PaneOS speed on this branch, standard perf fixture: Windows full repaint 17.9 ms (was 33.6), note
+click 13.4 ms (was 25.8); Mac full repaint 16.8 ms (was 33.2), click 10.0 ms (was 22.2).
+
+Narration and input-method composition are tested with the events Minecraft delivers, not with a
+real screen reader voice or a real Chinese, Japanese or Korean keyboard.
+
+Still to try by hand: moving between monitors with different DPI, a real IME keyboard, and listening to the narrator.
 macOS and Linux desktop/GPU combinations also need their own recorded runs; an automated build or
 Ubuntu Xvfb pass cannot substitute for them.

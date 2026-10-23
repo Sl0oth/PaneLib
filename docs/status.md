@@ -87,7 +87,7 @@ source.
 ## Limits to consider before adopting
 
 - The public Maven beta is available; a final 1.0 API compatibility guarantee is not established.
-- Minecraft narrator semantics and IME composition remain incomplete.
+- Minecraft narrator descriptions and IME composition are on the 1.0.0-beta.3 branch, not in a release yet; real IME keyboards are not yet tested by hand.
 - Native Minecraft text currently supports single-line labels, not editable or wrapped native-font
   paragraphs. There is no complete built-in vanilla widget theme.
 - HUDs do not receive control input; use a `UiScreen` for interactive UI.

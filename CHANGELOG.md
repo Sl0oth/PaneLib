@@ -1,5 +1,67 @@
 # Changelog
 
+## 1.0.0-beta.3 (unreleased) — speed, the narrator and input methods
+
+### Faster
+
+- Large fills, strokes and images draw on several cores. Each core repeats the whole Java2D draw
+  clipped to its own band of rows, with band edges kept where an outline is straight and on the
+  rasterizer's tile edges for textures, so every pixel is exactly what one draw gives. Images split
+  into row strips, which is exact under any clip.
+- Opaque rectangle interiors fill as one plain rectangle, and opaque cached layers copy instead of
+  blending.
+- Finished liquid glass is copied back when nothing beneath it changed, instead of blending the lens
+  and stroking its edges again. Backdrops hash in place and are copied only to compute a new lens.
+- A hover or press repaints only controls whose painting reads it (`UiContext.hovered`, `pressed`);
+  a background hit area that only raises a window repaints nothing.
+- A partial repaint narrower than three quarters of the surface uploads only its rectangle.
+- Unfocused text fields and text areas keep their layouts between paints.
+- Typing repaints through the value's declared repaint scope instead of always the whole page.
+- Parallel work runs on PaneLib's own daemon threads ("PaneLib raster"), which keep Java2D's
+  per-thread rasterizer state; on Windows this cut allocation during clicks from about 1 GB/s to
+  under 40 MB/s.
+- Backdrop and shadow scratch, cached-layer scans and frost copies no longer allocate or run on one
+  core each paint.
+- PaneOS (standard perf fixture, Windows 11, RTX 2080 SUPER): full repaint 33.6 → 17.9 ms, note click
+  25.8 → 13.4 ms, window drag 28.1 → 19.1 ms, Apps grid 46.4 → 29.1 ms. Mac (3024×1890 surface):
+  full repaint 33.2 → 16.8 ms, click 22.2 → 10.0 ms. Warmed up, full repaints take 13–15 ms and clicks
+  about 8 ms on both. PaneOS keeps its wallpaper painting in its own cache, so a theme change only
+  re-tints it.
+- Every shortcut leaves exactly the pixels of the plain path: `-Dpane.ui.plainRaster=true` turns them
+  off, and the `-PperfCompare` fixture compares six PaneOS scenes both ways and reads the GPU texture
+  back.
+
+### Narrator
+
+- Built-in controls describe themselves to Minecraft's narrator in Minecraft's own words: buttons,
+  checkboxes, switches, radios, tabs with their position, sliders, text fields and text areas,
+  menus, dropdowns and dialog buttons. Password fields never speak their characters.
+- `UiContext.narration` sets or replaces a control's description (`UiNarration`, experimental); a
+  tooltip names a control with no words of its own.
+- The focused control, or the hovered one, is narrated under the screen title, which includes the
+  page title in a multi-page document. Dialogs speak their title, message and focused button,
+  toasts are spoken as they appear, and virtual-list rows say their place in the whole list.
+
+### Input methods
+
+- Focusing a text input turns Minecraft's input method on, and leaving it turns it off.
+- A composition is drawn at the caret in the input's own type, underlined, with the clause being
+  converted marked; it never enters the value, so cancelling leaves the input and surface
+  unchanged. The caret area is reported so the candidate window opens beside it.
+- The characters one composition commits undo as one step (`UiTextHistory.extend`).
+
+### Documentation and tooling
+
+- Every public type, member and enum constant has Javadoc; mixins and `dev.pane.ui.internal` are
+  marked internal. `-Pdoclint=all,-missing` reports nothing.
+- `docs/compatibility.md` drafts what 1.x will promise and lists experimental APIs.
+- New fixtures: `narrationTest`, `imeTest`; the perf fixture gained `-PperfLoop`, `-PperfCompare`,
+  `-PperfVerbose` and per-phase upload and dirty-area figures.
+
+### Fixed
+
+- Hover repaints stay page-wide for painters that read the shared `UiContext.interactionMotion`.
+
 ## 1.0.0-beta.2 — readable tooltips, the demo mod and Windows verification
 
 - Fixed default tooltips on light themes: the near-black plate drew the theme's dark text, so the

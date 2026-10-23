@@ -31,12 +31,12 @@ something changes and is otherwise one reused GPU texture, so idle screens cost 
 | Backgrounds | Title panorama, in-world, the parent screen or full-screen | ✅ 0.9.1 |
 | HUDs | In-game HUDs that can replace vanilla elements and put them back | ✅ 0.9.x |
 | Demo mod | PaneOS (a Mac-like desktop), Wayfarer menu and HUD, Pane Mail inbox | ✅ 1.0.0-beta.2 |
-| Speed | Full repaints under 16 ms (60 fps) and clicks under 8 ms | 🔜 1.0.0-beta.3 |
-| IME input | Chinese, Japanese and Korean text entry in fields | 🔜 1.0.0-beta.3 |
-| Accessibility | Narrator reads PaneLib screens and controls | 🔜 1.0.0-beta.4 |
+| Speed | Draws on several cores with identical pixels: full PaneOS repaints 13–18 ms, clicks 8–13 ms (were 33 and 26) | 🔜 1.0.0-beta.3 |
+| IME input | Chinese, Japanese and Korean composition at the caret; a committed word undoes in one step | 🔜 1.0.0-beta.3 |
+| Narrator | Minecraft's narrator reads controls, their state, dialogs, toasts and list rows | 🔜 1.0.0-beta.3 |
 | Multiple monitors | Correct sharpness when moving between screens with different scaling | 🔜 1.0.0-beta.4 |
 | Linux | Tested in game, not only in CI | 🔜 1.0.0-beta.4 |
-| Stable API | Public API frozen, with a compatibility policy for 1.x | 🔜 1.0.0 |
+| Stable API | Public API frozen, with a compatibility policy for 1.x ([draft](docs/compatibility.md)) | 🔜 1.0.0 |
 | Newer Minecraft | Versions after 26.2 | 💭 Undecided |
 
 ✅ done · 🔜 planned · 💭 being considered
@@ -45,18 +45,20 @@ something changes and is otherwise one reused GPU texture, so idle screens cost 
 
 | Platform | Result |
 |---|---|
-| macOS (Apple silicon) | 1,311 unit tests and every in-game test pass |
-| Windows 11 (RTX 2080 SUPER) | Every in-game test passes at 100% and 150% display scale, including maximize, fullscreen, GUI scale and HUDs |
+| macOS (Apple silicon) | 1,325 unit tests and all 19 in-game tests pass, including narrator and IME ([details](docs/platform-testing.md)) |
+| Windows 11 (RTX 2080 SUPER) | All 19 in-game tests pass at 100% display scale, including narrator and IME; the window and HUD tests (maximize, fullscreen, GUI scale) also passed at 150% for beta.2 |
 | Linux | Builds and unit tests pass in CI; not yet tested in game |
 
 ## Known limits
 
 - Beta: the API may still change before 1.0.0.
 - Minecraft 26.2 only.
-- Not yet supported or tested: IME composition (such as Chinese or Japanese input), the narrator,
-  and moving between monitors with different scaling.
-- Very large full repaints are slow: a full PaneOS repaint takes about 33 ms on an RTX 2080 SUPER.
-  Partial repaints and idle screens are much cheaper.
+- In 1.0.0-beta.2: no IME composition (such as Chinese or Japanese input) and no narrator support;
+  both arrive in 1.0.0-beta.3. Input methods are tested with the events Minecraft delivers, not yet
+  with real IME keyboards.
+- Not yet tested: moving between monitors with different scaling.
+- Full repaints are costly: a full PaneOS repaint takes about 33 ms in 1.0.0-beta.2 and 13–18 ms in
+  1.0.0-beta.3 on an RTX 2080 SUPER. Partial repaints and idle screens are much cheaper.
 
 ## Try it (players)
 

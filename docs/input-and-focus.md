@@ -150,7 +150,7 @@ will cover every later native item. See [Minecraft integration](minecraft-integr
 
 ## Scope and limits
 
-Keyboard controls are available, but narrator roles/labels/announcements and IME composition are not implemented. Grapheme-safe plain-text editing does not implement IME composition or visual bidi navigation. Windows/Linux hardware, multiplayer and universal accessibility claims require separate validation.
+Keyboard controls are available. From 1.0.0-beta.3 the narrator and input-method composition are supported (see the sections below); real IME keyboards and screen readers outside Minecraft's narrator are not yet tested by hand. Grapheme-safe plain-text editing does not implement visual bidi navigation. Linux hardware, multiplayer and universal accessibility claims require separate validation.
 
 ## Slider keys and control coverage
 
@@ -247,5 +247,44 @@ reveal when focused; background value changes on an unfocused editor only clamp.
 and removal clear editor offsets. Cached virtual rows retain them until those rows are recycled.
 No new texture, smoothing animation or idle timer is allocated for editor browsing.
 
-IME composition, visual bidi navigation, held-pointer edge autoscroll, and revealing
-a caret through a parent shorter than the textarea remain tracked follow-ups.
+Visual bidi navigation, held-pointer edge autoscroll, and revealing a caret through a parent
+shorter than the textarea remain tracked follow-ups.
+
+## Input methods (1.0.0-beta.3)
+
+Focusing a text field, password field or text area tells Minecraft a text input has focus, which
+switches the operating system's input method on; leaving the inputs switches it off. While a
+Chinese, Japanese or Korean input method composes, PaneLib draws the composition at the caret in
+the input's own font, underlined, with the clause being converted marked in the accent and the
+composition's own caret. The caret area is reported to the input method, so its candidate window
+opens beside the field.
+
+A composition never enters the value: `stringValue` and the value events see only committed text,
+and cancelling leaves both the value and the screen exactly as they were. The characters a
+composition commits are inserted at the caret and undo as one step. `UiScreen.compositionText()`
+reports what is being composed, for diagnostics.
+
+`-PimeTest` drives this with the events Minecraft delivers; real IME keyboards still need a
+hands-on check on each platform.
+
+## Narrator (1.0.0-beta.3)
+
+When Minecraft's narrator is on, a PaneLib screen narrates the focused control, or the hovered one
+when nothing has keyboard focus, after the screen title (with the page title in a multi-page
+document). Built-in controls describe themselves in Minecraft's own words: "Save button. Press
+Enter to activate", "Checkbox: Snap to grid. ON", "Volume: 50% slider", "Name edit box: Sl0oth",
+"Audio tab. Selected tab 2 out of 3". Password fields never speak their characters. A dialog speaks
+its title, message and focused button; toasts are spoken as they appear; a control in a
+`virtualList` row is spoken as that row of the whole list.
+
+Controls without words of their own, such as `toggle`, `iconButton` and `slider`, take their label
+from a `tooltip` with the same id, or from an explicit description:
+
+```java
+ui.toggle("dark", "dark", 20, 110, false);
+ui.narration("dark", UiNarration.of(UiNarration.Role.TOGGLE, "Dark mode", ui.booleanValue("dark", false) ? "on" : "off"));
+```
+
+`ui.narration` also describes a hand-painted `hit` area. Call it on every paint, like the control.
+`UiNarration` is experimental: its roles and wording may grow in a minor release.
+`-PnarrationTest` reads the narration through Minecraft's own collector, without sound.
