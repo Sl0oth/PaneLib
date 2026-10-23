@@ -23,6 +23,7 @@ public record UiTheme(
     float motionScale,
     String fontFamily
 ) {
+    /** Keeps radii, density and motion scale within their working ranges; a missing font family means sans serif. */
     public UiTheme {
         smallRadius = clamp(smallRadius, 0, 40);
         mediumRadius = clamp(mediumRadius, 0, 48);
@@ -40,6 +41,7 @@ public record UiTheme(
             mediumRadius, largeRadius, density, motionScale, UiCanvas.SANS);
     }
 
+    /** The default dark theme. */
     public static UiTheme dark() {
         return new UiTheme(
             0xFF0D0F11, 0xFF15171A, 0xFF1B1E22, 0xFF2D3137,
@@ -48,6 +50,7 @@ public record UiTheme(
         );
     }
 
+    /** The default light theme. */
     public static UiTheme light() {
         return new UiTheme(
             0xFFF4F5F7, 0xFFFFFFFF, 0xFFEFF1F4, 0xFFDFE3E8,
@@ -56,16 +59,19 @@ public record UiTheme(
         );
     }
 
+    /** A copy with {@code density} replaced. */
     public UiTheme withDensity(float newDensity) {
         return new UiTheme(background, surface, raisedSurface, border, text, mutedText,
             accent, accentText, smallRadius, mediumRadius, largeRadius, newDensity, motionScale, fontFamily);
     }
 
+    /** A copy with {@code motionScale} replaced. */
     public UiTheme withMotionScale(float newMotionScale) {
         return new UiTheme(background, surface, raisedSurface, border, text, mutedText,
             accent, accentText, smallRadius, mediumRadius, largeRadius, density, newMotionScale, fontFamily);
     }
 
+    /** A copy with {@code accent} replaced. */
     public UiTheme withAccent(int newAccent) {
         return new UiTheme(background, surface, raisedSurface, border, text, mutedText,
             newAccent, accentText, smallRadius, mediumRadius, largeRadius, density, motionScale, fontFamily);

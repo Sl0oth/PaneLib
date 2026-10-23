@@ -8,6 +8,7 @@ package dev.pane.ui;
  * edge and {@code shadow} is a soft drop shadow drawn only outside the glass (0 for none).
  */
 public record UiGlass(float refraction, float rim, float blur, int tint, float dispersion, float highlight, int shadow) {
+    /** Requires finite values and clamps each to its working range, such as refraction to 0-64 and blur to 0-24. */
     public UiGlass {
         if (!Float.isFinite(refraction) || !Float.isFinite(rim) || !Float.isFinite(blur)
                 || !Float.isFinite(dispersion) || !Float.isFinite(highlight))
@@ -25,8 +26,12 @@ public record UiGlass(float refraction, float rim, float blur, int tint, float d
     /** Controls over busy content: thinner rim, almost no blur. */
     public static UiGlass clear() { return new UiGlass(9, 14, 1.2F, 0x18FFFFFF, .4F, .85F, 0x26000000); }
 
+    /** A copy with {@code refraction} replaced. */
     public UiGlass withRefraction(float value) { return new UiGlass(value, rim, blur, tint, dispersion, highlight, shadow); }
+    /** A copy with {@code blur} replaced. */
     public UiGlass withBlur(float value) { return new UiGlass(refraction, rim, value, tint, dispersion, highlight, shadow); }
+    /** A copy with {@code tint} replaced. */
     public UiGlass withTint(int value) { return new UiGlass(refraction, rim, blur, value, dispersion, highlight, shadow); }
+    /** A copy with {@code shadow} replaced. */
     public UiGlass withShadow(int value) { return new UiGlass(refraction, rim, blur, tint, dispersion, highlight, value); }
 }

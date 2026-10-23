@@ -9,8 +9,28 @@ import java.util.function.BiConsumer;
 /** Drawing, state, hit testing, and native-overlay registration for one page paint. */
 public final class UiContext {
     static final String INTERNAL_ACTION_PREFIX = "\u0000pane:";
-    public enum ButtonStyle { PRIMARY, SECONDARY, GHOST, DANGER }
-    public enum Shape { SQUARE, ROUNDED, SOFT, PILL }
+    /** Colour role of a default button: the accent, a raised neutral, no background, or a destructive red. */
+    public enum ButtonStyle {
+        /** Filled with the page accent. */
+        PRIMARY,
+        /** A raised neutral surface. */
+        SECONDARY,
+        /** No background until hovered. */
+        GHOST,
+        /** A dark red fill, for destructive actions. */
+        DANGER
+    }
+    /** Corner shape of a default button, from square corners to a full pill. */
+    public enum Shape {
+        /** Nearly square corners, two units. */
+        SQUARE,
+        /** The theme's small radius. */
+        ROUNDED,
+        /** The theme's medium radius. */
+        SOFT,
+        /** Fully rounded ends. */
+        PILL
+    }
 
     private static final UiButtonStyle DEFAULT_BUTTON_STYLE = UiButtonStyle.builder().build();
 
@@ -124,15 +144,25 @@ public final class UiContext {
         return derive(canvas, newContent, offsetX, offsetY, inputClip, virtualLists);
     }
 
+    /** The canvas this context paints on. */
     public UiCanvas canvas() { return canvas; }
+    /** The document theme. */
     public UiTheme theme() { return theme; }
+    /** Width of the whole page in layout units. */
     public int width() { return width; }
+    /** Height of the whole page in layout units. */
     public int height() { return height; }
+    /** Accent colour of the current page, as ARGB. */
     public int accent() { return accent; }
+    /** The page content area the shell left for this painter, in layout units. */
     public UiRect content() { return content; }
+    /** Left edge of {@link #content()}. */
     public float contentX() { return content.x(); }
+    /** Top edge of {@link #content()}. */
     public float contentY() { return content.y(); }
+    /** Width of {@link #content()}. */
     public float contentWidth() { return content.width(); }
+    /** Height of {@link #content()}. */
     public float contentHeight() { return content.height(); }
 
     /**
@@ -162,6 +192,7 @@ public final class UiContext {
      * Sets what Minecraft's narrator says about control {@code id}, replacing the description a
      * built-in control gives itself. Use it for controls without words of their own, such as icon
      * buttons and switches, and for hit areas painted by hand. Call it on every paint, like the control.
+     * <p><b>Experimental</b>, like {@link UiNarration}.
      */
     public void narration(String id, UiNarration narration) {
         if (id == null || narration == null) return;
@@ -174,12 +205,14 @@ public final class UiContext {
 
     private static String onOff(boolean on) { return on ? "on" : "off"; }
 
+    /** Whether the pointer is over control {@code id}. Reading it ties that control's pixels to its hover, so its hover changes repaint it. */
     public boolean hovered(String id) {
         if (id == null) return false;
         interactions.live.interactionReads.add(id);
         return id.equals(hoveredId);
     }
 
+    /** Whether control {@code id} is being pressed. Reading it ties that control's pixels to its press, so a press repaints it. */
     public boolean pressed(String id) {
         if (id == null) return false;
         interactions.live.interactionReads.add(id);
@@ -465,13 +498,16 @@ public final class UiContext {
         });
     }
 
+    /** The screen state value stored under {@code key}, or null. */
     public Object value(String key) { return state.get(key); }
 
+    /** The boolean stored under {@code key}, or {@code fallback} when it holds none. */
     public boolean booleanValue(String key, boolean fallback) {
         Object value = state.get(key);
         return value instanceof Boolean bool ? bool : fallback;
     }
 
+    /** The string stored under {@code key}, or {@code fallback} when it holds none. */
     public String stringValue(String key, String fallback) {
         Object value = state.get(key);
         return value instanceof String text ? text : fallback;
@@ -482,6 +518,7 @@ public final class UiContext {
         return value != null && value.equals(stringValue(key, null));
     }
 
+    /** The number stored under {@code key}, or {@code fallback} when it holds none. */
     public double numberValue(String key, double fallback) {
         Object value = state.get(key);
         return value instanceof Number number ? number.doubleValue() : fallback;
@@ -559,12 +596,17 @@ public final class UiContext {
         nativeOverlayLayers.put(id, bounds);
     }
 
+    /** A layout that places children top to bottom inside {@code bounds}. */
     public UiLayout column(UiRect bounds) { return UiLayout.column(bounds); }
+    /** A layout that places children left to right inside {@code bounds}. */
     public UiLayout row(UiRect bounds) { return UiLayout.row(bounds); }
+    /** A layout that places children on top of one another, each filling {@code bounds}. */
     public UiLayout stack(UiRect bounds) { return UiLayout.stack(bounds); }
+    /** A grid of {@code columns} equal columns and rows {@code rowHeight} tall, {@code gap} apart. */
     public UiGrid grid(UiRect bounds, int columns, float rowHeight, float gap) {
         return UiGrid.columns(bounds, columns, rowHeight, gap);
     }
+    /** A grid with as many columns as fit at least {@code minimumWidth} wide each. */
     public UiGrid responsiveGrid(UiRect bounds, float minimumWidth, float rowHeight, float gap) {
         return UiGrid.responsive(bounds, minimumWidth, rowHeight, gap);
     }
@@ -772,15 +814,18 @@ public final class UiContext {
         return first == null ? second : second == null ? first : first.intersection(second);
     }
 
+    /** A surface panel with the theme's card colour, border and radius. */
     public void card(float x, float y, float width, float height) {
         card(x, y, width, height, theme.mediumRadius(), theme.surface());
     }
 
+    /** A surface panel with its own radius and colour and the theme's border. */
     public void card(float x, float y, float width, float height, float radius, int color) {
         canvas.roundRect(color, x, y, width, height, radius);
         canvas.strokeRoundRect(theme.border(), .75F, x, y, width, height, radius);
     }
 
+    /** A default button: {@code action} reaches the event listener when it is clicked or activated from the keyboard. */
     public void button(String id, String label, String action, float x, float y, float width, float height,
                        ButtonStyle style, Shape shape) {
         drawDefaultButton(id, label, x, y, width, height, style, shape);
@@ -870,6 +915,7 @@ public final class UiContext {
         hit(id, action, x, y, size, size);
     }
 
+    /** A switch storing a boolean under {@code key}. It has no words of its own; give it a {@link #tooltip} or {@link #narration}. */
     public void toggle(String id, String key, float x, float y, boolean fallback) {
         // Seed the fallback just like text fields and dropdowns. Without this, a true fallback
         // looked enabled on first paint but the first click wrote true again instead of toggling.
@@ -998,6 +1044,7 @@ public final class UiContext {
         if (amount > 0) canvas.roundRect(accent, x, y, Math.max(height, width * amount), height, height / 2);
     }
 
+    /** A slider storing a value from 0 to 1 under {@code key}. */
     public void slider(String id, String key, float x, float y, float width, double fallback) {
         slider(id, key, x, y, width, 0, 1, fallback);
     }
@@ -1261,6 +1308,7 @@ public final class UiContext {
         return paintTextField(id, key, placeholder, x, y, width, height, fallback, maxLength, false, style);
     }
 
+    /** A password field with an explicit height, limit and style; its characters are painted masked and never narrated. */
     public String passwordField(String id, String key, String placeholder, float x, float y, float width, float height,
                                 String fallback, int maxLength, UiInputStyle style) {
         return paintTextField(id, key, placeholder, x, y, width, height, fallback, maxLength, true, style);

@@ -9,6 +9,7 @@ public record UiInputStyle(float fontSize, int fontStyle, String fontFamily,
     public UiInputStyle(float fontSize, int fontStyle, String fontFamily, float paddingX, float paddingY, float lineHeight) {
         this(fontSize, fontStyle, fontFamily, paddingX, paddingY, lineHeight, UiInputAppearance.defaults());
     }
+    /** Requires an appearance, positive finite metrics, padding of zero or more and a plain, bold or italic style. */
     public UiInputStyle {
         java.util.Objects.requireNonNull(appearance, "appearance");
         if (!Float.isFinite(fontSize) || fontSize <= 0 || !Float.isFinite(lineHeight) || lineHeight <= 0
@@ -20,15 +21,19 @@ public record UiInputStyle(float fontSize, int fontStyle, String fontFamily,
 
     /** Null family inherits the document theme. Existing overloads retain these metrics. */
     public static UiInputStyle defaults() { return DEFAULT; }
+    /** A copy with this font family, size and AWT style. */
     public UiInputStyle font(String family, float size, int style) {
         return new UiInputStyle(size, style, family, paddingX, paddingY, Math.max(lineHeight, size * 1.5F), appearance);
     }
+    /** A copy with this padding inside the field. */
     public UiInputStyle padding(float horizontal, float vertical) {
         return new UiInputStyle(fontSize, fontStyle, fontFamily, horizontal, vertical, lineHeight, appearance);
     }
+    /** A copy with this line height for text areas. */
     public UiInputStyle lineHeight(float height) {
         return new UiInputStyle(fontSize, fontStyle, fontFamily, paddingX, paddingY, height, appearance);
     }
+    /** A copy with these colours and outline metrics. */
     public UiInputStyle appearance(UiInputAppearance paint) {
         return new UiInputStyle(fontSize, fontStyle, fontFamily, paddingX, paddingY, lineHeight, paint);
     }

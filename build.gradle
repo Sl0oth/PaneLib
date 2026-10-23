@@ -44,7 +44,9 @@ subprojects {
     }
 
     tasks.withType(Javadoc).configureEach {
-        options.addStringOption('Xdoclint:none', '-quiet')
+        // -Pdoclint=all (or e.g. all,-missing) lints the public documentation; releases build quietly.
+        options.addStringOption("Xdoclint:${project.findProperty('doclint') ?: 'none'}", '-quiet')
+        if (project.hasProperty('doclint')) options.addStringOption('Xmaxwarns', '100000')
         options.addBooleanOption('notimestamp', true)
     }
 }

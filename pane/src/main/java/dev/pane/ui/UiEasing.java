@@ -2,10 +2,15 @@ package dev.pane.ui;
 
 /** Built-in easing curves for finite retained-mode animations. */
 public enum UiEasing {
+    /** Constant speed. */
     LINEAR,
+    /** Starts slowly and speeds up. */
     EASE_IN,
+    /** Starts quickly and slows to a stop. */
     EASE_OUT,
+    /** Slow at both ends. */
     EASE_IN_OUT,
+    /** A quick start that settles softly: a quartic ease-out. */
     PAPER,
     /** Duration-bounded damped spring with restrained overshoot and an exact settled endpoint. */
     SPRING;

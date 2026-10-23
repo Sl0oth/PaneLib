@@ -29,16 +29,20 @@ public final class UiGrid {
         return new UiGrid(bounds, columns, rowHeight, gap, gap);
     }
 
+    /** A copy with separate gaps between columns and between rows. */
     public UiGrid gaps(float columns, float rows) {
         return new UiGrid(bounds, this.columns, rowHeight, columns, rows);
     }
 
+    /** Number of columns. */
     public int columns() { return columns; }
 
+    /** Width of one cell after the column gaps. */
     public float cellWidth() {
         return Math.max(0, (bounds.width() - (columns - 1) * columnGap) / columns);
     }
 
+    /** The cell for item {@code index}, filling rows left to right. */
     public UiRect cell(int index) {
         int safe = Math.max(0, index);
         int column = safe % columns;
@@ -48,6 +52,7 @@ public final class UiGrid {
             bounds.y() + row * (rowHeight + rowGap), width, rowHeight);
     }
 
+    /** Height the grid needs for {@code itemCount} items. */
     public float contentHeight(int itemCount) {
         int rows = Math.max(0, (Math.max(0, itemCount) + columns - 1) / columns);
         return rows == 0 ? 0 : rows * rowHeight + (rows - 1) * rowGap;

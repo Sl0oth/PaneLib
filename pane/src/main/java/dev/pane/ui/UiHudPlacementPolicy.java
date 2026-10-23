@@ -8,5 +8,6 @@ package dev.pane.ui;
  */
 @FunctionalInterface
 public interface UiHudPlacementPolicy {
+    /** The placement to use for the current viewport. */
     UiHudPlacement resolve(UiHudViewport viewport);
 }

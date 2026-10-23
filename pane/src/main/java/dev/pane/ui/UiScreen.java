@@ -96,6 +96,7 @@ public class UiScreen extends Screen {
     private final UiBlurScratch dialogBlurScratch = new UiBlurScratch();
     /** Temporary blur image allocations; separate from GPU texture allocations. */
     public long dialogBlurAllocations() { return dialogBlurScratch.allocations; }
+    /** Pixels the dialog backdrop blur keeps allocated between paints. */
     public long dialogBlurRetainedPixels() { return dialogBlurScratch.retainedPixels(); }
     private UiRetainedTexture popupSurface;
     private UiRect popupLayoutBounds;
@@ -280,15 +281,18 @@ public class UiScreen extends Screen {
         invalidate();
     }
 
+    /** A screen for {@code document} with no native overlay, no event listener and default options. */
     public UiScreen(UiDocument document) {
         this(document, NativeOverlayRenderer.NONE, UiEventListener.NONE, UiScreenOptions.defaults());
     }
 
+    /** A screen that draws Minecraft content through {@code nativeOverlay} and reports actions to {@code eventListener}. */
     public UiScreen(UiDocument document, NativeOverlayRenderer nativeOverlay,
                     UiEventListener eventListener) {
         this(document, nativeOverlay, eventListener, UiScreenOptions.defaults());
     }
 
+    /** As the three-argument constructor, with explicit screen options such as a parent screen. */
     public UiScreen(UiDocument document, NativeOverlayRenderer nativeOverlay,
                     UiEventListener eventListener, UiScreenOptions options) {
         this(document, nativeOverlay, eventListener, options, null);
@@ -330,9 +334,13 @@ public class UiScreen extends Screen {
         return create(document, overlay, handler, UiScreenOptions.defaults());
     }
 
+    /** The document this screen shows. */
     public UiDocument document() { return document; }
+    /** The options this screen was created with. */
     public UiScreenOptions options() { return options; }
+    /** The screen Escape returns to, when one was given. */
     public Optional<Screen> parentScreen() { return Optional.ofNullable(options.parent()); }
+    /** Id of the page currently shown. */
     public String pageId() { return pageId; }
     /** Semantic metadata from the last custom-button paint; does not itself speak narration. */
     public Optional<UiButtonState> buttonState(String id) {
@@ -372,6 +380,7 @@ public class UiScreen extends Screen {
         pendingFocus = new FocusRestore(initialFocus == null ? controls.getFirst() : initialFocus, -1, -1);
         requestFullRepaint();
     }
+    /** Opens a modal focus scope: Tab and the pointer reach only {@code controls} until {@link #popFocusScope} closes it. */
     public void pushFocusScope(String id, List<String> controls, String initialFocus) {
         pushFocusScope(id, controls, initialFocus, null);
     }
@@ -383,6 +392,7 @@ public class UiScreen extends Screen {
         closeMenu(false); pressedId = null; draggingSlider = null; draggingTextInput = null; draggingKey = null;
         focus(null); pendingFocus = scope.restore(); resolvePendingFocus(); requestFullRepaint();
     }
+    /** Id of the innermost open focus scope, if any. */
     public Optional<String> focusScopeId() { return focusScopes.isEmpty() ? Optional.empty() : Optional.of(focusScopes.peekLast().id()); }
     private boolean focusAllowed(String id) {
         if (id == null) return false;
@@ -430,6 +440,7 @@ public class UiScreen extends Screen {
         interactions.editors.keySet().retainAll(registered);
         if(focusedId==null||!registered.contains(focusedId))interactions.textLayouts.clear();
     }
+    /** Viewport, content height, offset and target offset of scroll region {@code id}, if it is on the page. */
     public Optional<UiScrollSnapshot> scrollSnapshot(String id) {
         UiScrollRegion region = scrollRegion(id);
         if (region == null) return Optional.empty();
@@ -472,6 +483,7 @@ public class UiScreen extends Screen {
         requestFullRepaint();
     }
 
+    /** Layout size, surface pixel size and the scale the surface was rasterized at. */
     public UiRasterQuality rasterQuality() {
         return new UiRasterQuality(surfaceLayoutWidth, surfaceLayoutHeight, surfaceWidth, surfaceHeight,
             (float)(dpiScale() * uiScale()), surfaceQualityScale);
@@ -532,6 +544,7 @@ public class UiScreen extends Screen {
 
     /** Liquid glass lenses reused because nothing behind them changed, and lenses computed. Diagnostics. */
     public long glassLensReuseCount() { return glassCache.hits; }
+    /** Glass, frost and shadow results computed rather than reused, since this screen opened. Diagnostics. */
     public long glassLensRenderCount() { return glassCache.misses; }
 
     /** Virtual-list GPU atlases allocated since this screen opened. */
@@ -596,16 +609,20 @@ public class UiScreen extends Screen {
         if (row != null) row.dirty = true;
     }
 
+    /** The screen state value stored under {@code key}, or null. */
     public Object value(String key) { return state.get(key); }
 
+    /** The boolean stored under {@code key}, or {@code fallback} when it holds none. */
     public boolean booleanValue(String key, boolean fallback) {
         return state.get(key) instanceof Boolean bool ? bool : fallback;
     }
 
+    /** The number stored under {@code key}, or {@code fallback} when it holds none. */
     public double numberValue(String key, double fallback) {
         return state.get(key) instanceof Number number ? number.doubleValue() : fallback;
     }
 
+    /** The string stored under {@code key}, or {@code fallback} when it holds none. */
     public String stringValue(String key, String fallback) {
         return state.get(key) instanceof String text ? text : fallback;
     }
@@ -683,7 +700,7 @@ public class UiScreen extends Screen {
         return input != null;
     }
 
-    /** Text being composed, for diagnostics and tests; empty when none. */
+    /** Text being composed, for diagnostics and tests; empty when none. <b>Experimental.</b> */
     public String compositionText() { return preedit == null ? "" : preedit.fullText(); }
 
     private final java.awt.image.BufferedImage measureImage = new java.awt.image.BufferedImage(1, 1, java.awt.image.BufferedImage.TYPE_INT_ARGB);
@@ -896,6 +913,7 @@ public class UiScreen extends Screen {
         return Optional.empty();
     }
 
+    /** Switches to page {@code id} with the page transition; the narrator announces the new page title. */
     public void showPage(String id) {
         if (id == null || id.equals(pageId) || document.page(id) == null) return;
         interactions.scrollEnds.cancelPending();

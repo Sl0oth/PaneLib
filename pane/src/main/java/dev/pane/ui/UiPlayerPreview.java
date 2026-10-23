@@ -12,6 +12,7 @@ public record UiPlayerPreview(float bodyYaw, float headYaw, float headPitch, flo
                               float heightFraction, float feetX, float feetY, boolean followPointer) {
     private static final UiPlayerPreview STANDING = new UiPlayerPreview(180, 0, 0, 0, .8F, .5F, .95F, false);
 
+    /** Requires finite angles within their ranges: head yaw and pitch within 90 degrees, camera pitch within 45, and fractions within 0 to 1. */
     public UiPlayerPreview {
         finite(bodyYaw, "bodyYaw");
         range(headYaw, -90, 90, "headYaw");
@@ -23,19 +24,25 @@ public record UiPlayerPreview(float bodyYaw, float headYaw, float headPitch, flo
         bodyYaw %= 360;
     }
 
+    /** A player standing facing the viewer. */
     public static UiPlayerPreview standing() { return STANDING; }
+    /** A copy with the body turned by {@code degrees}. */
     public UiPlayerPreview bodyYaw(float degrees) {
         return new UiPlayerPreview(degrees, headYaw, headPitch, cameraPitch, heightFraction, feetX, feetY, followPointer);
     }
+    /** A copy with the head turned and tilted. */
     public UiPlayerPreview headRotation(float yaw, float pitch) {
         return new UiPlayerPreview(bodyYaw, yaw, pitch, cameraPitch, heightFraction, feetX, feetY, followPointer);
     }
+    /** A copy seen from above or below by {@code degrees}. */
     public UiPlayerPreview cameraPitch(float degrees) {
         return new UiPlayerPreview(bodyYaw, headYaw, headPitch, degrees, heightFraction, feetX, feetY, followPointer);
     }
+    /** A copy whose figure is this fraction of its slot's height. */
     public UiPlayerPreview heightFraction(float fraction) {
         return new UiPlayerPreview(bodyYaw, headYaw, headPitch, cameraPitch, fraction, feetX, feetY, followPointer);
     }
+    /** A copy with its feet at this fraction of its slot. */
     public UiPlayerPreview feet(float x, float y) {
         return new UiPlayerPreview(bodyYaw, headYaw, headPitch, cameraPitch, heightFraction, x, y, followPointer);
     }

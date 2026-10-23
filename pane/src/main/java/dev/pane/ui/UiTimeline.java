@@ -17,15 +17,20 @@ public final class UiTimeline {
         if (duration > 60_000 || steps.size() > 64) throw new IllegalArgumentException("Timeline exceeds finite motion limits");
     }
 
+    /** A timeline that starts at {@code value}. */
     public static UiTimeline starting(float value) { return new UiTimeline(value, List.of()); }
+    /** A copy that then moves to {@code target} over {@code millis} with {@code easing}. */
     public UiTimeline to(float target, int millis, UiEasing easing) {
         if (!Float.isFinite(target)) throw new IllegalArgumentException("Timeline values must be finite");
         var next = new ArrayList<>(steps);
         next.add(new Step(target, Math.max(0, Math.min(60_000, millis)), easing == null ? UiEasing.EASE_OUT : easing));
         return new UiTimeline(from, next);
     }
+    /** A copy that then holds its last value for {@code millis}. */
     public UiTimeline hold(int millis) { return to(endValue(), millis, UiEasing.LINEAR); }
+    /** Total length in milliseconds. */
     public int durationMillis() { return duration; }
+    /** The value at the end. */
     public float endValue() { return steps.isEmpty() ? from : steps.getLast().target; }
     float startValue() { return from; }
     UiTimeline from(float value) { return new UiTimeline(value, steps); }

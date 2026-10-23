@@ -2,9 +2,84 @@ package dev.pane.ui;
 
 /** Small code-drawn icon set. Consumers can still draw any custom icon with {@link UiPath}. */
 public enum UiIcon implements UiSymbol {
-    CHECK, CLOSE, PLUS, MINUS, SEARCH, CHEVRON_DOWN, ARROW_RIGHT, MENU,
-    HOME, INFO, WARNING, PLAY, PAUSE, MORE, COPY, BOOKMARK, COLUMNS, TRASH,
-    BOX, CHECKED_BOX, STAR, MAIL, INBOX, ARCHIVE, CHEVRON_LEFT, CHEVRON_RIGHT, SEND, TAG, CLOCK, HELP, SETTINGS, REFRESH, FILE, PEN, APPS, MORE_VERTICAL, TUNE, PEOPLE, STAR_FILLED;
+    /** A check mark. */
+    CHECK,
+    /** A cross, for closing. */
+    CLOSE,
+    /** A plus sign. */
+    PLUS,
+    /** A minus sign. */
+    MINUS,
+    /** A magnifying glass. */
+    SEARCH,
+    /** A chevron pointing down. */
+    CHEVRON_DOWN,
+    /** An arrow pointing right. */
+    ARROW_RIGHT,
+    /** Three horizontal lines. */
+    MENU,
+    /** A house, for home. */
+    HOME,
+    /** An information sign. */
+    INFO,
+    /** A warning triangle. */
+    WARNING,
+    /** A play triangle. */
+    PLAY,
+    /** Two pause bars. */
+    PAUSE,
+    /** Three dots in a row. */
+    MORE,
+    /** Two overlapping sheets, for copying. */
+    COPY,
+    /** A bookmark ribbon. */
+    BOOKMARK,
+    /** Side-by-side columns. */
+    COLUMNS,
+    /** A bin, for deleting. */
+    TRASH,
+    /** An empty checkbox. */
+    BOX,
+    /** A ticked checkbox. */
+    CHECKED_BOX,
+    /** An outlined star. */
+    STAR,
+    /** An envelope. */
+    MAIL,
+    /** An inbox tray. */
+    INBOX,
+    /** An archive box. */
+    ARCHIVE,
+    /** A chevron pointing left. */
+    CHEVRON_LEFT,
+    /** A chevron pointing right. */
+    CHEVRON_RIGHT,
+    /** A paper plane, for sending. */
+    SEND,
+    /** A label tag. */
+    TAG,
+    /** A clock face. */
+    CLOCK,
+    /** A question mark in a circle. */
+    HELP,
+    /** A gear, for settings. */
+    SETTINGS,
+    /** A circular arrow, for refreshing. */
+    REFRESH,
+    /** A document page. */
+    FILE,
+    /** A pen, for editing. */
+    PEN,
+    /** A grid of squares. */
+    APPS,
+    /** Three dots in a column. */
+    MORE_VERTICAL,
+    /** Adjustment sliders. */
+    TUNE,
+    /** Two people. */
+    PEOPLE,
+    /** A filled star. */
+    STAR_FILLED;
 
     /** Draws this icon inside the supplied square. */
     public void draw(UiCanvas canvas, int color, float x, float y, float size, float stroke) {

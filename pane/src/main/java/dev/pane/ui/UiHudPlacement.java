@@ -5,8 +5,28 @@ package dev.pane.ui;
  * edge-aligned axes; a centered axis ignores its margin. Scale changes size about the chosen anchor.
  */
 public record UiHudPlacement(Anchor anchor, float marginX, float marginY, float scale) {
-    public enum Anchor { TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT, CENTER,
-        TOP_CENTER, BOTTOM_CENTER, CENTER_LEFT, CENTER_RIGHT }
+    /** Corner, edge midpoint or centre of the screen a HUD is placed against. */
+    public enum Anchor {
+        /** The top-left corner. */
+        TOP_LEFT,
+        /** The top-right corner. */
+        TOP_RIGHT,
+        /** The bottom-left corner. */
+        BOTTOM_LEFT,
+        /** The bottom-right corner. */
+        BOTTOM_RIGHT,
+        /** The centre of the screen. */
+        CENTER,
+        /** The middle of the top edge. */
+        TOP_CENTER,
+        /** The middle of the bottom edge. */
+        BOTTOM_CENTER,
+        /** The middle of the left edge. */
+        CENTER_LEFT,
+        /** The middle of the right edge. */
+        CENTER_RIGHT
+    }
+    /** A missing anchor means the top left; margins below zero become zero and the scale is kept between 0.5 and 2. */
     public UiHudPlacement {
         anchor = anchor == null ? Anchor.TOP_LEFT : anchor;
         if (!Float.isFinite(marginX) || !Float.isFinite(marginY) || !Float.isFinite(scale))
@@ -14,6 +34,7 @@ public record UiHudPlacement(Anchor anchor, float marginX, float marginY, float 
         marginX = Math.max(0, marginX); marginY = Math.max(0, marginY);
         scale = Math.max(.5F, Math.min(2, scale));
     }
+    /** The top-left corner, 18 points in, at normal size. */
     public static UiHudPlacement topLeft() { return new UiHudPlacement(Anchor.TOP_LEFT, 18, 18, 1); }
 
     /** Converts point-sized content/margins to GUI coordinates while fitting even small viewports. */

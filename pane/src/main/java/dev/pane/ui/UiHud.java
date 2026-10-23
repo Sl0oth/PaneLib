@@ -42,6 +42,7 @@ public final class UiHud implements AutoCloseable {
     private long totalRasterNanos, totalUploadNanos, maximumRasterNanos;
     private UiRect lastBounds = new UiRect(0, 0, 0, 0);
 
+    /** A HUD {@code width} by {@code height} UI points painted by {@code painter}, without native Minecraft content. */
     public UiHud(int width, int height, UiTheme theme, UiPainter painter) {
         this(width, height, theme, painter, NativeOverlayRenderer.NONE);
     }
@@ -58,6 +59,7 @@ public final class UiHud implements AutoCloseable {
         motionScale = this.theme.motionScale();
     }
 
+    /** Registers this HUD under {@code id} so it draws every frame; returns this HUD. Call on the client thread. */
     public UiHud attach(Identifier id) {
         requireClientThread();
         if (closed || this.id != null) throw new IllegalStateException("HUD is closed or already attached");
@@ -67,14 +69,19 @@ public final class UiHud implements AutoCloseable {
         Registry.huds.put(id, this);
         return this;
     }
+    /** Stores a value the painter reads; a changed value repaints on the next frame. */
     public void setValue(String key, Object value) {
         requireClientThread();
         if (closed) return;
         if (!Objects.equals(values.put(key, value), value)) dirty = true;
     }
+    /** Repaints on the next frame. */
     public void invalidate() { requireClientThread(); if (!closed) dirty = true; }
+    /** Whether the HUD is shown when enabled. */
     public boolean visible() { return visible; }
+    /** Shows or hides the HUD without releasing what it replaces. */
     public void setVisible(boolean value) { requireClientThread(); visible = value; }
+    /** Whether the HUD is enabled and not closed. */
     public boolean enabled() { return enabled && !closed; }
     /** Immediately deactivate rendering and replacement claims. Values and visible preference survive. */
     public void setEnabled(boolean value) {
@@ -101,6 +108,7 @@ public final class UiHud implements AutoCloseable {
         replacedVanillaElements = Collections.unmodifiableSet(next);
         return this;
     }
+    /** Vanilla HUD elements this HUD hides while it shows. */
     public Set<Identifier> replacedVanillaElements() { return replacedVanillaElements; }
 
     private boolean eligible(Minecraft client) {
@@ -130,26 +138,32 @@ public final class UiHud implements AutoCloseable {
     public void setPlacementPolicy(UiHudPlacementPolicy policy) { requireClientThread(); placement.setPolicy(policy); }
     /** Per-widget raster ceilings. Resolution follows effective displayed scale within this budget. */
     public void setRenderSettings(UiRenderSettings settings) { requireClientThread(); renderSettings=Objects.requireNonNull(settings); }
+    /** The raster ceilings this HUD paints within. */
     public UiRenderSettings renderSettings() { return renderSettings; }
     /** Latest displayed target and retained raster dimensions; pixel dimensions are zero without a surface. */
     public UiRasterQuality rasterQuality() { return raster; }
     /** Bytes in one retained RGBA raster; CPU/GPU copies and layer scratch buffers are additional. */
     public long rasterBytes() { return (long)raster.pixelWidth()*raster.pixelHeight()*4; }
+    /** Whether the HUD stays drawn while a screen is open. */
     public void setShowOnScreens(boolean value) { requireClientThread(); showOnScreens = value; }
+    /** Scales this HUD's animation durations, from 0 (none) to 2. */
     public void setMotionScale(float value) {
         requireClientThread();
         if (Float.isFinite(value)) { motionScale = Math.max(0, Math.min(2, value)); dirty = true; }
     }
+    /** Counters and timings since the HUD was created. Diagnostics. */
     public Snapshot snapshot() {
         return new Snapshot(frames, paints, uploadedPixels, allocations, surface != null, animating || presentationAnimating,
             lastBounds, lastRasterNanos, lastUploadNanos, totalRasterNanos, totalUploadNanos, maximumRasterNanos);
     }
+    /** Frames drawn, paints, pixels uploaded, allocations, whether a surface exists or animation runs, the drawn bounds, and raster and upload timings. */
     public record Snapshot(long frames, long paints, long uploadedPixels, long allocations, boolean hasSurface,
                            boolean animating, UiRect bounds, long lastRasterNanos, long lastUploadNanos,
                            long totalRasterNanos, long totalUploadNanos, long maximumRasterNanos) { }
 
     /** Native submissions in the latest visible frame; zero while suppressed or closed. */
     public int nativeItemCount() { return nativeItemCount; }
+    /** Native entity submissions in the latest visible frame; zero while suppressed or closed. */
     public int nativeEntityCount() { return nativeEntityCount; }
     /** Native slot-coordinate rebuilds; unchanged presented frames reuse the mapping. */
     public long nativePlacementCount() { return nativePlacement.builds(); }

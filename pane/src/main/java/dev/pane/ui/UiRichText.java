@@ -20,6 +20,7 @@ public final class UiRichText {
     /** One contiguous run with one visual style. Color is nullable and falls back at draw time. */
     public record Span(String text, Integer color, boolean bold, boolean italic,
                        boolean underlined, boolean strikethrough, boolean obfuscated) {
+        /** One run of text with one style. */
         public Span {
             text = Objects.requireNonNullElse(text, "");
         }
@@ -84,6 +85,7 @@ public final class UiRichText {
         return builder.build();
     }
 
+    /** The styled runs, in order. */
     public List<Span> spans() {
         return spans;
     }
@@ -93,6 +95,7 @@ public final class UiRichText {
         return plainText;
     }
 
+    /** Whether there is no text. */
     public boolean isEmpty() {
         return spans.isEmpty();
     }

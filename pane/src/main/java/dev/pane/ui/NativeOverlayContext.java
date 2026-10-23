@@ -57,6 +57,7 @@ public final class NativeOverlayContext {
      * Consumers should suppress their hover tooltips; entity previews still receive the real pointer. */
     public boolean pointerBlocked() { return pointerBlocked; }
 
+    /** Minecraft's graphics for this frame, for drawing anything the helpers here do not cover. */
     public GuiGraphicsExtractor graphics() { return graphics; }
 
     /** Slot rectangle in physical backing pixels. Helpers perform the GUI-scale conversion internally. */
@@ -67,6 +68,7 @@ public final class NativeOverlayContext {
 
     /** Draw a single line of white, shadowed vanilla text, ellipsized to fit its native slot. */
     public void text(String slotId, String text) { text(slotId, text, UiMinecraftTextStyle.hud()); }
+    /** Draws Minecraft text in slot {@code slotId} with the HUD text style. */
     public void text(String slotId, net.minecraft.network.chat.Component text) { text(slotId, text, UiMinecraftTextStyle.hud()); }
 
     /**

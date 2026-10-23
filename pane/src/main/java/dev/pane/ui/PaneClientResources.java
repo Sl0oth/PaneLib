@@ -10,6 +10,9 @@ import net.minecraft.server.packs.resources.PreparableReloadListener;
 
 /** Library lifecycle hook; installs no screen, key binding, timer or demo content. */
 public final class PaneClientResources implements ClientModInitializer {
+    /** Created by Fabric Loader when the client starts; mods do not construct it. */
+    public PaneClientResources() { }
+
     @Override public void onInitializeClient() {
         var loader = ResourceLoader.get(PackType.CLIENT_RESOURCES);
         var id = Identifier.fromNamespaceAndPath("panelib", "decoded_textures");

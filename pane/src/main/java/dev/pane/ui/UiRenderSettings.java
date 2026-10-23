@@ -2,6 +2,7 @@ package dev.pane.ui;
 
 /** Quality and memory limits for the retained raster surface. */
 public record UiRenderSettings(int maximumWidth, int maximumHeight, float maximumScale) {
+    /** Requires a finite scale; keeps each surface side between 512 and 8192 pixels and the scale between 1 and 4. */
     public UiRenderSettings {
         if (!Float.isFinite(maximumScale)) throw new IllegalArgumentException("maximumScale must be finite");
         maximumWidth = Math.max(512, Math.min(8192, maximumWidth));

@@ -19,12 +19,14 @@ public final class UiPath {
         this.graphics = graphics;
     }
 
+    /** Starts a new subpath at a point. */
     public UiPath moveTo(float x, float y) {
         path.moveTo(x, y);
         started = true;
         return this;
     }
 
+    /** Adds a straight segment to a point. */
     public UiPath lineTo(float x, float y) {
         if (!started) return moveTo(x, y);
         path.lineTo(x, y);
@@ -58,6 +60,7 @@ public final class UiPath {
         return this;
     }
 
+    /** Closes the current subpath. */
     public UiPath close() {
         if (started) path.closePath();
         return this;
@@ -66,6 +69,7 @@ public final class UiPath {
     /** The outline described so far, in the coordinates it was built with. */
     java.awt.Shape shape() { return path; }
 
+    /** Fills the path with an ARGB colour. */
     public UiPath fill(int color) {
         if (!started) return this;
         graphics.setColor(UiCanvas.awtColor(color));
@@ -85,10 +89,12 @@ public final class UiPath {
         return this;
     }
 
+    /** Strokes the path with round caps and joins. */
     public UiPath stroke(int color, float width) {
         return stroke(color, width, true);
     }
 
+    /** Strokes the path with round, or square and mitred, caps and joins. */
     public UiPath stroke(int color, float width, boolean rounded) {
         if (!started) return this;
         graphics.setColor(UiCanvas.awtColor(color));

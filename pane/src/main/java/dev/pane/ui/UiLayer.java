@@ -6,6 +6,9 @@ import java.util.Arrays;
 
 /** Reusable CPU scratch surface for true group opacity. Own one per simultaneous visible layer. */
 public final class UiLayer {
+    /** An empty layer; it allocates its scratch storage on first use. */
+    public UiLayer() { }
+
     private BufferedImage image;
     private int[] pixels;
     private Object revision;

@@ -2,6 +2,7 @@ package dev.pane.ui;
 
 /** Immutable popup styling. Metrics use layout units; null colors/font inherit the theme. */
 public record UiMenuStyle(float textSize, int fontStyle, String fontFamily, float rowHeight, float paddingX, float paddingY, float radius, float rowRadius, float rowInset, float borderWidth, Integer background, Integer text, Integer border, Integer highlight) {
+    /** Requires finite metrics: a positive text size and row height, and padding, radii, inset and border of zero or more. */
     public UiMenuStyle {
         if (!Float.isFinite(textSize) || textSize <= 0) throw new IllegalArgumentException("Invalid textSize");
         if (!Float.isFinite(rowHeight) || rowHeight <= 0) throw new IllegalArgumentException("Invalid rowHeight");
@@ -14,9 +15,15 @@ public record UiMenuStyle(float textSize, int fontStyle, String fontFamily, floa
         if ((fontStyle & ~(java.awt.Font.BOLD | java.awt.Font.ITALIC)) != 0) throw new IllegalArgumentException("Invalid font style");
     }
     private static final UiMenuStyle DEFAULT = builder().build();
+    /** The theme's menu look. */
     public static UiMenuStyle defaults() { return DEFAULT; }
+    /** Starts a style with every value unset, so each uses the default. */
     public static Builder builder() { return new Builder(); }
+    /** Collects values for one style; any left unset uses the default. */
     public static final class Builder {
+        /** A builder with every value unset; {@link #build()} fills in the defaults. Usually reached through {@code builder()}. */
+        public Builder() { }
+
         private float textSize = 8;
         private int fontStyle = java.awt.Font.PLAIN;
         private String fontFamily = null;
@@ -31,21 +38,37 @@ public record UiMenuStyle(float textSize, int fontStyle, String fontFamily, floa
         private Integer text = null;
         private Integer border = null;
         private Integer highlight = null;
+        /** Sets the text size. */
         public Builder textSize(float value) { textSize = value; return this; }
+        /** Sets the font style. */
         public Builder fontStyle(int value) { fontStyle = value; return this; }
+        /** Sets the font family. */
         public Builder fontFamily(String value) { fontFamily = value; return this; }
+        /** Sets the row height. */
         public Builder rowHeight(float value) { rowHeight = value; return this; }
+        /** Sets the padding x. */
         public Builder paddingX(float value) { paddingX = value; return this; }
+        /** Sets the padding y. */
         public Builder paddingY(float value) { paddingY = value; return this; }
+        /** Sets the radius. */
         public Builder radius(float value) { radius = value; return this; }
+        /** Sets the row radius. */
         public Builder rowRadius(float value) { rowRadius = value; return this; }
+        /** Sets the row inset. */
         public Builder rowInset(float value) { rowInset = value; return this; }
+        /** Sets the border width. */
         public Builder borderWidth(float value) { borderWidth = value; return this; }
+        /** Sets the background. */
         public Builder background(Integer value) { background = value; return this; }
+        /** Sets the text. */
         public Builder text(Integer value) { text = value; return this; }
+        /** Sets the border. */
         public Builder border(Integer value) { border = value; return this; }
+        /** Sets the highlight. */
         public Builder highlight(Integer value) { highlight = value; return this; }
+        /** Sets the padding. */
         public Builder padding(float horizontal, float vertical) { paddingX = horizontal; paddingY = vertical; return this; }
+        /** The finished, immutable style. */
         public UiMenuStyle build() { return new UiMenuStyle(textSize, fontStyle, fontFamily, rowHeight, paddingX, paddingY, radius, rowRadius, rowInset, borderWidth, background, text, border, highlight); }
     }
 }

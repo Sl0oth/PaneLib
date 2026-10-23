@@ -10,6 +10,7 @@ import net.minecraft.network.chat.Component;
  * What Minecraft's narrator says about one control: what kind of control it is, its label and its
  * current state. Built-in controls describe themselves from their visible label and state; give a
  * control without a visible label, or one painted by hand, its own with {@link UiContext#narration}.
+ * <p><b>Experimental:</b> roles and wording may grow in a minor release; see {@code docs/compatibility.md}.
  *
  * @param label what the control is called; null or empty when it has no words of its own
  * @param state its current value or state, such as "On", "40%" or a field's text; may be null
@@ -18,8 +19,34 @@ import net.minecraft.network.chat.Component;
  */
 public record UiNarration(Role role, String label, String state, int position, int count) {
     /** Kinds of control, each narrated the way Minecraft narrates its own. */
-    public enum Role { BUTTON, LINK, CHECKBOX, TOGGLE, RADIO, TAB, SLIDER, TEXT_FIELD, PASSWORD, MENU, LIST_ROW, TEXT }
+    public enum Role {
+        /** "Save button", with how to activate it. */
+        BUTTON,
+        /** Narrated as a button, with how to follow it. */
+        LINK,
+        /** "Checkbox: Snap to grid", on or off, with how to check or uncheck it. */
+        CHECKBOX,
+        /** A switch: its label, on or off, with how to change it. */
+        TOGGLE,
+        /** One option of a group, as a tab: selected or not, and its place among the options. */
+        RADIO,
+        /** "Audio tab", selected or not, and "Selected tab 2 out of 3". */
+        TAB,
+        /** "Volume: 40% slider", with how to change it from the keyboard. */
+        SLIDER,
+        /** "Name edit box:" followed by the field's text. */
+        TEXT_FIELD,
+        /** An edit box whose characters are never spoken. */
+        PASSWORD,
+        /** A button that opens a menu or list, with its current choice as the state. */
+        MENU,
+        /** A row of a list: "Selected list row 4 out of 500". */
+        LIST_ROW,
+        /** Plain words with no control behind them. */
+        TEXT
+    }
 
+    /** Validates the role and normalizes a missing label to empty and negative positions to zero. */
     public UiNarration {
         java.util.Objects.requireNonNull(role, "role");
         label = label == null ? "" : label;
@@ -27,8 +54,10 @@ public record UiNarration(Role role, String label, String state, int position, i
         count = Math.max(0, count);
     }
 
+    /** A description with no state and no position. */
     public static UiNarration of(Role role, String label) { return new UiNarration(role, label, null, 0, 0); }
 
+    /** A description with a state, such as "on" or "40%", and no position. */
     public static UiNarration of(Role role, String label, String state) { return new UiNarration(role, label, state, 0, 0); }
 
     /** The same description with a new state, as a control changes. */

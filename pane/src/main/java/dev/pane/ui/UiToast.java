@@ -30,18 +30,26 @@ public final class UiToast {
         dismissible = builder.dismissible;
     }
 
+    /** Starts a toast with an id and a title. */
     public static Builder builder(String id, String title) { return new Builder(id, title); }
+    /** Id that replaces an earlier toast with the same id. */
     public String id() { return id; }
+    /** The title line. */
     public String title() { return title; }
+    /** The message under the title. */
     public String message() { return message; }
+    /** Icon text drawn beside the title. */
     public String icon() { return icon; }
+    /** How long the toast stays, in milliseconds. */
     public int durationMillis() { return durationMillis; }
     /** Null means use the document's default placement. */
     public UiToastPlacement placement() { return placement; }
     /** Null means use the document's default style or the document theme. */
     public UiToastStyle style() { return style; }
+    /** Whether it can be closed early. */
     public boolean dismissible() { return dismissible; }
 
+    /** Collects a toast's text and behaviour. */
     public static final class Builder {
         private final String id, title;
         private String message = "", icon = "";
@@ -51,13 +59,19 @@ public final class UiToast {
         private boolean dismissible = true;
 
         private Builder(String id, String title) { this.id = id; this.title = title; }
+        /** Sets the message under the title. */
         public Builder message(String value) { message = value; return this; }
         /** A short text glyph, such as "✓", "!", or "i". */
         public Builder icon(String value) { icon = value; return this; }
+        /** Sets how long it stays, in milliseconds. */
         public Builder durationMillis(int value) { durationMillis = value; return this; }
+        /** Sets the screen corner it appears in. */
         public Builder placement(UiToastPlacement value) { placement = value; return this; }
+        /** Sets its look. */
         public Builder style(UiToastStyle value) { style = value; return this; }
+        /** Sets whether it can be closed early. */
         public Builder dismissible(boolean value) { dismissible = value; return this; }
+        /** The finished toast. */
         public UiToast build() { return new UiToast(this); }
     }
 }

@@ -43,15 +43,22 @@ public final class UiDocument {
         if (page(initialPageId) == null) throw new IllegalStateException("Unknown initial page: " + initialPageId);
     }
 
+    /** Starts a document titled {@code title}, the screen title and the narrator's name for it. */
     public static Builder builder(String title) { return new Builder(title); }
+    /** The document title. */
     public String title() { return title; }
+    /** Brand text the default shell shows beside its navigation. */
     public String brand() { return brand; }
+    /** The theme every page paints with. */
     public UiTheme theme() { return theme; }
+    /** The shell that paints navigation around each page. */
     public UiShell shell() { return shell; }
 
     /** How the layout responds to window size. */
     public UiScaling scaling() { return scaling; }
+    /** Pages in navigation order. */
     public List<UiPage> pages() { return pages; }
+    /** Id of the page shown first. */
     public String initialPageId() { return initialPageId; }
 
     /** Whether keys 1-9 select the first nine pages. */
@@ -75,6 +82,7 @@ public final class UiDocument {
     /** Wheel/trackpad distance and finite smoothing duration. */
     public UiScrollSettings scrollSettings() { return scrollSettings; }
 
+    /** The page with id {@code id}, or null. */
     public UiPage page(String id) {
         if (id == null) return null;
         for (UiPage page : pages) {
@@ -83,6 +91,7 @@ public final class UiDocument {
         return null;
     }
 
+    /** Collects a document's pages and settings; {@link #build()} validates them. */
     public static final class Builder {
         private final String title;
         private String brand = "Client UI";
@@ -101,7 +110,9 @@ public final class UiDocument {
 
         private Builder(String title) { this.title = title == null ? "Client UI" : title; }
 
+        /** Brand text for the default shell; null means none. */
         public Builder brand(String brand) { this.brand = brand == null ? "" : brand; return this; }
+        /** The theme every page paints with. */
         public Builder theme(UiTheme theme) { this.theme = theme; return this; }
 
         /** Chrome painted around the active page. Defaults to {@link UiShell#NONE}. */
@@ -110,7 +121,9 @@ public final class UiDocument {
         /** How the layout responds to window size. Defaults to {@link UiScaling#standard()}. */
         public Builder scaling(UiScaling scaling) { this.scaling = scaling; return this; }
 
+        /** Adds a page; pages appear in the order added. */
         public Builder page(UiPage page) { pages.add(page); return this; }
+        /** The page shown first; defaults to the first page added. */
         public Builder initialPage(String pageId) { initialPageId = pageId; return this; }
 
         /** Opt in to keys 1-9 selecting pages. Off by default so consumers keep their own key handling. */
@@ -153,6 +166,7 @@ public final class UiDocument {
             return this;
         }
 
+        /** The finished document. */
         public UiDocument build() { return new UiDocument(this); }
     }
 }

@@ -44,7 +44,9 @@ import net.minecraft.resources.Identifier;
 public final class UiCanvas {
     /** Logical font families, always available regardless of what the system has installed. */
     public static final String SANS = Font.SANS_SERIF;
+    /** Logical serif family, always available. */
     public static final String SERIF = Font.SERIF;
+    /** Logical monospaced family, always available. */
     public static final String MONO = Font.MONOSPACED;
 
     private static final int FONT_CACHE_LIMIT = 512;
@@ -128,11 +130,13 @@ public final class UiCanvas {
 
     // ---------------------------------------------------------------- flat shapes
 
+    /** Fills a rectangle with an ARGB colour. */
     public void fill(int color, float x, float y, float width, float height) {
         graphics.setColor(awtColor(color));
         UiBands.fill(graphics, new Rectangle2D.Float(x, y, width, height));
     }
 
+    /** Fills a rectangle with corners rounded to {@code radius}. */
     public void roundRect(int color, float x, float y, float width, float height, float radius) {
         graphics.setColor(awtColor(color));
         fillStraightSides(roundShape(x, y, width, height, radius));
@@ -159,6 +163,7 @@ public final class UiCanvas {
             y + Math.clamp(Math.max(topLeft, topRight), 0, limit), y + height - Math.clamp(Math.max(bottomLeft, bottomRight), 0, limit));
     }
 
+    /** Outlines a rounded rectangle; the stroke lies wholly inside the given bounds. */
     public void strokeRoundRect(int color, float stroke, float x, float y, float width, float height, float radius) {
         graphics.setColor(awtColor(color));
         graphics.setStroke(new BasicStroke(stroke, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
@@ -212,12 +217,14 @@ public final class UiCanvas {
             Math.max(0, bottomRight - h), Math.max(0, bottomLeft - h)));
     }
 
+    /** Draws a straight line {@code stroke} units wide. */
     public void line(int color, float stroke, float x1, float y1, float x2, float y2) {
         graphics.setColor(awtColor(color));
         graphics.setStroke(new BasicStroke(stroke, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
         graphics.draw(new Line2D.Float(x1, y1, x2, y2));
     }
 
+    /** Draws a dashed line with dashes and gaps {@code dash} units long. */
     public void dashedLine(int color, float stroke, float dash, float x1, float y1, float x2, float y2) {
         graphics.setColor(awtColor(color));
         graphics.setStroke(new BasicStroke(stroke, BasicStroke.CAP_BUTT, BasicStroke.JOIN_ROUND,
@@ -225,17 +232,20 @@ public final class UiCanvas {
         graphics.draw(new Line2D.Float(x1, y1, x2, y2));
     }
 
+    /** Fills a circle. */
     public void circle(int color, float centerX, float centerY, float radius) {
         graphics.setColor(awtColor(color));
         graphics.fill(new Ellipse2D.Float(centerX - radius, centerY - radius, radius * 2, radius * 2));
     }
 
+    /** Outlines a circle. */
     public void strokeCircle(int color, float stroke, float centerX, float centerY, float radius) {
         graphics.setColor(awtColor(color));
         graphics.setStroke(new BasicStroke(stroke));
         graphics.draw(new Ellipse2D.Float(centerX - radius, centerY - radius, radius * 2, radius * 2));
     }
 
+    /** Fills a closed polygon from x, y pairs. */
     public void polygon(int color, float... points) {
         if (points.length < 6 || points.length % 2 != 0) return;
         Path2D.Float shape = new Path2D.Float();
@@ -987,14 +997,17 @@ public final class UiCanvas {
 
     // ---------------------------------------------------------------- text
 
+    /** Draws plain text in the default family; {@code top} is the top of the line box. */
     public void text(String value, float x, float top, float size, int color) {
         text(value, x, top, size, color, Font.PLAIN);
     }
 
+    /** Draws text in the default family's bold weight. */
     public void textMedium(String value, float x, float top, float size, int color) {
         text(value, x, top, size, color, Font.BOLD);
     }
 
+    /** Draws text in the default family with an AWT font style such as {@code Font.BOLD}. */
     public void text(String value, float x, float top, float size, int color, int style) {
         text(value, x, top, size, color, style, SANS);
     }
@@ -1031,10 +1044,12 @@ public final class UiCanvas {
         }
     }
 
+    /** Draws text centred on a point in the default family. */
     public void centeredText(String value, float centerX, float centerY, float size, int color, int style) {
         centeredText(value, centerX, centerY, size, color, style, SANS);
     }
 
+    /** Draws text centred on a point in a given family. */
     public void centeredText(String value, float centerX, float centerY, float size, int color,
                              int style, String family) {
         if (value == null || value.isEmpty()) return;
@@ -1169,6 +1184,7 @@ public final class UiCanvas {
         return formattedText(value, x, top, size, size * 1.25F, fallbackColor, SANS);
     }
 
+    /** Draws formatted text in a given family with the default line height; returns its width. */
     public float formattedText(UiRichText value, float x, float top, float size,
                                int fallbackColor, String family) {
         return formattedText(value, x, top, size, size * 1.25F, fallbackColor, family);
@@ -1351,6 +1367,7 @@ public final class UiCanvas {
         return List.copyOf(lines);
     }
 
+    /** Breaks text into lines no wider than {@code maxWidth} in the default family. */
     public List<String> wrapText(String value, float maxWidth, float size, int style) {
         return wrapText(value, maxWidth, size, style, SANS);
     }
@@ -1366,6 +1383,7 @@ public final class UiCanvas {
 
     // ---------------------------------------------------------------- scoped state
 
+    /** Runs {@code painter} clipped to a rectangle. */
     public void withClip(float x, float y, float width, float height, Runnable painter) {
         withClipShape(new Rectangle2D.Float(x, y, Math.max(0, width), Math.max(0, height)), painter);
     }
@@ -1616,6 +1634,7 @@ public final class UiCanvas {
 
     // ---------------------------------------------------------------- colour helpers
 
+    /** The colour with its alpha replaced by {@code alpha} (0 to 255). */
     public static int alpha(int color, int alpha) {
         return (Math.max(0, Math.min(255, alpha)) << 24) | (color & 0x00FFFFFF);
     }
@@ -1625,6 +1644,7 @@ public final class UiCanvas {
         return alpha(color, Math.round(((color >>> 24) & 0xFF) * Math.max(0F, Math.min(1F, amount))));
     }
 
+    /** Linear mix of two ARGB colours; {@code amount} 0 gives the first, 1 the second. */
     public static int mix(int first, int second, float amount) {
         float t = Math.max(0, Math.min(1, amount));
         int a = channel(first, 24), r = channel(first, 16), g = channel(first, 8), b = channel(first, 0);
@@ -1634,8 +1654,10 @@ public final class UiCanvas {
             | (int) (b + (channel(second, 0) - b) * t);
     }
 
+    /** The colour mixed toward white by {@code amount}. */
     public static int lighten(int color, float amount) { return mix(color, 0xFFFFFFFF, amount); }
 
+    /** The colour mixed toward black by {@code amount}. */
     public static int darken(int color, float amount) { return mix(color, 0xFF000000, amount); }
 
     // ---------------------------------------------------------------- internals

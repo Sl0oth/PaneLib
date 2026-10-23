@@ -21,6 +21,7 @@ package dev.pane.ui;
 public record UiScaling(float referenceWidth, float referenceHeight, float adaptivity,
                         float minScale, float maxScale) {
 
+    /** Requires finite values; keeps the reference size at least 120 by 90 and adaptivity between 0 and 1. */
     public UiScaling {
         if (!Float.isFinite(referenceWidth) || !Float.isFinite(referenceHeight)
                 || !Float.isFinite(adaptivity) || !Float.isFinite(minScale) || !Float.isFinite(maxScale))
@@ -42,14 +43,17 @@ public record UiScaling(float referenceWidth, float referenceHeight, float adapt
         return new UiScaling(860, 480, 0, 1, 1);
     }
 
+    /** A copy that treats this window size as scale 1. */
     public UiScaling reference(float width, float height) {
         return new UiScaling(width, height, adaptivity, minScale, maxScale);
     }
 
+    /** A copy that follows window size this strongly, from 0 (fixed) to 1. */
     public UiScaling adaptivity(float adaptivity) {
         return new UiScaling(referenceWidth, referenceHeight, adaptivity, minScale, maxScale);
     }
 
+    /** A copy whose scale stays within this range. */
     public UiScaling range(float minScale, float maxScale) {
         return new UiScaling(referenceWidth, referenceHeight, adaptivity, minScale, maxScale);
     }

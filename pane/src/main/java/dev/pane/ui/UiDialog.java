@@ -3,6 +3,7 @@ package dev.pane.ui;
 /** Copy and actions for a native confirmation dialog. */
 public record UiDialog(String title, String message, String confirmLabel, String confirmAction,
                        String cancelLabel, String cancelAction, UiDialogStyle style) {
+    /** Requires a title, a message, and a label and action for both confirm and cancel. */
     public UiDialog {
         if (title == null || title.isBlank()) throw new IllegalArgumentException("Dialog title is required");
         if (message == null || message.isBlank()) throw new IllegalArgumentException("Dialog message is required");

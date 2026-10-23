@@ -41,38 +41,65 @@ public final class UiDialogStyle {
     }
     /** Shared font alias/family, falling back to the document theme when unset. */
     public String fontFamily(){return fontFamily;}
+    /** The title font family, or null when unset, which uses the default. */
     public String titleFontFamily(){return titleFontFamily;}
+    /** The message font family, or null when unset, which uses the default. */
     public String messageFontFamily(){return messageFontFamily;}
+    /** The button font family, or null when unset, which uses the default. */
     public String buttonFontFamily(){return buttonFontFamily;}
+    /** The title size. */
     public float titleSize(){return titleSize;}
+    /** The message size. */
     public float messageSize(){return messageSize;}
+    /** The button size. */
     public float buttonSize(){return buttonSize;}
+    /** The title font style. */
     public int titleFontStyle(){return titleFontStyle;}
+    /** The message font style. */
     public int messageFontStyle(){return messageFontStyle;}
+    /** The button font style. */
     public int buttonFontStyle(){return buttonFontStyle;}
+    /** The title line spacing. */
     public float titleLineSpacing(){return titleLineSpacing;}
+    /** The message line spacing. */
     public float messageLineSpacing(){return messageLineSpacing;}
 
     private static float finite(float value,float min,float max,String name) {
         if(!Float.isFinite(value)||value<min||value>max)throw new IllegalArgumentException(name+" must be finite and between "+min+" and "+max);
         return value == 0 ? 0 : value;
     }
+    /** The max width. */
     public float maxWidth(){return maxWidth;}
+    /** The padding. */
     public float padding(){return padding;}
+    /** The max height fraction. */
     public float maxHeightFraction(){return maxHeightFraction;}
 
+    /** Starts a style with every value unset, so each uses the default. */
     public static Builder builder() { return new Builder(); }
+    /** The backdrop colour as ARGB, or null when unset, which uses the default. */
     public Integer backdrop() { return backdrop; }
+    /** The shadow colour as ARGB, or null when unset, which uses the default. */
     public Integer shadow() { return shadow; }
+    /** The surface colour as ARGB, or null when unset, which uses the default. */
     public Integer surface() { return surface; }
+    /** The border colour as ARGB, or null when unset, which uses the default. */
     public Integer border() { return border; }
+    /** The title color colour as ARGB, or null when unset, which uses the default. */
     public Integer titleColor() { return titleColor; }
+    /** The message color colour as ARGB, or null when unset, which uses the default. */
     public Integer messageColor() { return messageColor; }
+    /** The cancel background colour as ARGB, or null when unset, which uses the default. */
     public Integer cancelBackground() { return cancelBackground; }
+    /** The cancel border colour as ARGB, or null when unset, which uses the default. */
     public Integer cancelBorder() { return cancelBorder; }
+    /** The cancel text colour as ARGB, or null when unset, which uses the default. */
     public Integer cancelText() { return cancelText; }
+    /** The confirm background colour as ARGB, or null when unset, which uses the default. */
     public Integer confirmBackground() { return confirmBackground; }
+    /** The confirm text colour as ARGB, or null when unset, which uses the default. */
     public Integer confirmText() { return confirmText; }
+    /** The radius, or null when unset, which uses the default. */
     public Float radius() { return radius; }
 
     @Override public boolean equals(Object other) {
@@ -101,7 +128,11 @@ public final class UiDialogStyle {
     }
     @Override public int hashCode() { return java.util.Objects.hash(backdrop, shadow, surface, border, titleColor, messageColor, cancelBackground, cancelBorder, cancelText, confirmBackground, confirmText, radius, maxWidth, padding, maxHeightFraction, fontFamily, titleFontFamily, messageFontFamily, buttonFontFamily, titleSize, messageSize, buttonSize, titleFontStyle, messageFontStyle, buttonFontStyle, titleLineSpacing, messageLineSpacing); }
 
+    /** Collects values for one style; any left unset uses the default. */
     public static final class Builder {
+        /** A builder with every value unset; {@link #build()} fills in the defaults. Usually reached through {@code builder()}. */
+        public Builder() { }
+
         private Integer backdrop, shadow, surface, border, titleColor, messageColor;
         private Integer cancelBackground, cancelBorder, cancelText, confirmBackground, confirmText;
         private Float radius;
@@ -122,8 +153,11 @@ public final class UiDialogStyle {
         public Builder messageSize(float value){messageSize=value;return this;}
         /** Action-label size in layout units, 1..128. Default 8; buttons grow to fit when space allows. */
         public Builder buttonSize(float value){buttonSize=value;return this;}
+        /** Sets the title font style. */
         public Builder titleFontStyle(int value){titleFontStyle=value;return this;}
+        /** Sets the message font style. */
         public Builder messageFontStyle(int value){messageFontStyle=value;return this;}
+        /** Sets the button font style. */
         public Builder buttonFontStyle(int value){buttonFontStyle=value;return this;}
         /** Additional space after each title line in layout units, 0..128. Default 2. */
         public Builder titleLineSpacing(float value){titleLineSpacing=value;return this;}
@@ -136,18 +170,31 @@ public final class UiDialogStyle {
         public Builder padding(float value){padding=value;return this;}
         /** Maximum fraction of viewport height, .2..1. Overflowing copy scrolls. */
         public Builder maxHeightFraction(float value){maxHeightFraction=value;return this;}
+        /** Sets the backdrop. */
         public Builder backdrop(int color) { backdrop = color; return this; }
+        /** Sets the shadow. */
         public Builder shadow(int color) { shadow = color; return this; }
+        /** Sets the surface. */
         public Builder surface(int color) { surface = color; return this; }
+        /** Sets the border. */
         public Builder border(int color) { border = color; return this; }
+        /** Sets the title color. */
         public Builder titleColor(int color) { titleColor = color; return this; }
+        /** Sets the message color. */
         public Builder messageColor(int color) { messageColor = color; return this; }
+        /** Sets the cancel background. */
         public Builder cancelBackground(int color) { cancelBackground = color; return this; }
+        /** Sets the cancel border. */
         public Builder cancelBorder(int color) { cancelBorder = color; return this; }
+        /** Sets the cancel text. */
         public Builder cancelText(int color) { cancelText = color; return this; }
+        /** Sets the confirm background. */
         public Builder confirmBackground(int color) { confirmBackground = color; return this; }
+        /** Sets the confirm text. */
         public Builder confirmText(int color) { confirmText = color; return this; }
+        /** Sets the radius. */
         public Builder radius(float value) { radius = value; return this; }
+        /** The finished, immutable style. */
         public UiDialogStyle build() { return new UiDialogStyle(this); }
     }
 }

@@ -3,6 +3,7 @@ package dev.pane.ui;
 /** Reusable scalable icon contract, shared by the built-in set and consumer-authored vectors. */
 @FunctionalInterface
 public interface UiSymbol {
+    /** Draws the symbol inside a square of side {@code size} at (x, y). */
     void draw(UiCanvas canvas, int color, float x, float y, float size, float stroke);
 
     /** Author geometry once in a viewbox; drawing fits and centers it in the requested square.
@@ -20,6 +21,10 @@ public interface UiSymbol {
         };
     }
 
+    /** Draws a symbol in a 24-unit square with a colour and stroke width. */
     @FunctionalInterface
-    interface Painter { void paint(UiCanvas canvas, int color, float stroke); }
+    interface Painter {
+        /** Draws in the 24-unit square at the canvas origin. */
+        void paint(UiCanvas canvas, int color, float stroke);
+    }
 }

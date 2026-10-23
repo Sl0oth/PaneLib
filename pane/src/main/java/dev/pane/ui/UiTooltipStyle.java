@@ -10,6 +10,7 @@ public record UiTooltipStyle(Integer background, Integer border, Integer text, f
                              float height, float radius, boolean preferAbove) {
     private static final UiTooltipStyle DEFAULT = new UiTooltipStyle(0xFF111419, null, null, 8, java.awt.Font.PLAIN, 23, 6, false);
 
+    /** Requires finite metrics; keeps the text size 4-48, the plate at least four units taller than its text, and the radius within half its height. */
     public UiTooltipStyle {
         if (!Float.isFinite(textSize) || !Float.isFinite(height) || !Float.isFinite(radius))
             throw new IllegalArgumentException("Tooltip metrics must be finite");
@@ -20,6 +21,7 @@ public record UiTooltipStyle(Integer background, Integer border, Integer text, f
 
     private static final int PLATE = 0xFF111419, LIGHT_TEXT = 0xFFF2F4F7;
 
+    /** The default look: a near-black plate with readable text. */
     public static UiTooltipStyle defaults() { return DEFAULT; }
     /** The plate colour drawn for this style. */
     public int plate() { return background == null ? PLATE : background; }
@@ -43,10 +45,16 @@ public record UiTooltipStyle(Integer background, Integer border, Integer text, f
         double c = channel / 255.0;
         return c <= .04045 ? c / 12.92 : Math.pow((c + .055) / 1.055, 2.4);
     }
+    /** A copy with this plate colour, as ARGB. */
     public UiTooltipStyle background(int value) { return new UiTooltipStyle(value, border, text, textSize, fontStyle, height, radius, preferAbove); }
+    /** A copy with this border colour, as ARGB. */
     public UiTooltipStyle border(int value) { return new UiTooltipStyle(background, value, text, textSize, fontStyle, height, radius, preferAbove); }
+    /** A copy with this text colour, as ARGB. */
     public UiTooltipStyle text(int value) { return new UiTooltipStyle(background, border, value, textSize, fontStyle, height, radius, preferAbove); }
+    /** A copy with this text size and AWT style; the plate grows to fit. */
     public UiTooltipStyle font(float size, int style) { return new UiTooltipStyle(background, border, text, size, style, Math.max(height, size + 10), radius, preferAbove); }
+    /** A copy with this plate height and corner radius. */
     public UiTooltipStyle shape(float plateHeight, float cornerRadius) { return new UiTooltipStyle(background, border, text, textSize, fontStyle, plateHeight, cornerRadius, preferAbove); }
+    /** A copy that places the tip above its target when there is room. */
     public UiTooltipStyle preferAbove(boolean value) { return new UiTooltipStyle(background, border, text, textSize, fontStyle, height, radius, value); }
 }
