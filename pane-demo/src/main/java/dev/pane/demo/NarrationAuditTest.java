@@ -56,6 +56,8 @@ final class NarrationAuditTest {
         ui.tabs("view", "view", List.of(new UiSelectOption("general", "General"), new UiSelectOption("audio", "Audio"),
             new UiSelectOption("video", "Video")), 20, 270, 240, 28, "audio");
         ui.hit("plain", "noop", 300, 20, 60, 60);
+        ui.virtualList("rows", new UiRect(420, 20, 200, 240), 500, 24, 2, (row, item) ->
+            row.paintedButton("row-" + item.index(), "Row " + item.index(), "noop", item.bounds().x(), item.bounds().y(), 180, 22, 4, true, (c, s) -> { }));
         ui.dialogButton("ask", "Delete", 300, 100, 90, 30, UiContext.ButtonStyle.SECONDARY, UiContext.Shape.ROUNDED,
             new UiDialog("Delete note?", "This cannot be undone.", "Delete", "deleted", "Keep", "kept"));
     }
@@ -72,6 +74,7 @@ final class NarrationAuditTest {
                 refuse("secret", "hunter2");
                 expect("view-1", "Audio tab", "Selected tab 2 out of 3");
                 expect("view-0", "General tab", "Selected tab 1 out of 3");
+                expect("row-3", "Row 3", "Selected list row 4 out of 500");
                 check(spoken("plain").equals("Narration audit. Controls"), "a bare hit area with no description adds nothing to the screen title (\"" + spoken("plain") + "\")");
                 check(screen.getNarrationMessage().getString().contains("Controls"), "a multi-page document announces the page title");
                 // Keyboard changes reach the narrator on the next paint.

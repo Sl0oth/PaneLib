@@ -705,6 +705,8 @@ public class UiScreen extends Screen {
 
     private UiNarration narration(String id) {
         if (id == null) return null;
+        UiNarration row = virtual.rowNarration(id);
+        if (row != null) return row;
         UiNarration narration = narrations.get(id);
         String tip = null;
         for (UiTooltip tooltip : tooltips) if (tooltip.id().equals(id)) { tip = tooltip.text(); break; }

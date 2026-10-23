@@ -143,6 +143,7 @@ final class UiVirtualLists {
         List<UiMenu> rowMenus = new ArrayList<>();
         List<UiDialogRequest> rowDialogs = new ArrayList<>();
         Map<String, UiButtonState> rowButtons = new HashMap<>();
+        Map<String, UiNarration> rowNarrations = new HashMap<>();
         try {
             graphics.scale(layer.qualityScale, layer.qualityScale);
             float rowY = layer.request.viewport.y() + row.index * layer.request.stride();
@@ -151,7 +152,7 @@ final class UiVirtualLists {
             UiVirtualListRequest.DynamicState dynamic = rowState.at(now);
             UiAnimationClock rowClock = dynamic.animationClock();
             layer.request.paintRow(canvas, row.index, dynamic,
-                new UiVirtualListRequest.RowOutput(hits, nativeRows, nativeOverlayRows, scrolls, inputs, tips, rowMenus, rowDialogs, rowButtons));
+                new UiVirtualListRequest.RowOutput(hits, nativeRows, nativeOverlayRows, scrolls, inputs, tips, rowMenus, rowDialogs, rowButtons, rowNarrations));
             row.customAnimating = rowClock.active();
             row.animationIds=rowClock.usedIds();
         } finally {
@@ -178,6 +179,7 @@ final class UiVirtualLists {
             pixelWidth, uploadHeight
         );
         row.buttons = Map.copyOf(rowButtons);
+        row.narrations = Map.copyOf(rowNarrations);
         row.hits = List.copyOf(hits);
         row.nativeBounds = Map.copyOf(nativeRows);
         row.nativeOverlayLayers = Map.copyOf(nativeOverlayRows);
@@ -294,6 +296,22 @@ final class UiVirtualLists {
         return null;
     }
 
+    /**
+     * What the narrator says about a control inside a cached row: its own description or tooltip as
+     * the label, placed at its row's position in the whole list.
+     */
+    UiNarration rowNarration(String controlId) {
+        RowKey key = rowOf(controlId);
+        if (key == null) return null;
+        Layer layer = layers.get(key.listId());
+        Row row = layer == null ? null : layer.rows.get(key.index());
+        if (row == null) return null;
+        UiNarration own = row.narrations.get(controlId);
+        String label = own == null ? "" : own.label();
+        if (label.isEmpty()) for (UiTooltip tooltip : row.tooltips) if (controlId.equals(tooltip.id())) { label = tooltip.text(); break; }
+        return new UiNarration(UiNarration.Role.LIST_ROW, label, own == null ? null : own.state(), key.index() + 1, layer.request.itemCount);
+    }
+
     /** Marks the rows of every id dirty; false when any id is not in a cached row. */
     boolean markRows(String... controlIds) {
         if (controlIds == null || controlIds.length == 0 || !active) return false;
@@ -406,6 +424,7 @@ final class UiVirtualLists {
         boolean customAnimating;
         Set<String> animationIds=Set.of();
         Map<String, UiButtonState> buttons = Map.of();
+        Map<String, UiNarration> narrations = Map.of();
         List<UiHitRegion> hits = List.of();
         Map<String, NativeBounds> nativeBounds = Map.of();
         Map<String, UiRect> nativeOverlayLayers = Map.of();

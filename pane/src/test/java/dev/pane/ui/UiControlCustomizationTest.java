@@ -75,6 +75,7 @@ final class UiControlCustomizationTest {
             request.paintRow(c,2,new UiVirtualListRequest.DynamicState(null,null,1,1,false,0,
                 new UiTextInputState(null,0,0),null),output);
             assertEquals("Row action",output.buttons().get("row2").label());
+            assertEquals(UiNarration.of(UiNarration.Role.BUTTON,"Row action"),output.narrations().get("row2"),"a row's controls carry their narration out of the row");
             assertEquals("row2",output.hits().getFirst().id());
         } finally {g.dispose();}
     }

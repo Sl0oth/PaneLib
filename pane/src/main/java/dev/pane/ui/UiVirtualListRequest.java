@@ -85,6 +85,8 @@ final class UiVirtualListRequest {
         canvas.withTranslation(offsetX, offsetY,
             () -> painter.accept(row, new UiVirtualItem(index, rawBounds)));
         output.buttons().putAll(rowInteractions.buttons);
+        output.narrations().putAll(rowInteractions.live.narrations);
+        output.narrations().putAll(rowInteractions.live.namedNarrations);
     }
 
     record DynamicState(String hoveredId, String pressedId, float motion, float interactionMotion,
@@ -95,12 +97,18 @@ final class UiVirtualListRequest {
                      Map<String, UiRect> nativeOverlayLayers,
                      List<UiScrollRegion> scrollRegions, List<UiInputRegion> inputs,
                      List<UiTooltip> tooltips, List<UiMenu> menus,
-                     List<UiDialogRequest> dialogs, Map<String, UiButtonState> buttons) {
+                     List<UiDialogRequest> dialogs, Map<String, UiButtonState> buttons, Map<String, UiNarration> narrations) {
         RowOutput(List<UiHitRegion> hits, Map<String, NativeBounds> nativeBounds,
                   Map<String, UiRect> nativeOverlayLayers, List<UiScrollRegion> scrollRegions,
                   List<UiInputRegion> inputs, List<UiTooltip> tooltips, List<UiMenu> menus,
                   List<UiDialogRequest> dialogs) {
-            this(hits, nativeBounds, nativeOverlayLayers, scrollRegions, inputs, tooltips, menus, dialogs, new java.util.HashMap<>());
+            this(hits, nativeBounds, nativeOverlayLayers, scrollRegions, inputs, tooltips, menus, dialogs, new java.util.HashMap<>(), new java.util.HashMap<>());
+        }
+        RowOutput(List<UiHitRegion> hits, Map<String, NativeBounds> nativeBounds,
+                  Map<String, UiRect> nativeOverlayLayers, List<UiScrollRegion> scrollRegions,
+                  List<UiInputRegion> inputs, List<UiTooltip> tooltips, List<UiMenu> menus,
+                  List<UiDialogRequest> dialogs, Map<String, UiButtonState> buttons) {
+            this(hits, nativeBounds, nativeOverlayLayers, scrollRegions, inputs, tooltips, menus, dialogs, buttons, new java.util.HashMap<>());
         }
     }
 }
