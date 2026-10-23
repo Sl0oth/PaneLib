@@ -29,6 +29,7 @@ import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.client.input.PreeditEvent;
 import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
@@ -184,6 +185,15 @@ public class UiScreen extends Screen {
     private boolean dragMoved;
     /** Key prefixes the latest paint scoped to a region; see {@link UiContext#repaintScope}. */
     private Map<String, UiRect> repaintScopes = Map.of();
+    /** Text an input method is composing into the focused input, not yet part of its value; null when none. */
+    private PreeditEvent preedit;
+    /** Where the composition was last drawn, in layout units, so the next change repaints it. */
+    private UiRect preeditBounds;
+    /** The type each text input of the latest paint used. */
+    private Map<String, UiInputTypography> inputTypography = Map.of();
+    /** Whether Minecraft has been told a text input has focus, which switches the input method on. */
+    private boolean textInputFocused;
+    private UiRect imeArea;
     /** What the narrator says about each control of the latest paint. */
     private Map<String, UiNarration> narrations = Map.of();
     /** Controls whose hover or press state the latest paint read, or null when any control's may change the page. */
@@ -654,6 +664,97 @@ public class UiScreen extends Screen {
     }
 
     /**
+     * An input method's composition for the focused text input: shown at its caret in the input's
+     * own type, underlined, with the clause being converted marked, until it is committed as typed
+     * text or cancelled. It never enters the value, so cancelling leaves the input unchanged.
+     */
+    @Override
+    public boolean preeditUpdated(PreeditEvent event) {
+        UiInputRegion input = inputRegion(focusedId);
+        PreeditEvent next = input == null || event == null || event.fullText().isEmpty() ? null : event;
+        if (preedit == null && next == null) return input != null;
+        UiRect old = preeditBounds;
+        if ((preedit == null) != (next == null)) imeGeneration++;
+        if (preedit != null && next == null) compositionEndedFrame = frameCount;
+        preedit = next;
+        UiRect area = input == null || next == null ? null : preeditArea(input, inputTypography.get(input.id()), next.fullText());
+        UiRect repaint = old == null ? area : area == null ? old : old.union(area);
+        if (repaint != null) requestPartialRepaint(repaint.expandAndClamp(surfaceLayoutWidth, surfaceLayoutHeight, 2));
+        return input != null;
+    }
+
+    /** Text being composed, for diagnostics and tests; empty when none. */
+    public String compositionText() { return preedit == null ? "" : preedit.fullText(); }
+
+    private final java.awt.image.BufferedImage measureImage = new java.awt.image.BufferedImage(1, 1, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+
+    /** Where a composition is drawn: from the caret, as wide as its text, kept on the surface. */
+    private UiRect preeditArea(UiInputRegion input, UiInputTypography type, String text) {
+        if (input == null || type == null || text == null) return null;
+        var graphics = measureImage.createGraphics();
+        try {
+            var canvas = new UiCanvas(graphics, measureImage);
+            float width = canvas.textWidth(text, type.size(), type.style(), type.family()) + 6;
+            float height = canvas.textHeight(type.size(), type.style(), type.family()) + 6;
+            // Starts at the caret, so the text before it stays readable.
+            float x = input.caretX(textCursor, textUpstream);
+            float[] ys = input.caretYs();
+            float centerY = input.multiline() && textCursor < ys.length && ys[textCursor] != 0 ? ys[textCursor] : input.bounds().centerY();
+            x = Math.max(0, Math.min(x, surfaceLayoutWidth - width));
+            return new UiRect(x, centerY - height / 2, width, height);
+        } finally { graphics.dispose(); }
+    }
+
+    private void paintPreedit(UiCanvas canvas, List<UiInputRegion> inputs, Map<String, UiInputTypography> types) {
+        UiInputRegion input = null;
+        for (UiInputRegion candidate : inputs) if (candidate.id().equals(focusedId)) input = candidate;
+        UiInputTypography type = input == null ? null : types.get(input.id());
+        if (preedit == null || input == null || type == null || openDialogId != null) { preeditBounds = null; return; }
+        UiRect box = preeditArea(input, type, preedit.fullText());
+        preeditBounds = box;
+        String text = preedit.fullText();
+        float size = type.size(), textHeight = canvas.textHeight(size, type.style(), type.family());
+        float x = box.x() + 3, top = box.centerY() - textHeight / 2, underline = top + textHeight + 1;
+        canvas.roundRect(type.surface(), box.x(), box.y(), box.width(), box.height(), 4);
+        canvas.strokeRoundRect(UiCanvas.fade(type.accent(), .55F), .8F, box.x(), box.y(), box.width(), box.height(), 4);
+        canvas.text(text, x, top, size, type.text(), type.style(), type.family());
+        canvas.line(UiCanvas.fade(type.text(), .6F), 1, x, underline, x + canvas.textWidth(text, size, type.style(), type.family()), underline);
+        // The clause being converted carries a heavier underline in the accent.
+        var blocks = preedit.blocks();
+        int focused = preedit.focusedBlock();
+        if (focused >= 0 && focused < blocks.size()) {
+            String before = String.join("", blocks.subList(0, focused));
+            float from = x + canvas.textWidth(before, size, type.style(), type.family());
+            float to = from + canvas.textWidth(blocks.get(focused), size, type.style(), type.family());
+            canvas.line(type.accent(), 2, from, underline, to, underline);
+        }
+        int caret = Math.clamp(preedit.caretPosition(), 0, text.length());
+        float caretX = x + canvas.textWidth(text.substring(0, caret), size, type.style(), type.family());
+        canvas.line(type.accent(), 1, caretX, top, caretX, top + textHeight);
+    }
+
+    /**
+     * Tells Minecraft when a text input gains or loses focus, which turns the input method on and
+     * off, and where the caret is, so the input method's candidate window opens beside it.
+     */
+    private void synchronizeTextInput() {
+        UiInputRegion input = inputRegion(focusedId);
+        boolean focused = input != null;
+        Minecraft client = Minecraft.getInstance();
+        if (focused != textInputFocused) {
+            textInputFocused = focused;
+            if (!focused) { preedit = null; if (preeditBounds != null) requestPartialRepaint(preeditBounds.expandAndClamp(surfaceLayoutWidth, surfaceLayoutHeight, 2)); preeditBounds = null; }
+            client.onTextInputFocusChange(this, focused);
+        }
+        if (!focused || layoutScale <= 0) { imeArea = null; return; }
+        UiRect area = preeditBounds != null ? preeditBounds : preeditArea(input, inputTypography.get(input.id()), "");
+        if (area == null || area.equals(imeArea)) return;
+        imeArea = area;
+        client.textInputManager().setTextInputArea(Math.round(area.x() / layoutScale), Math.round(area.y() / layoutScale),
+            Math.max(1, Math.round(area.width() / layoutScale)), Math.max(1, Math.round(area.height() / layoutScale)));
+    }
+
+    /**
      * The screen's title for the narrator: the document title, and the page title when the document
      * has more than one page, so moving between pages is announced.
      */
@@ -989,6 +1090,7 @@ public class UiScreen extends Screen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float tickDelta) {
         frameCount++;
+        synchronizeTextInput();
         long revision = UiCanvas.minecraftTextureRevision();
         if (minecraftTextureRevision != revision) {
             minecraftTextureRevision = revision;
@@ -1491,9 +1593,17 @@ public class UiScreen extends Screen {
     public boolean charTyped(CharacterEvent event) {
         UiInputRegion input = inputRegion(focusedId);
         if (input == null || !event.isAllowedChatCharacter()) return !focusScopes.isEmpty() || openDialogId != null;
-        replaceTextSelection(input, event.codepointAsString());
+        // Characters typed while composing, or in the frame a composition ended, are its commit.
+        committing = preedit != null || compositionEndedFrame == frameCount;
+        try { replaceTextSelection(input, event.codepointAsString()); }
+        finally { committing = false; }
         return true;
     }
+
+    private boolean committing;
+    /** Counts compositions; the characters one commits share an undo step. */
+    private int imeGeneration, committedGeneration = -1;
+    private long compositionEndedFrame = -1;
 
     private void runAction(String action, boolean fromPointer) {
         hoverDirty = true;
@@ -2071,11 +2181,16 @@ public class UiScreen extends Screen {
         // Snap against the complete result, not the inserted substring or the old boundary map.
         textCursor = UiTextBoundary.ceil(next, start + safe.length());
         textAnchor = textCursor;
-        textHistories.computeIfAbsent(input.key(), ignored -> new UiTextHistory())
-            .record(before, new UiTextHistory.Snapshot(next, textCursor, textAnchor));
+        var history = textHistories.computeIfAbsent(input.key(), ignored -> new UiTextHistory());
+        var after = new UiTextHistory.Snapshot(next, textCursor, textAnchor);
+        // Characters an input method commits for one composition undo as one edit.
+        if (committing && committedGeneration == imeGeneration) history.extend(before, after);
+        else history.record(before, after);
+        committedGeneration = committing ? imeGeneration : -1;
         state.put(input.key(), next);
         eventListener.onEvent("value", input.key(), next);
-        requestFullRepaint();
+        // A declared repaint scope for the value repaints only its region; otherwise the page.
+        repaintForKey(input.key());
     }
 
     private static String cleanSingleLine(String value) {
@@ -2390,6 +2505,7 @@ public class UiScreen extends Screen {
             var live = interactions.live;
             refreshes = List.copyOf(live.refreshes);
             repaintScopes = Map.copyOf(live.scopes);
+            inputTypography = Map.copyOf(live.typography);
             var described = new HashMap<>(live.narrations);
             described.putAll(live.namedNarrations);
             narrations = Map.copyOf(described);
@@ -2419,6 +2535,7 @@ public class UiScreen extends Screen {
             }
 
             toastOverlay.dirty = true;
+            paintPreedit(canvas, nextInputRegions, live.typography);
             rebuildPopupSurface(canvas, nextMenus, nextDialogs, nextHits, layoutWidth, layoutHeight);
 
             hitRegions = List.copyOf(nextHits);
@@ -2889,6 +3006,8 @@ public class UiScreen extends Screen {
 
     @Override
     public void removed() {
+        preedit = null; preeditBounds = null;
+        if (textInputFocused) { textInputFocused = false; Minecraft.getInstance().onTextInputFocusChange(this, false); }
         pressedId = null; draggingSlider = null; draggingTextInput = null; draggingKey = null;
         nativeText.clear(); lastNativeTextCount = 0;
         interactions.scrollEnds.cancelPending();

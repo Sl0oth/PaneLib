@@ -26,6 +26,15 @@ public final class UiTextHistory {
         if (expected != null && !expected.equals(before.value())) clear();
         redo.clear(); push(undo, before); expected = after.value();
     }
+    /**
+     * Records an edit that continues the one just recorded, such as the rest of a word an input
+     * method commits character by character, as part of that single undo step.
+     */
+    public void extend(Snapshot before, Snapshot after) {
+        if (expected == null || undo.isEmpty() || !expected.equals(before.value())) { record(before, after); return; }
+        if (before.value().equals(after.value())) return;
+        redo.clear(); expected = after.value();
+    }
     public Optional<Snapshot> undo(Snapshot current) { return move(current, undo, redo); }
     public Optional<Snapshot> redo(Snapshot current) { return move(current, redo, undo); }
     private Optional<Snapshot> move(Snapshot current, ArrayDeque<Snapshot> source, ArrayDeque<Snapshot> target) {

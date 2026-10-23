@@ -53,10 +53,12 @@ final class UiInteractionState {
 
         /** What built-in controls said about themselves this paint, and the descriptions painters set, which win. */
         final Map<String, UiNarration> narrations = new HashMap<>(), namedNarrations = new HashMap<>();
+        /** The type each text input painted with this paint. */
+        final Map<String, UiInputTypography> typography = new HashMap<>();
 
         void clear() {
             pointerAreas.clear(); dragBounds.clear(); refreshes.clear(); scopes.clear(); interactionReads.clear(); interactionMotionRead = false;
-            narrations.clear(); namedNarrations.clear();
+            narrations.clear(); namedNarrations.clear(); typography.clear();
         }
     }
 

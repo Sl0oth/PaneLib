@@ -34,4 +34,20 @@ final class UiTextHistoryTest {
         assertEquals("A",UiTextBoundary.truncate(v,2)); assertEquals("A😀",UiTextBoundary.truncate(v,3));
         assertEquals(1,s(v,2,2).cursor());
     }
+
+    @Test void continuedEditsUndoAsOneStep() {
+        var history=new UiTextHistory();
+        var empty=new UiTextHistory.Snapshot("",0,0);
+        var one=new UiTextHistory.Snapshot("日",1,1);
+        var two=new UiTextHistory.Snapshot("日本",2,2);
+        var three=new UiTextHistory.Snapshot("日本語",3,3);
+        history.record(empty,one);
+        history.extend(one,two);
+        history.extend(two,three);
+        assertEquals(empty,history.undo(three).orElseThrow(),"a committed word undoes in one step");
+        assertEquals(three,history.redo(empty).orElseThrow());
+        var other=new UiTextHistory.Snapshot("x",1,1);
+        history.extend(other,new UiTextHistory.Snapshot("xy",2,2));
+        assertEquals(other,history.undo(new UiTextHistory.Snapshot("xy",2,2)).orElseThrow(),"an extend that does not continue starts its own step");
+    }
 }

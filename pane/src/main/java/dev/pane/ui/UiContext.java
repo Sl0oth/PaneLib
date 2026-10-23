@@ -1360,6 +1360,7 @@ public final class UiContext {
             }
         });
         describe(id, masked ? UiNarration.Role.PASSWORD : UiNarration.Role.TEXT_FIELD, placeholder, masked ? null : value);
+        interactions.live.typography.put(id, new UiInputTypography(size, fontStyle, family, UiInputAppearance.color(paint.text(), theme.text()), accent, theme.raisedSurface()));
         internalHit(id, "input:" + key, x, y, width, height);
         float[] carets = new float[value.length() + 1];
         java.util.Arrays.fill(carets, Float.NaN);
@@ -1468,6 +1469,7 @@ public final class UiContext {
                 caretXs[cursor], caretYs[cursor] + textHeight / 2);
         });
         describe(id, UiNarration.Role.TEXT_FIELD, placeholder, value);
+        interactions.live.typography.put(id, new UiInputTypography(size, fontStyle, family, UiInputAppearance.color(paint.text(), theme.text()), accent, theme.raisedSurface()));
         internalHit(id, "input:" + key, x, y, width, height);
         addInput(id, key, x, y, width, height, maxLength, true, caretXs, caretYs,
             offset == 0 ? visualLines : visualLines.stream().map(line -> line.translate(0, -offset)).toList(), false);
