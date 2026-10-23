@@ -38,6 +38,7 @@ public final class PaneDemoClient implements ClientModInitializer {
     private final GmailAuditTest gmailTest = Boolean.getBoolean("pane.demo.gmailTest") ? new GmailAuditTest() : null;
     private final WayfarerHudShowcase wayfarerHud = Boolean.getBoolean("pane.demo.wayfarerHud") ? new WayfarerHudShowcase() : null;
     private final ExamplesAuditTest examplesTest = Boolean.getBoolean("pane.demo.exampleTest") ? new ExamplesAuditTest() : null;
+    private final WindowHudAuditTest windowHudTest = Boolean.getBoolean("pane.demo.windowHudTest") ? new WindowHudAuditTest() : null;
     private final AdoptionAuditTest adoptionTest = Boolean.getBoolean("pane.demo.adoptionTest") ? new AdoptionAuditTest() : null;
     private int startupTicks;
     private boolean demoShown;
@@ -47,6 +48,7 @@ public final class PaneDemoClient implements ClientModInitializer {
         java.util.concurrent.CompletableFuture.runAsync(() -> dev.pane.ui.UiCanvas.prewarmFonts());
         ExampleHudController.select(System.getProperty("pane.demo.example", "gallery"));
         if(wayfarerHud!=null)wayfarerHud.init();
+        if (windowHudTest != null) windowHudTest.install();
         ClientTickEvents.END_CLIENT_TICK.register(client -> {
             if (adoptionTest != null) { adoptionTest.tick(client); return; }
             if(wayfarerHud!=null){while(TOGGLE_HUD.consumeClick())if(client.gui.screen()==null)wayfarerHud.toggle();wayfarerHud.tick(client);return;}
@@ -71,6 +73,7 @@ public final class PaneDemoClient implements ClientModInitializer {
             while (OPEN_DEMO.consumeClick()) client.gui.setScreen(ExampleGallery.createScreen(client.gui.screen()));
             while (TOGGLE_HUD.consumeClick()) ExampleHudController.toggle();
             if (examplesTest != null) { examplesTest.tick(client); return; }
+            if (windowHudTest != null) { windowHudTest.tick(client); return; }
             if (performanceTest != null) { performanceTest.tick(client); return; }
             if (!demoShown && ++startupTicks >= 20 && client.gui.screen() instanceof TitleScreen) {
                 if (!ExampleHudController.active()) client.gui.setScreen(ExampleGallery.createScreen(client.gui.screen()));

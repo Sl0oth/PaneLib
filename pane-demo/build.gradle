@@ -40,6 +40,7 @@ tasks.named('runClient') {
     if (project.hasProperty('editorTest')) systemProperty 'pane.demo.editorTest', 'true'
     if (project.hasProperty('gpuLayerTest')) systemProperty 'pane.demo.gpuLayerTest', 'true'
     if (project.hasProperty('paneOsTest')) systemProperty 'pane.demo.paneOsTest', 'true'
+    if (project.hasProperty('windowHudTest')) systemProperty 'pane.demo.windowHudTest', 'true'
     if (project.hasProperty('paneOsPerf')) systemProperty 'pane.demo.paneOsPerf', 'true'
     if (project.hasProperty('perfClicks')) systemProperty 'pane.demo.perfClicks', 'true'
     if (project.hasProperty('size')) systemProperty 'pane.demo.size', project.property('size').toString()
@@ -60,7 +61,7 @@ tasks.named('runClient') {
 }
 
 // A graceful Minecraft shutdown is not proof that the fixture passed.
-def fixtureMarkers = [adoptionTest: '[AdoptionTest] complete PASS', wayfarerTest: '[WayfarerTest] complete PASS', gmailTest: '[GmailTest] complete PASS', resourceTest: '[ResourceTest] complete PASS', editingTest: '[EditingTest] complete PASS', animationTest: '[AnimationTest] complete PASS', editorTest: '[EditorTest] complete PASS', gpuLayerTest: '[GpuLayerTest] complete PASS', paneOsTest: '[PaneOsTest] complete PASS', paneOsPerf: '[PaneOsPerf] complete PASS', dialogTest: '[DialogTest] complete PASS', popupTest: '[PopupTest] complete PASS', reviewTest: '[ReviewFix] complete PASS', apiTest: '[ApiTest] complete PASS', perftest: '[PanePerf] complete PASS']
+def fixtureMarkers = [adoptionTest: '[AdoptionTest] complete PASS', wayfarerTest: '[WayfarerTest] complete PASS', gmailTest: '[GmailTest] complete PASS', resourceTest: '[ResourceTest] complete PASS', editingTest: '[EditingTest] complete PASS', animationTest: '[AnimationTest] complete PASS', editorTest: '[EditorTest] complete PASS', gpuLayerTest: '[GpuLayerTest] complete PASS', paneOsTest: '[PaneOsTest] complete PASS', windowHudTest: '[WindowHudTest] complete PASS', paneOsPerf: '[PaneOsPerf] complete PASS', dialogTest: '[DialogTest] complete PASS', popupTest: '[PopupTest] complete PASS', reviewTest: '[ReviewFix] complete PASS', apiTest: '[ApiTest] complete PASS', perftest: '[PanePerf] complete PASS']
 def expectedMarkers = fixtureMarkers.findAll { key, marker -> project.hasProperty(key) }.values()
 if (!expectedMarkers.isEmpty()) {
     def captured = new ByteArrayOutputStream()
@@ -105,7 +106,7 @@ if (!expectedMarkers.isEmpty()) {
         doLast {
             def output = captured.toString('UTF-8')
             if (project.hasProperty('fixtureFailureProbe')) output += '\n[Fixture] injected FAIL'
-            if (output =~ /(?m)\[(AdoptionTest|WayfarerTest|GmailTest|ResourceTest|EditingTest|AnimationTest|EditorTest|GpuLayerTest|PaneOsTest|PaneOsPerf|DialogTest|PopupTest|ReviewFix|ApiTest|PanePerf|ConsumerTest|AutoTest|pane-autotest|Fixture)\][^\r\n]*FAIL/
+            if (output =~ /(?m)\[(AdoptionTest|WayfarerTest|GmailTest|ResourceTest|EditingTest|AnimationTest|EditorTest|GpuLayerTest|PaneOsTest|WindowHudTest|PaneOsPerf|DialogTest|PopupTest|ReviewFix|ApiTest|PanePerf|ConsumerTest|AutoTest|pane-autotest|Fixture)\][^\r\n]*FAIL/
                     || expectedMarkers.any { !output.contains(it) }) {
                 throw new GradleException('Client fixture failed or did not finish. Inspect its PASS/FAIL output above.')
             }
