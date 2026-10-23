@@ -62,6 +62,10 @@ final class WindowHudAuditTest {
                 }
                 case 1 -> {
                     windowWidth = window.getScreenWidth(); windowHeight = window.getScreenHeight();
+                    float[] contentX = new float[1], contentY = new float[1];
+                    GLFW.glfwGetWindowContentScale(window.handle(), contentX, contentY);
+                    System.out.printf("[WindowHudTest] display content scale %.2fx%.2f, window %dx%d, framebuffer %dx%d, GUI scale %d%n",
+                        contentX[0], contentY[0], windowWidth, windowHeight, window.getWidth(), window.getHeight(), window.getGuiScale());
                     fits(c, "windowed");
                     clickThen(c, "windowed", 1800, () -> GLFW.glfwMaximizeWindow(window.handle()));
                 }
