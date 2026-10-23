@@ -10,27 +10,36 @@ something changes and is otherwise one reused GPU texture, so idle screens cost 
 **Full documentation:** [sl0oth.github.io/PaneLib](https://sl0oth.github.io/PaneLib/)
 
 
-## What's in it
+## Features and roadmap
 
-| Area | What you get | Added in |
+| Area | What you get | Status |
 |---|---|---|
-| Drawing | Rounded shapes, paths, gradients, shadows, glow, backdrop blur, textures, clipping, transforms | 0.9.x |
-| Liquid glass | `UiCanvas.liquidGlass`: refraction, dispersion, frost, tint and specular edges | 1.0.0-beta.1 |
-| Text | Bundled fonts, multi-style text, Minecraft colour and formatting codes (`UiRichText`) | 0.9.8 |
-| Controls | Buttons, toggles, sliders, checkboxes, radios, tabs, tags, progress bars, dropdowns | 0.9.x |
-| Text input | Fields, text areas, passwords; undo/redo, clipboard, Unicode-safe editing | 0.9.x |
-| Popups | Menus, dropdowns, dialogs, toasts and tooltips | 0.9.x |
-| Menu extras | Shortcut hints, disabled rows, dividers and right-click menus | 1.0.0-beta.1 |
-| Tooltips | Default tooltips pick readable text on any theme | 1.0.0-beta.2 |
-| Layout | Grids, stacks, smooth scrolling, virtual lists that handle 10,000+ rows | 0.9.2 |
-| Motion | Timelines, springs and per-control animations | 0.9.x |
-| GPU motion | GPU-animated groups of controls and drag layers | 1.0.0-beta.1 |
-| Repaints | Region-only repaints; a static screen paints once and stays idle | 1.0.0-beta.1 |
-| Keyboard | Focus, Tab and Shift-Tab, Enter/Space, Escape and back navigation, raw key callbacks | 0.9.1 |
-| Minecraft content | Native items, entities, player skins and textures inside your UI | 0.9.x |
-| Backgrounds | Title panorama, in-world, the parent screen or full-screen | 0.9.1 |
-| HUDs | In-game HUDs that can replace vanilla elements and put them back | 0.9.x |
-| Demo mod | PaneOS (a Mac-like desktop), Wayfarer menu and HUD, Pane Mail inbox | 1.0.0-beta.2 |
+| Drawing | Rounded shapes, paths, gradients, shadows, glow, backdrop blur, textures, clipping, transforms | ✅ 0.9.x |
+| Liquid glass | `UiCanvas.liquidGlass`: refraction, dispersion, frost, tint and specular edges | ✅ 1.0.0-beta.1 |
+| Text | Bundled fonts, multi-style text, Minecraft colour and formatting codes (`UiRichText`) | ✅ 0.9.8 |
+| Controls | Buttons, toggles, sliders, checkboxes, radios, tabs, tags, progress bars, dropdowns | ✅ 0.9.x |
+| Text input | Fields, text areas, passwords; undo/redo, clipboard, Unicode-safe editing | ✅ 0.9.x |
+| Popups | Menus, dropdowns, dialogs, toasts and tooltips | ✅ 0.9.x |
+| Menu extras | Shortcut hints, disabled rows, dividers and right-click menus | ✅ 1.0.0-beta.1 |
+| Tooltips | Default tooltips pick readable text on any theme | ✅ 1.0.0-beta.2 |
+| Layout | Grids, stacks, smooth scrolling, virtual lists that handle 10,000+ rows | ✅ 0.9.2 |
+| Motion | Timelines, springs and per-control animations | ✅ 0.9.x |
+| GPU motion | GPU-animated groups of controls and drag layers | ✅ 1.0.0-beta.1 |
+| Repaints | Region-only repaints; a static screen paints once and stays idle | ✅ 1.0.0-beta.1 |
+| Keyboard | Focus, Tab and Shift-Tab, Enter/Space, Escape and back navigation, raw key callbacks | ✅ 0.9.1 |
+| Minecraft content | Native items, entities, player skins and textures inside your UI | ✅ 0.9.x |
+| Backgrounds | Title panorama, in-world, the parent screen or full-screen | ✅ 0.9.1 |
+| HUDs | In-game HUDs that can replace vanilla elements and put them back | ✅ 0.9.x |
+| Demo mod | PaneOS (a Mac-like desktop), Wayfarer menu and HUD, Pane Mail inbox | ✅ 1.0.0-beta.2 |
+| Speed | Full repaints under 16 ms (60 fps) and clicks under 8 ms | 🔜 1.0.0-beta.3 |
+| IME input | Chinese, Japanese and Korean text entry in fields | 🔜 1.0.0-beta.3 |
+| Accessibility | Narrator reads PaneLib screens and controls | 🔜 1.0.0-beta.4 |
+| Multiple monitors | Correct sharpness when moving between screens with different scaling | 🔜 1.0.0-beta.4 |
+| Linux | Tested in game, not only in CI | 🔜 1.0.0-beta.4 |
+| Stable API | Public API frozen, with a compatibility policy for 1.x | 🔜 1.0.0 |
+| Newer Minecraft | Versions after 26.2 | 💭 Undecided |
+
+✅ done · 🔜 planned · 💭 being considered
 
 ## Tested on
 
@@ -59,7 +68,8 @@ something changes and is otherwise one reused GPU texture, so idle screens cost 
 
 The library on its own adds no screens or keys. You only need it when a mod you use depends on it.
 
-## Use it (modders)
+<details>
+<summary><b>Use it (modders) and building from source</b></summary>
 
 ```groovy
 repositories {
@@ -97,8 +107,7 @@ var screen = UiScreen.create(document, NativeOverlayRenderer.NONE, (owner, event
 Minecraft.getInstance().gui.setScreen(screen);
 ```
 
-
-## Building from source
+### Building from source
 
 ```sh
 ./gradlew build
@@ -106,6 +115,8 @@ Minecraft.getInstance().gui.setScreen(screen);
 ```
 
 `pane/` is the library and `pane-demo/` is the demo mod. Both need Java 25.
+
+</details>
 
 ## License
 
