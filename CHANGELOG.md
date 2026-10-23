@@ -6,6 +6,10 @@
   next to PaneLib and Fabric API; it opens on the title screen and H reopens it. `prepare_release.py --upload` collects the files to
   attach, and `:pane-demo:releaseClient` plays them in a clean production client.
 - Packaging checks the README's coordinate instead of a line the README no longer has.
+- Windows: checkouts keep LF line endings so builds match macOS and Linux byte for byte; release
+  candidates are ordinary folders; symlink tests skip where the account may not create symlinks;
+  consumer verification finds the runtime through the manifest now that the demo shares its prefix.
+- Fixture runs start past vanilla's first-launch accessibility screen.
 
 ## 1.0.0-beta.1 — liquid glass, GPU motion and PaneOS
 

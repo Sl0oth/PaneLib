@@ -18,7 +18,7 @@ beta's consumption path; the remaining adoption limits below still apply.
 
 1.0.0-beta.1 adds [grapheme-safe editing](audits/grapheme-editing-2026-10-21.md), liquid glass, GPU-animated
 groups and region-only repaints. The 0.9.9-beta.1 artifacts described above are unchanged. [Platform testing](platform-testing.md)
-separates hosted build/client checks from pending Windows desktop validation.
+records hosted build/client checks and the Windows 11 desktop run, where every automated client check passed.
 
 ## Current public examples
 
@@ -91,8 +91,9 @@ source.
   or native slots. Document scaling and translation have separate supported paths.
 - Large popup lists, arbitrary native-layer composition, and cross-mod HUD conflicts need their
   documented constraints respected; a showcase does not prove every combination.
-- Local real-client evidence is macOS ARM64. Windows/Linux GPU behavior, general performance
-  guarantees, and broad automated visual-regression coverage remain unproven.
+- Real-client evidence is macOS ARM64 and one Windows 11 desktop (RTX 2080 SUPER). Linux GPU
+  behavior, Windows display scaling above 100%, general performance guarantees, and broad automated
+  visual-regression coverage remain unproven.
 - Some internal historical fixtures still rely on private disposable saves or duplicated launcher
   helpers. That remaining developer-tooling debt does not affect the curated public launch tasks.
 

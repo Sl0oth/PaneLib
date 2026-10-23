@@ -21,7 +21,7 @@ independent binary consumer's editing, Save/persistence, Cancel, resize and reop
 
 The tested beta.2 runtime SHA-256 is `7f246d3e08d3df526873f99b4a506fcf3e551ca31ec5ee6f1d2c3ef753ff2938`
 on macOS/Linux and `4fae8c52b0980f5f5bbc898a6134d35b0ddb53b15850058781e97238fb86dc3a` on Windows.
-Do not claim cross-platform archive byte parity. A detailed comparison of the preceding beta.1
+Those hashes predate `.gitattributes`; since it, the Windows desktop run below built the published runtime byte for byte. Still, do not claim byte parity for every archive or toolchain. A detailed comparison of the preceding beta.1
 baseline found all 159 compiled classes identical; only CRLF endings in LICENSE and mixin JSON
 changed the runtime archive. Source/Javadoc archives also had line-ending differences. The current
 matrix retains each platform's own hashes; release-byte reproducibility is a separate concern.
@@ -51,23 +51,39 @@ The workflow supports manual dispatch as well as pushes and pull requests. Actua
 are recorded because `*-latest` labels can change. The matrix and cross-platform Python shell use
 [GitHub's workflow syntax](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-syntax).
 
-## Windows desktop checks — pending
+## Windows desktop checks
 
-Use a disposable profile and record the exact PaneLib SHA-256, source commit, Minecraft/Fabric/Java
-versions, Windows version, GPU/driver, display scale and test date. Keep logs and representative
-screenshots with a pass/fail result for each check:
+On October 22, 2026, a real Windows desktop ran the automated client suite at source commits
+`a1e1667` to `0ea2018`: Windows 11 Pro x64, AMD Ryzen 7 3700X, NVIDIA GeForce RTX 2080 SUPER (driver
+32.0.15.9649), 3440x1440 at 100% display scale, Temurin Java 25.0.4.1, Minecraft 26.2 and Fabric
+Loader 0.19.3. Clients ran in the signed-in desktop session, not a hosted runner.
 
-- Start the standalone consumer with Java 25; open settings, edit, Save, close and reopen. Confirm
-  persistence, Cancel, Escape and parent-screen restoration.
-- Resize, maximize/restore and change Minecraft GUI scale. Exercise Windows display scaling and,
-  when available, moving between monitors with different DPI. Check text clarity and pointer alignment.
-- Test keyboard focus, Tab/Shift-Tab, clipboard copy/paste, selection, undo/redo and multiline scrolling.
-- Open and dismiss menus/dialogs; verify focus restoration and that background controls stay inactive.
-- Reload resources and check bundled-font fallback, native Minecraft text, items and player previews.
-- Enter a scratch world, toggle each public HUD, change GUI scale, leave the world and confirm vanilla
-  HUD restoration. Record any renderer/modpack additions; the base configuration is a separate result.
-- Check actual narrator behavior and IME input separately. Existing limitations remain; passing ordinary
-  text entry does not establish narration, grapheme correctness or IME composition support.
+| Check | Result |
+| --- | --- |
+| Library unit tests | 1,310 passed |
+| Release tooling, `prepareRelease verifyRelease`, as an ordinary (non-elevated) user | 56 passed, 7 skipped (4 POSIX-only, 3 needing symlink rights); candidate staged and verified |
+| Published 1.0.0-beta.1 runtime and demo JARs in a clean production client | PaneOS 38 and launcher 33 checks passed |
+| Development fixtures (16, from `exampleTest` to `adoptionTest`) | All passed, including the 84-check editing fixture with Ctrl shortcuts |
+| Independent starter consumers, bundled JAR and unpacked Maven | Both built; Minecraft smoke passed; nested JAR matched |
 
-Windows hands-on results remain pending until performed. macOS and Linux desktop/GPU combinations
-also need their own recorded runs; an automated build or Ubuntu Xvfb pass cannot substitute for them.
+PaneOS on this machine at 1512x945: a full repaint averaged 31.7 ms, a scoped click 25.1 ms, window
+drag 27.3 ms per step with no full repaints, opening and closing windows 9.3 and 11.8 ms per frame,
+and dark mode 141.6 ms.
+
+The run found and fixed three Windows problems:
+
+- Git for Windows checked text out with CRLF line endings, so the runtime's `fabric.mod.json`
+  differed from its processed copy and packaging failed. `.gitattributes` now keeps LF everywhere.
+- Candidates were staged with `mkdtemp`, whose owner-only ACL hid a candidate made from an elevated
+  shell from the same user's ordinary processes. Candidates are now ordinary folders.
+- Three packaging tests created symlinks, which ordinary Windows accounts may not do without Developer
+  Mode. They now skip with that reason, as the POSIX-only tests do.
+
+Built on Windows, the runtime JAR is byte-identical to the published `1.0.0-beta.1` runtime
+(`eba50cad…5d68`), and the sources and demo JARs match the macOS build. Javadoc differed only
+because the machines had different Java 25 updates.
+
+Still to try by hand: display scaling above 100% and moving between monitors with different DPI,
+maximize/restore, entering a world and toggling each HUD, and actual narrator and IME behavior.
+macOS and Linux desktop/GPU combinations also need their own recorded runs; an automated build or
+Ubuntu Xvfb pass cannot substitute for them.

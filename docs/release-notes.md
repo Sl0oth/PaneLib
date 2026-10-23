@@ -30,7 +30,7 @@ The demo JAR is a separate mod: install it next to the runtime and Fabric API; i
 title screen and H reopens it.
 The Maven ZIP is a candidate repository payload, not proof of public hosting or release publication.
 
-Local verification is macOS ARM64. Windows/Linux desktop behavior, narrator, IME and universal
+Real-client checks ran on macOS ARM64 and a Windows 11 desktop. Linux desktop behavior, narrator, IME and universal
 performance are not certified by these files. Existing tests cover bounded behaviors, not every
 modpack combination. See the candidate manifest and the accompanying audit for exact evidence.
 

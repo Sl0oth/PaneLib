@@ -174,6 +174,6 @@ it creates no public Maven endpoint, Git tag, GitHub release, or Modrinth upload
 
 A separate Fabric consumer validates the packaged library instead of depending on this repository's
 implementation sources. Known adoption gaps include IME composition, narrator semantics, large
-popup lists, and broader Windows/Linux GPU profiling. See [source status](docs/status.md) and the
+popup lists, and broader Linux and Windows GPU profiling. See [source status](docs/status.md) and the
 [developer adoption audit](docs/audits/developer-adoption-2026-10-21.md). Modrinth approval has not been
 independently verified.
