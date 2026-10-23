@@ -14,6 +14,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import prepare_release as release
 
 
+def symlink_or_skip(test, link, target, directory=False):
+    """Windows lets ordinary accounts create symlinks only in Developer Mode; elsewhere this never skips."""
+    try:
+        link.symlink_to(target, target_is_directory=directory)
+    except OSError as error:
+        if os.name == 'nt' and getattr(error, 'winerror', None) == 1314:
+            test.skipTest('Windows account may not create symlinks (enable Developer Mode or run elevated)')
+        raise
+
+
 class ReleaseFixture(unittest.TestCase):
     version = '1.2.3-beta.4'
 
@@ -260,7 +270,7 @@ class ReleaseFixture(unittest.TestCase):
     def test_symlinked_allowed_starter_input_is_rejected(self):
         target = self.root / 'examples/first-screen/README.md'
         target.unlink()
-        target.symlink_to(self.root / 'LICENSE')
+        symlink_or_skip(self, target, self.root / 'LICENSE')
         with self.assertRaisesRegex(release.ReleaseError, 'symlink'):
             release.stage(self.root)
 

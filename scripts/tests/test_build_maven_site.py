@@ -142,7 +142,7 @@ class MavenSiteTests(unittest.TestCase):
             self.build()
         self.assertEqual(marker.read_text(), 'keep')
         linked = self.root / 'linked'
-        linked.symlink_to(self.output, target_is_directory=True)
+        fixtures.symlink_or_skip(self, linked, self.output, directory=True)
         with self.assertRaisesRegex(release.ReleaseError, 'Symlinked'):
             self.build(output=linked)
         with self.assertRaisesRegex(release.ReleaseError, 'Symlinked'):
@@ -152,7 +152,7 @@ class MavenSiteTests(unittest.TestCase):
         source = self.assets / site.asset_name(self.first['version'])
         real = self.assets / 'real.zip'
         source.rename(real)
-        source.symlink_to(real)
+        fixtures.symlink_or_skip(self, source, real)
         with self.assertRaisesRegex(release.ReleaseError, 'Symlinked'):
             self.build()
 
