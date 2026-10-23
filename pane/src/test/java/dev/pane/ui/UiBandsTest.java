@@ -71,6 +71,26 @@ class UiBandsTest {
     }
 
     @Test
+    void bandedStrokesMatchOneDraw() {
+        var random = new Random(21);
+        for (double scale : new double[] {1, 1.05, 1.5, 2.1}) for (int trial = 0; trial < 5; trial++) {
+            float x = random.nextFloat() * 30, y = random.nextFloat() * 30, w = 400 + random.nextFloat() * 400, h = 500 + random.nextFloat() * 300;
+            float arc = 8 + random.nextFloat() * 70;
+            for (float width : new float[] {.7F, .8F, 1.2F, 3}) for (int clip = 0; clip < 2; clip++) for (int gradient = 0; gradient < 2; gradient++) {
+                var shape = new RoundRectangle2D.Float(x, y, w, h, arc, arc);
+                java.awt.Paint paint = gradient == 1
+                    ? new java.awt.LinearGradientPaint(x, y, x, y + h, new float[] {0, 1}, new Color[] {new Color(0xEBFFFFFF, true), new Color(0x28FFFFFF, true)})
+                    : new Color(0x24000000, true);
+                int k = clip;
+                Consumer<Graphics2D> setup = g -> { g.scale(scale, scale); clip(g, k); g.setPaint(paint); g.setStroke(new java.awt.BasicStroke(width)); };
+                int[] expected = paint(setup, g -> g.draw(shape));
+                int[] actual = paint(setup, g -> UiBands.stroke(g, shape, y + arc / 2, y + h - arc / 2));
+                assertArrayEquals(expected, actual, "scale=" + scale + " trial=" + trial + " width=" + width + " clip=" + clip + " gradient=" + gradient);
+            }
+        }
+    }
+
+    @Test
     void bandedImagesMatchOneDraw() {
         BufferedImage translucent = noise(SIZE - 40, SIZE - 70, 3, true, BufferedImage.TYPE_INT_ARGB);
         BufferedImage premultiplied = noise(SIZE - 10, SIZE - 30, 4, false, BufferedImage.TYPE_INT_ARGB_PRE);

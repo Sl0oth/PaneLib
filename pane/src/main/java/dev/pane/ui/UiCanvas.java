@@ -138,6 +138,12 @@ public final class UiCanvas {
         fillStraightSides(roundShape(x, y, width, height, radius));
     }
 
+    /** Strokes a rounded rectangle with the current stroke and paint; only the rows between its corners have straight sides. */
+    private void strokeStraightSides(RoundRectangle2D.Float shape) {
+        float corner = Math.min(shape.archeight / 2, shape.height / 2);
+        UiBands.stroke(graphics, shape, shape.y + corner, shape.y + shape.height - corner);
+    }
+
     /** Fills a rounded rectangle with the current paint; only the rows between its corners have straight sides. */
     private void fillStraightSides(RoundRectangle2D.Float shape) {
         float corner = Math.min(shape.archeight / 2, shape.height / 2);
@@ -157,7 +163,7 @@ public final class UiCanvas {
         graphics.setColor(awtColor(color));
         graphics.setStroke(new BasicStroke(stroke, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND));
         float half = stroke / 2F;
-        graphics.draw(roundShape(x + half, y + half, width - stroke, height - stroke, Math.max(0, radius - half)));
+        strokeStraightSides(roundShape(x + half, y + half, width - stroke, height - stroke, Math.max(0, radius - half)));
     }
 
     /** Outline the visible portion using a logical clip already mapped into drawing coordinates. */
@@ -704,10 +710,10 @@ public final class UiCanvas {
         float h = glass.highlight();
         graphics.setStroke(new BasicStroke(1.2F));
         graphics.setPaint(linearPaint(alpha(0xFFFFFF, Math.round(235 * h)), alpha(0xFFFFFF, Math.round(40 * h)), 90, x, y, width, height));
-        graphics.draw(roundShape(x + .6F, y + .6F, width - 1.2F, height - 1.2F, Math.max(0, radius - .6F)));
+        strokeStraightSides(roundShape(x + .6F, y + .6F, width - 1.2F, height - 1.2F, Math.max(0, radius - .6F)));
         graphics.setPaint(linearPaint(alpha(0x000000, 0), alpha(0x000000, Math.round(60 * h)), 90, x, y, width, height));
         graphics.setStroke(new BasicStroke(.7F));
-        graphics.draw(roundShape(x - .2F, y - .2F, width + .4F, height + .4F, radius + .2F));
+        strokeStraightSides(roundShape(x - .2F, y - .2F, width + .4F, height + .4F, radius + .2F));
         graphics.setPaint(awtColor(0xFF000000));
         return true;
     }

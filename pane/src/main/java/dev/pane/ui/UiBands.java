@@ -75,6 +75,24 @@ final class UiBands {
         draw(graphics, device, straight.y + 3, straight.y + straight.height - 3, origin, grid, g -> g.fill(shape));
     }
 
+    /**
+     * Strokes {@code shape} with the current stroke and paint, in bands when it is large. The outline
+     * is straight in user-space rows {@code straightTop} to {@code straightBottom}; band edges fall
+     * only there, far enough from a curve that the stroke's own reach never meets one.
+     */
+    static void stroke(Graphics2D graphics, Shape shape, double straightTop, double straightBottom) {
+        var paint = graphics.getPaint();
+        float width = graphics.getStroke() instanceof java.awt.BasicStroke basic ? basic.getLineWidth() : -1;
+        if (width < 0 || !(paint instanceof Color || paint instanceof java.awt.GradientPaint || paint instanceof java.awt.LinearGradientPaint)
+                || straightBottom - straightTop <= width * 2) { graphics.draw(shape); return; }
+        Rectangle2D bounds = shape.getBounds2D();
+        Rectangle device = deviceBounds(graphics, new Rectangle2D.Double(bounds.getX() - width, bounds.getY() - width,
+            bounds.getWidth() + width * 2, bounds.getHeight() + width * 2));
+        Rectangle straight = deviceBounds(graphics, new Rectangle2D.Double(0, straightTop + width, 1, straightBottom - straightTop - width * 2));
+        if (device == null || straight == null) { graphics.draw(shape); return; }
+        draw(graphics, device, straight.y + 3, straight.y + straight.height - 3, 0, 0, g -> g.draw(shape));
+    }
+
     /** Height of the rasterizer's antialiasing tiles, or 0 when it is configured in a way not known here. */
     private static final int TILE_ROWS = tileRows();
 
