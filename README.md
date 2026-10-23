@@ -137,6 +137,7 @@ Developer verification is separate:
 ./gradlew :pane:build :pane-demo:build
 ./gradlew :pane-demo:runExamples -PexampleTest
 ./gradlew :pane-demo:runClient -Pisolated -PpaneOsTest
+./gradlew :pane-demo:runClient -Pisolated -PwindowHudTest
 ./gradlew :pane-demo:runClient -Pisolated -PgmailTest
 ```
 

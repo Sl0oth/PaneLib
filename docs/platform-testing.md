@@ -54,7 +54,7 @@ are recorded because `*-latest` labels can change. The matrix and cross-platform
 ## Windows desktop checks
 
 On October 22, 2026, a real Windows desktop ran the automated client suite at source commits
-`a1e1667` to `0ea2018`: Windows 11 Pro x64, AMD Ryzen 7 3700X, NVIDIA GeForce RTX 2080 SUPER (driver
+`a1e1667` to `a533360`: Windows 11 Pro x64, AMD Ryzen 7 3700X, NVIDIA GeForce RTX 2080 SUPER (driver
 32.0.15.9649), 3440x1440 at 100% display scale, Temurin Java 25.0.4.1, Minecraft 26.2 and Fabric
 Loader 0.19.3. Clients ran in the signed-in desktop session, not a hosted runner.
 
@@ -65,6 +65,7 @@ Loader 0.19.3. Clients ran in the signed-in desktop session, not a hosted runner
 | Published 1.0.0-beta.1 runtime and demo JARs in a clean production client | PaneOS 38 and launcher 33 checks passed |
 | Development fixtures (16, from `exampleTest` to `adoptionTest`) | All passed, including the 84-check editing fixture with Ctrl shortcuts |
 | Independent starter consumers, bundled JAR and unpacked Maven | Both built; Minecraft smoke passed; nested JAR matched |
+| Window and in-world HUD fixture (`windowHudTest`) | 71 checks passed: maximize, restore, fullscreen and GUI scale 2, then a HUD in a fresh survival world |
 
 PaneOS on this machine at 1512x945: a full repaint averaged 31.7 ms, a scoped click 25.1 ms, window
 drag 27.3 ms per step with no full repaints, opening and closing windows 9.3 and 11.8 ms per frame,
@@ -83,7 +84,16 @@ Built on Windows, the runtime JAR is byte-identical to the published `1.0.0-beta
 (`eba50cad…5d68`), and the sources and demo JARs match the macOS build. Javadoc differed only
 because the machines had different Java 25 updates.
 
-Still to try by hand: display scaling above 100% and moving between monitors with different DPI,
-maximize/restore, entering a world and toggling each HUD, and actual narrator and IME behavior.
+`windowHudTest` keeps the launcher open while it maximizes, restores, enters and leaves fullscreen and
+changes GUI scale. After each change it checks that the surface is drawn at the GUI area's full
+resolution, every target is on screen, and a click sent through Minecraft's own mouse handler opens
+Pane Mail. In a fresh survival world it counts vanilla's hotbar, health, food and crosshair renderers:
+they draw without a PaneLib HUD, stop while the Wayfarer HUD replaces them, and return when it is
+toggled off with J or removed. The HUD stays on screen across a GUI-scale change and hides with F1.
+The PC was reached through Parsec, so the active display was Parsec's virtual 1920x1200 monitor; it
+passes the same way on macOS ARM64.
+
+Still to try by hand: display scaling above 100%, moving between monitors with different DPI, and
+actual narrator and IME behavior.
 macOS and Linux desktop/GPU combinations also need their own recorded runs; an automated build or
 Ubuntu Xvfb pass cannot substitute for them.

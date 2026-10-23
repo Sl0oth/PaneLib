@@ -10,6 +10,8 @@
   candidates are ordinary folders; symlink tests skip where the account may not create symlinks;
   consumer verification finds the runtime through the manifest now that the demo shares its prefix.
 - Fixture runs start past vanilla's first-launch accessibility screen.
+- Added the `windowHudTest` fixture: maximize, restore, fullscreen and GUI scale with real clicks,
+  then vanilla HUD hiding and restoration in a fresh survival world.
 
 ## 1.0.0-beta.1 — liquid glass, GPU motion and PaneOS
 
