@@ -26,6 +26,11 @@ final class UiBands {
     static final int MIN_PIXELS = 1 << 17;
     private static final int MIN_ROWS = 24;
     private static final int WORKERS = Math.min(8, Runtime.getRuntime().availableProcessors());
+    /**
+     * Raster shortcuts that must leave exactly the pixels of the plain Java2D path: banding here and
+     * copying opaque caches. {@code -Dpane.ui.plainRaster=true} turns them off to compare or diagnose.
+     */
+    static volatile boolean shortcuts = !Boolean.getBoolean("pane.ui.plainRaster");
 
     private UiBands() { }
 
@@ -63,7 +68,7 @@ final class UiBands {
     static void images(Graphics2D graphics, List<Placed> images) {
         long pixels = 0;
         for (Placed placed : images) pixels += (long) placed.image().getWidth() * placed.image().getHeight();
-        int workers = WORKERS < 2 || pixels < MIN_PIXELS || !(graphics.getComposite() instanceof AlphaComposite)
+        int workers = !shortcuts || WORKERS < 2 || pixels < MIN_PIXELS || !(graphics.getComposite() instanceof AlphaComposite)
             || !graphics.getTransform().isIdentity() ? 1 : (int) Math.min(WORKERS, pixels * 2 / MIN_PIXELS);
         if (workers <= 1) {
             for (Placed placed : images) graphics.drawImage(placed.image(), placed.x(), placed.y(), null);
@@ -131,7 +136,7 @@ final class UiBands {
     }
 
     private static int bands(Graphics2D graphics, Rectangle device) {
-        if (WORKERS < 2 || !(graphics.getComposite() instanceof AlphaComposite)) return 1;
+        if (!shortcuts || WORKERS < 2 || !(graphics.getComposite() instanceof AlphaComposite)) return 1;
         AffineTransform matrix = graphics.getTransform();
         if (matrix.getShearX() != 0 || matrix.getShearY() != 0) return 1;
         Shape clip = graphics.getClip();

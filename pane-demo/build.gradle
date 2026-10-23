@@ -45,6 +45,7 @@ tasks.named('runClient') {
     if (project.hasProperty('paneOsPerf')) systemProperty 'pane.demo.paneOsPerf', 'true'
     if (project.hasProperty('perfClicks')) systemProperty 'pane.demo.perfClicks', 'true'
     if (project.hasProperty('perfLoop')) systemProperty 'pane.demo.perfLoop', 'true'
+    if (project.hasProperty('perfCompare')) systemProperty 'pane.demo.perfCompare', 'true'
     if (project.hasProperty('size')) systemProperty 'pane.demo.size', project.property('size').toString()
     if (project.hasProperty('paneOsKeepOpen')) systemProperty 'pane.demo.paneOsKeepOpen', 'true'
     if (project.hasProperty('dialogTest')) systemProperty 'pane.demo.dialogTest', 'true'

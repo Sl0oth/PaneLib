@@ -395,10 +395,7 @@ public final class UiCanvas {
             output.setTransform(new AffineTransform());
             output.setClip(deviceClip);
             output.setComposite(AlphaComposite.SrcOver);
-            BufferedImage mask = shadowMask;
-            Rectangle drawn = area;
-            UiBands.draw(output, drawn, g -> g.drawImage(mask, drawn.x, drawn.y, drawn.x + drawn.width, drawn.y + drawn.height,
-                0, 0, drawn.width, drawn.height, null));
+            UiBands.image(output, shadowMask.getSubimage(0, 0, area.width, area.height), area.x, area.y);
         } finally { output.dispose(); }
         return true;
     }
@@ -1457,7 +1454,7 @@ public final class UiCanvas {
                 graphics.setTransform(new AffineTransform());
                 Composite composite = graphics.getComposite();
                 // Over an opaque cache, source-over leaves exactly the source: copying skips the blend.
-                if (layer.opaque() && composite instanceof AlphaComposite alpha && alpha.getRule() == AlphaComposite.SRC_OVER && alpha.getAlpha() == 1)
+                if (UiBands.shortcuts && layer.opaque() && composite instanceof AlphaComposite alpha && alpha.getRule() == AlphaComposite.SRC_OVER && alpha.getAlpha() == 1)
                     graphics.setComposite(AlphaComposite.Src);
                 try {
                     UiBands.image(graphics, layer.cachedImage(), (int) Math.round(originX - layer.alignX) + layer.cachedX(),

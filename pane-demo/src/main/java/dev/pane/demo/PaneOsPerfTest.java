@@ -48,6 +48,7 @@ final class PaneOsPerfTest {
             if (tick == 200) { end(); report.forEach(line -> System.out.println("[PaneOsPerf] " + line)); System.out.println("[PaneOsPerf] complete PASS"); client.stop(); }
             return;
         }
+        if (Boolean.getBoolean("pane.demo.perfCompare")) { compare(client); return; }
         if (Boolean.getBoolean("pane.demo.perfLoop")) {
             // Profiling aid: long runs of one kind of paint, so a sampling profiler sees enough of each.
             int loop = 150;
@@ -104,6 +105,100 @@ final class PaneOsPerfTest {
     }
 
     private void end() { report.add(screen.summary()); }
+
+    // ------------------------------------------------------------ raster shortcut comparison
+
+    /** Scenes painted with PaneLib's raster shortcuts on and off; every pixel must match. */
+    private static final String[] SCENES = {"desktop", "control center", "dark mode", "apps grid", "spotlight", "after a click"};
+    private int scene = -1, step, waitPaints, failures, compared;
+    private int[] first, plain, again;
+
+    private void compare(Minecraft client) {
+        if (tick == 10) for (String id : new String[] {"files", "settings", "notes"}) PaneOsEvents.openApp(screen, id);
+        if (tick < 40) return;
+        if (waitPaints > 0) {
+            if (screen.paintCount() >= waitPaints) waitPaints = 0;
+            else return;
+        }
+        if (scene < 0 || step == 4) {
+            if (step == 4 && !finishScene()) { step = 0; return; }
+            scene++;
+            step = 0;
+            if (scene == SCENES.length) {
+                System.out.println("[PaneOsPerf] compare " + compared + " scenes, " + failures + " differing");
+                System.out.println("[PaneOsPerf] complete " + (failures == 0 && compared == SCENES.length ? "PASS" : "FAIL"));
+                client.stop();
+                return;
+            }
+            switch (SCENES[scene]) {
+                case "control center" -> PaneOsEvents.handleAction(screen, "cc");
+                case "dark mode" -> { PaneOsEvents.handleAction(screen, "cc"); PaneOsEvents.handleAction(screen, "darkmode"); }
+                case "apps grid" -> PaneOsEvents.handleAction(screen, "apps");
+                case "spotlight" -> { PaneOsEvents.handleAction(screen, "apps"); PaneOsEvents.toggleSpotlight(screen); }
+                case "after a click" -> { PaneOsEvents.toggleSpotlight(screen); PaneOsEvents.raise(screen, "notes"); }
+                default -> { }
+            }
+            // Let transitions settle before comparing.
+            waitPaints = screen.paintCount() + 1;
+            settleUntil = tick + 30;
+            return;
+        }
+        if (tick < settleUntil) return;
+        switch (step) {
+            case 0 -> { shortcuts(true); if (SCENES[scene].equals("after a click")) click("notes:item:1"); else screen.invalidate(); waitPaints = screen.paintCount() + 1; step = 1; }
+            case 1 -> { first = pixels(); shortcuts(false); screen.invalidate(); waitPaints = screen.paintCount() + 1; step = 2; }
+            case 2 -> { plain = pixels(); shortcuts(true); screen.invalidate(); waitPaints = screen.paintCount() + 1; step = 3; }
+            case 3 -> { again = pixels(); step = 4; }
+            default -> { }
+        }
+    }
+    private int settleUntil, retries;
+
+    /** Returns false to repeat the scene when time-driven content changed between the two shortcut paints. */
+    private boolean finishScene() {
+        if (!java.util.Arrays.equals(first, again) && !SCENES[scene].equals("after a click")) {
+            if (++retries < 4) return false;
+            System.out.println("[PaneOsPerf] compare " + SCENES[scene] + ": the scene would not hold still");
+            failures++;
+            return true;
+        }
+        retries = 0;
+        compared++;
+        int differing = 0, worst = 0;
+        int[] reference = SCENES[scene].equals("after a click") ? again : first;
+        for (int i = 0; i < plain.length; i++) if (plain[i] != reference[i]) {
+            differing++;
+            for (int shift = 0; shift < 32; shift += 8) worst = Math.max(worst, Math.abs((plain[i] >>> shift & 255) - (reference[i] >>> shift & 255)));
+        }
+        if (SCENES[scene].equals("after a click")) {
+            // The click repainted part of the surface; the plain full repaint must agree with it too.
+            int partial = 0;
+            for (int i = 0; i < plain.length; i++) if (plain[i] != first[i]) partial++;
+            System.out.printf(Locale.ROOT, "[PaneOsPerf] compare partial repaint vs plain full repaint: %d differing pixels%n", partial);
+        }
+        System.out.printf(Locale.ROOT, "[PaneOsPerf] compare %-15s %d of %d pixels differ, worst channel %d%n", SCENES[scene], differing, plain.length, worst);
+        if (differing != 0) failures++;
+        return true;
+    }
+
+    private static void shortcuts(boolean on) {
+        try {
+            var field = Class.forName("dev.pane.ui.UiBands").getDeclaredField("shortcuts");
+            field.setAccessible(true);
+            field.setBoolean(null, on);
+        } catch (ReflectiveOperationException error) { throw new IllegalStateException(error); }
+    }
+
+    private int[] pixels() {
+        try {
+            var field = UiScreen.class.getDeclaredField("surface");
+            field.setAccessible(true);
+            Object surface = field.get(screen);
+            var pixels = surface.getClass().getDeclaredField("pixels");
+            pixels.setAccessible(true);
+            return ((int[]) pixels.get(surface)).clone();
+        } catch (ReflectiveOperationException error) { throw new IllegalStateException(error); }
+    }
 
     private void click(String id) {
         var r = screen.regionBounds(id).orElseThrow();
