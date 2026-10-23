@@ -18,10 +18,10 @@ PaneLib's own API is unchanged; Minecraft's own changes still apply to mods.
 
 ## What the public API is
 
-The public API is every `public` type and member in `dev.pane.ui` that appears in the Javadoc.
-These are not part of it, even where Java makes them `public`:
+The public API is every `public` type and member in `dev.pane.ui`. These are not part of it:
 
-- `dev.pane.ui.internal` and `dev.pane.mixin`, which Minecraft's loader must see;
+- `dev.pane.ui.internal` and `dev.pane.mixin`, public only because Minecraft's loader must see
+  them; the Javadoc lists them, each marked **Internal**;
 - `dev.pane.mcef`, which is not built into the library at all;
 - package-private types and members.
 

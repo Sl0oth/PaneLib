@@ -17,11 +17,6 @@ java {
     withJavadocJar()
 }
 
-tasks.named('javadoc') {
-    // Mixins and dev.pane.ui.internal are implementation that Minecraft's loader must see, not API.
-    exclude 'dev/pane/mixin/**', 'dev/pane/ui/internal/**'
-}
-
 sourceSets {
     main {
         java {
