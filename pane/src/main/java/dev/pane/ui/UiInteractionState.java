@@ -46,11 +46,17 @@ final class UiInteractionState {
         final List<Refresh> refreshes = new ArrayList<>();
         /** Controls whose hover or press state this paint read; only they change when it changes. */
         final Set<String> interactionReads = new HashSet<>();
+        /** A painter read the shared interaction progress, so any control's hover or press may change pixels. */
+        boolean interactionMotionRead;
 
         void requestRefresh(long atNanos, UiRect bounds) { refreshes.add(new Refresh(atNanos, bounds)); }
 
+        /** What built-in controls said about themselves this paint, and the descriptions painters set, which win. */
+        final Map<String, UiNarration> narrations = new HashMap<>(), namedNarrations = new HashMap<>();
+
         void clear() {
-            pointerAreas.clear(); dragBounds.clear(); refreshes.clear(); scopes.clear(); interactionReads.clear();
+            pointerAreas.clear(); dragBounds.clear(); refreshes.clear(); scopes.clear(); interactionReads.clear(); interactionMotionRead = false;
+            narrations.clear(); namedNarrations.clear();
         }
     }
 

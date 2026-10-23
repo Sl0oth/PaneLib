@@ -21,12 +21,15 @@ import java.util.Set;
 import java.util.HashSet;
 import java.util.concurrent.CompletionStage;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.narration.NarratedElementType;
+import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
+import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
@@ -181,7 +184,9 @@ public class UiScreen extends Screen {
     private boolean dragMoved;
     /** Key prefixes the latest paint scoped to a region; see {@link UiContext#repaintScope}. */
     private Map<String, UiRect> repaintScopes = Map.of();
-    /** Controls whose hover or press state the latest paint read. */
+    /** What the narrator says about each control of the latest paint. */
+    private Map<String, UiNarration> narrations = Map.of();
+    /** Controls whose hover or press state the latest paint read, or null when any control's may change the page. */
     private Set<String> interactionPainted = Set.of();
     /** Timed repaints requested by the latest paint, each due on its own. */
     private List<UiInteractionState.Refresh> refreshes = List.of();
@@ -643,6 +648,69 @@ public class UiScreen extends Screen {
             return;
         }
         toastOverlay.show(toast, document.toastSettings().maxVisible(), System.nanoTime());
+        // Acknowledgements are spoken as they appear, after whatever the narrator is saying.
+        if (client != null && client.getNarrator().isActive())
+            client.getNarrator().saySystemQueued(CommonComponents.joinForNarration(Component.literal(toast.title()), Component.literal(toast.message())));
+    }
+
+    /**
+     * The screen's title for the narrator: the document title, and the page title when the document
+     * has more than one page, so moving between pages is announced.
+     */
+    @Override
+    public Component getNarrationMessage() {
+        UiPage page = document.page(pageId);
+        if (document.pages().size() < 2 || page == null || page.navigationLabel().isBlank()) return getTitle();
+        return CommonComponents.joinForNarration(getTitle(), Component.literal(page.navigationLabel()));
+    }
+
+    /**
+     * Narrates the focused control, or the hovered one when nothing has keyboard focus, in
+     * Minecraft's own words. An open dialog is narrated first: its title and message, then its
+     * focused button.
+     */
+    @Override
+    protected void updateNarratedWidget(NarrationElementOutput output) {
+        var parts = narrationParts();
+        if (parts.isEmpty()) return;
+        // Nested under the screen's own title, as Minecraft narrates the widgets of its screens.
+        NarrationElementOutput widget = output.nest();
+        for (UiNarration.Part part : parts) widget.add(part.type(), part.text());
+    }
+
+    /** The parts {@link #updateNarratedWidget} speaks for the current focus, hover and dialog. */
+    List<UiNarration.Part> narrationParts() {
+        var parts = new ArrayList<UiNarration.Part>();
+        if (openDialogId != null) for (UiDialogRequest request : dialogs) if (openDialogId.equals(request.id())) {
+            var dialog = request.dialog();
+            var words = new ArrayList<Component>();
+            words.add(Component.literal(dialog.title()));
+            if (dialog.message() != null && !dialog.message().isBlank()) words.add(Component.literal(dialog.message()));
+            String button = "dialog-confirm".equals(focusedId) ? dialog.confirmLabel() : "dialog-cancel".equals(focusedId) ? dialog.cancelLabel() : null;
+            List<UiNarration.Part> buttonParts = button == null || button.isBlank() ? List.of() : UiNarration.of(UiNarration.Role.BUTTON, button).parts(true);
+            // One title carries the dialog and its focused button; the button's usage follows.
+            for (UiNarration.Part part : buttonParts) if (part.type() == NarratedElementType.TITLE) words.add(part.text());
+            parts.add(new UiNarration.Part(NarratedElementType.TITLE, CommonComponents.joinForNarration(words.toArray(Component[]::new))));
+            for (UiNarration.Part part : buttonParts) if (part.type() != NarratedElementType.TITLE) parts.add(part);
+            return parts;
+        }
+        String id = focusedId != null ? focusedId : hoveredId;
+        UiNarration narration = narration(id);
+        if (narration != null) parts.addAll(narration.parts(id.equals(focusedId)));
+        return parts;
+    }
+
+    /** What the narrator says about control {@code id}: its own description, with a tooltip as the label of a control that has no words. */
+    Optional<UiNarration> narrationOf(String id) { return Optional.ofNullable(narration(id)); }
+
+    private UiNarration narration(String id) {
+        if (id == null) return null;
+        UiNarration narration = narrations.get(id);
+        String tip = null;
+        for (UiTooltip tooltip : tooltips) if (tooltip.id().equals(id)) { tip = tooltip.text(); break; }
+        if (narration == null) return tip == null ? null : UiNarration.of(UiNarration.Role.TEXT, tip);
+        if (narration.label().isEmpty() && tip != null) narration = new UiNarration(narration.role(), tip, narration.state(), narration.position(), narration.count());
+        return narration;
     }
 
     /** Number of currently visible acknowledgements. Useful for development diagnostics. */
@@ -2169,7 +2237,7 @@ public class UiScreen extends Screen {
         if (controlIds == null) return true;
         for (String id : controlIds) {
             if (id == null) continue;
-            if (interactionPainted.contains(id)) return true;
+            if (interactionPainted == null || interactionPainted.contains(id)) return true;
             if (region(id).isPresent() || noneShown(id)) continue;
             return true;
         }
@@ -2190,7 +2258,7 @@ public class UiScreen extends Screen {
             for (UiHitRegion region : hitRegions) {
                 if (!id.equals(region.id())) continue;
                 found = true;
-                if (!interactionPainted.contains(id)) break;
+                if (interactionPainted != null && !interactionPainted.contains(id)) break;
                 UiRect bounds = new UiRect(region.x(), region.y(), region.width(), region.height());
                 result = result == null ? bounds : result.union(bounds);
                 found = true;
@@ -2320,7 +2388,11 @@ public class UiScreen extends Screen {
             var live = interactions.live;
             refreshes = List.copyOf(live.refreshes);
             repaintScopes = Map.copyOf(live.scopes);
-            interactionPainted = Set.copyOf(live.interactionReads);
+            var described = new HashMap<>(live.narrations);
+            described.putAll(live.namedNarrations);
+            narrations = Map.copyOf(described);
+            // Reading the shared interaction progress ties every control's hover and press to the page.
+            interactionPainted = live.interactionMotionRead ? null : Set.copyOf(live.interactionReads);
             if (draggingKey != null) {
                 double x = numberValue(draggingKey + ":x", 0), y = numberValue(draggingKey + ":y", 0);
                 UiRect painted = live.dragBounds.get(draggingId);

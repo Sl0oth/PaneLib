@@ -146,13 +146,33 @@ public final class UiContext {
      * Eased 0..1 progress of the current hover or press transition. Use this for control-level
      * feedback such as hover tints.
      */
-    public float interactionMotion() { return interactionMotion; }
+    /** Progress of the current hover or press animation. A paint that reads it repaints with every hover and press. */
+    public float interactionMotion() {
+        interactions.live.interactionMotionRead = true;
+        return interactionMotion;
+    }
 
     /** True while a finite animation is still scheduling repaints. */
     public boolean animating() { return animating || animationClock != null && animationClock.active(); }
 
     /** How many times this screen has rasterized its surface. A diagnostic, not a frame count. */
     public int paintCount() { return paintCount; }
+
+    /**
+     * Sets what Minecraft's narrator says about control {@code id}, replacing the description a
+     * built-in control gives itself. Use it for controls without words of their own, such as icon
+     * buttons and switches, and for hit areas painted by hand. Call it on every paint, like the control.
+     */
+    public void narration(String id, UiNarration narration) {
+        if (id == null || narration == null) return;
+        interactions.live.namedNarrations.put(id, narration);
+    }
+
+    private void describe(String id, UiNarration.Role role, String label, String state) {
+        if (id != null) interactions.live.narrations.put(id, UiNarration.of(role, label, state));
+    }
+
+    private static String onOff(boolean on) { return on ? "on" : "off"; }
 
     public boolean hovered(String id) {
         if (id == null) return false;
@@ -764,6 +784,7 @@ public final class UiContext {
     public void button(String id, String label, String action, float x, float y, float width, float height,
                        ButtonStyle style, Shape shape) {
         drawDefaultButton(id, label, x, y, width, height, style, shape);
+        describe(id, UiNarration.Role.BUTTON, label, null);
         hit(id, action, x, y, width, height);
     }
 
@@ -777,6 +798,7 @@ public final class UiContext {
     public void button(String id, String label, String action, float x, float y, float width, float height,
                        UiButtonStyle style, boolean enabled) {
         paintStyledButton(id, label, x, y, width, height, style, enabled, false);
+        describe(id, UiNarration.Role.BUTTON, label, null);
         if (enabled) hit(id, action, x, y, width, height);
     }
 
@@ -844,6 +866,7 @@ public final class UiContext {
         if (style != ButtonStyle.GHOST) canvas.strokeRoundRect(theme.border(), .8F, x, y, size, size, radius);
         if (icon != null) icon.draw(canvas, iconColor, x + size * .25F, y + size * .25F, size * .5F, 1.6F);
         if (focused(id)) drawFocusRing(accent, x - 2, y - 2, size + 4, size + 4, radius + 2);
+        describe(id, UiNarration.Role.BUTTON, null, null);
         hit(id, action, x, y, size, size);
     }
 
@@ -857,6 +880,7 @@ public final class UiContext {
         canvas.roundRect(UiCanvas.mix(0xFF343941, accent, enabledMotion), x, y, 31, 18, 9);
         canvas.circle(0xFFF0F3F7, x + 9 + 13 * enabledMotion, y + 9, 6.5F);
         if (focused(id)) drawFocusRing(accent, x - 2, y - 2, 35, 22, 11);
+        describe(id, UiNarration.Role.TOGGLE, null, onOff(enabled));
         internalHit(id, "toggle:" + key, x, y, 31, 18);
     }
 
@@ -868,6 +892,7 @@ public final class UiContext {
         boolean enabled = booleanValue(key, fallback);
         drawDefaultButton(id, enabled ? onLabel : offLabel, x, y, width, height,
             enabled ? onStyle : offStyle, shape);
+        describe(id, UiNarration.Role.TOGGLE, enabled ? onLabel : offLabel, onOff(enabled));
         internalHit(id, "toggle:" + key, x, y, width, height);
     }
 
@@ -891,6 +916,7 @@ public final class UiContext {
         }
         canvas.text(label, x + 24, y + 3, 9, theme.text(), Font.PLAIN, theme.fontFamily());
         if (focused(id)) drawFocusRing(accent, x - 2, y - 1, width + 4, 20, 6);
+        describe(id, UiNarration.Role.CHECKBOX, label, onOff(checked));
         internalHit(id, "toggle:" + key, x, y - 1, Math.max(size, width), 20);
         return checked;
     }
@@ -908,6 +934,7 @@ public final class UiContext {
         if (amount > .02F) canvas.circle(accent, cx, cy, 4.5F * amount);
         canvas.text(label, x + 22, y + 3, 9, theme.text(), Font.PLAIN, theme.fontFamily());
         if (focused(id)) drawFocusRing(accent, x - 2, y - 1, width + 4, 20, 10);
+        describe(id, UiNarration.Role.RADIO, label, onOff(selected));
         selectable(id, key, value, x, y - 1, Math.max(16, width), 20);
         return selected;
     }
@@ -933,6 +960,8 @@ public final class UiContext {
             int text = UiCanvas.mix(theme.mutedText(), item.value().equals(selected) ? accent : theme.text(), amount);
             canvas.centeredText(item.label(), itemX + itemWidth / 2, y + height / 2, 8, text,
                 item.value().equals(selected) ? Font.BOLD : Font.PLAIN, theme.fontFamily());
+            interactions.live.narrations.put(itemId, new UiNarration(UiNarration.Role.TAB, item.label(),
+                onOff(item.value().equals(selected)), i + 1, items.size()));
             selectable(itemId, key, item.value(), itemX, y, itemWidth, height);
         }
         return selected;
@@ -983,6 +1012,7 @@ public final class UiContext {
         double stored = Double.isFinite(current) ? Math.max(minimum, Math.min(maximum, current)) : minimum;
         state.putIfAbsent(key, stored);
         float normalized = (float) ((stored - minimum) / (maximum - minimum));
+        describe(id, UiNarration.Role.SLIDER, null, Math.round(normalized * 100) + "%");
         paintSlider(id, key, x, y, width, normalized, minimum, maximum);
         return stored;
     }
@@ -1282,6 +1312,7 @@ public final class UiContext {
     }
 
     private UiButtonState recordButtonState(String id, String label, boolean enabled) {
+        describe(id, UiNarration.Role.BUTTON, label, null);
         requireConsumerInteractionId(id);
         if (label == null || label.isBlank()) throw new IllegalArgumentException("A button needs a descriptive label");
         var state = new UiButtonState(label, enabled, enabled && hovered(id), enabled && pressed(id), enabled && focused(id));
@@ -1328,6 +1359,7 @@ public final class UiContext {
                 canvas.line(UiInputAppearance.color(paint.caret(), accent), 1, caretX, textY, caretX, textY + textHeight);
             }
         });
+        describe(id, masked ? UiNarration.Role.PASSWORD : UiNarration.Role.TEXT_FIELD, placeholder, masked ? null : value);
         internalHit(id, "input:" + key, x, y, width, height);
         float[] carets = new float[value.length() + 1];
         java.util.Arrays.fill(carets, Float.NaN);
@@ -1435,6 +1467,7 @@ public final class UiContext {
             if (focused) canvas.line(UiInputAppearance.color(paint.caret(), accent), 1, caretXs[cursor], caretYs[cursor] - textHeight / 2,
                 caretXs[cursor], caretYs[cursor] + textHeight / 2);
         });
+        describe(id, UiNarration.Role.TEXT_FIELD, placeholder, value);
         internalHit(id, "input:" + key, x, y, width, height);
         addInput(id, key, x, y, width, height, maxLength, true, caretXs, caretYs,
             offset == 0 ? visualLines : visualLines.stream().map(line -> line.translate(0, -offset)).toList(), false);

@@ -39,6 +39,7 @@ public final class PaneDemoClient implements ClientModInitializer {
     private final WayfarerHudShowcase wayfarerHud = Boolean.getBoolean("pane.demo.wayfarerHud") ? new WayfarerHudShowcase() : null;
     private final ExamplesAuditTest examplesTest = Boolean.getBoolean("pane.demo.exampleTest") ? new ExamplesAuditTest() : null;
     private final WindowHudAuditTest windowHudTest = Boolean.getBoolean("pane.demo.windowHudTest") ? new WindowHudAuditTest() : null;
+    private final NarrationAuditTest narrationTest = Boolean.getBoolean("pane.demo.narrationTest") ? new NarrationAuditTest() : null;
     private final AdoptionAuditTest adoptionTest = Boolean.getBoolean("pane.demo.adoptionTest") ? new AdoptionAuditTest() : null;
     private int startupTicks;
     private boolean demoShown;
@@ -74,6 +75,7 @@ public final class PaneDemoClient implements ClientModInitializer {
             while (TOGGLE_HUD.consumeClick()) ExampleHudController.toggle();
             if (examplesTest != null) { examplesTest.tick(client); return; }
             if (windowHudTest != null) { windowHudTest.tick(client); return; }
+            if (narrationTest != null) { narrationTest.tick(client); return; }
             if (performanceTest != null) { performanceTest.tick(client); return; }
             if (!demoShown && ++startupTicks >= 20 && client.gui.screen() instanceof TitleScreen) {
                 if (!ExampleHudController.active()) client.gui.setScreen(ExampleGallery.createScreen(client.gui.screen()));
