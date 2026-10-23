@@ -67,10 +67,10 @@ final class UiTooltipOverlay {
             UiCanvas canvas = new UiCanvas(painter, surface.image);
             float radius = style.radius();
             canvas.shadow(0x72000000, 5, 0, 2, OUTER_PAD, OUTER_PAD, width, height, radius);
-            canvas.roundRect(style.background() == null ? 0xFF111419 : style.background(), OUTER_PAD, OUTER_PAD, width, height, radius);
+            canvas.roundRect(style.plate(), OUTER_PAD, OUTER_PAD, width, height, radius);
             canvas.strokeRoundRect(style.border() == null ? theme.border() : style.border(), .8F, OUTER_PAD, OUTER_PAD, width, height, radius);
             canvas.centeredText(tooltip.text(), OUTER_PAD + width / 2, OUTER_PAD + height / 2,
-                style.textSize(), style.text() == null ? theme.text() : style.text(), style.fontStyle(), theme.fontFamily());
+                style.textSize(), style.textOn(theme.text()), style.fontStyle(), theme.fontFamily());
         } finally {
             painter.dispose();
         }

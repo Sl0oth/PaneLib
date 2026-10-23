@@ -109,4 +109,17 @@ class UiLiveInputTest {
         assertTrue(style.preferAbove());
         assertThrows(IllegalArgumentException.class, () -> new UiTooltipStyle(null, null, null, Float.NaN, 0, 20, 4, false));
     }
+
+    @Test
+    void defaultTooltipTextStaysReadableOnItsPlate() {
+        var style = UiTooltipStyle.defaults();
+        assertEquals(UiTheme.dark().text(), style.textOn(UiTheme.dark().text()), "a dark theme keeps its own light text");
+        int onLight = style.textOn(UiTheme.light().text());
+        assertNotEquals(UiTheme.light().text(), onLight, "a light theme's dark text would vanish on the dark plate");
+        assertTrue((onLight >> 16 & 0xFF) > 0xC0, "it switches to light text");
+        var paper = style.background(0xFFF6F1E7);
+        assertEquals(UiTheme.light().text(), paper.textOn(UiTheme.light().text()), "dark text stays on a light plate");
+        assertTrue((paper.textOn(UiTheme.dark().text()) >> 16 & 0xFF) < 0x40, "light text on a light plate switches to dark");
+        assertEquals(0xFF336699, style.text(0xFF336699).textOn(UiTheme.light().text()), "an explicit colour is never overridden");
+    }
 }

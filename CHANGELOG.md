@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Fixed default tooltips on light themes: the near-black plate drew the theme's dark text, so the
+  tip showed as an empty pill. Unset tooltip text now keeps the theme colour only when it reads on
+  the plate, otherwise near-white or near-black (`UiTooltipStyle.plate()`, `textOn(themeText)`).
 - Releases now include `panelib-demo-<version>.jar`, the examples as their own mod: install it
   next to PaneLib and Fabric API; it opens on the title screen and H reopens it. `prepare_release.py --upload` collects the files to
   attach, and `:pane-demo:releaseClient` plays them in a clean production client.

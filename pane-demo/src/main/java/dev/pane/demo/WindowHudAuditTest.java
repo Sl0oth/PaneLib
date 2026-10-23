@@ -109,6 +109,15 @@ final class WindowHudAuditTest {
                     clickThen(c, "back to windowed", 300, () -> { });
                 }
                 case 9 -> {
+                    hover(c, "wayfarer");
+                    advance(1500);
+                }
+                case 10 -> {
+                    check(gallery.visibleTooltipId().filter("wayfarer"::equals).isPresent(), "hovering a card shows its tooltip");
+                    capture(c, "launcher-tooltip");
+                    advance(300);
+                }
+                case 11 -> {
                     c.gui.setScreen(parent);
                     String id = "window-hud-audit-" + System.currentTimeMillis();
                     c.createWorldOpenFlows().createFreshLevel(id, new LevelSettings("Disposable window and HUD audit", GameType.SURVIVAL,
@@ -117,42 +126,42 @@ final class WindowHudAuditTest {
                     c.options.renderDistance().set(5); c.options.simulationDistance().set(5); c.options.pauseOnLostFocus = false;
                     advance(1200);
                 }
-                case 10 -> {
+                case 12 -> {
                     if (c.player == null || c.level == null) return;
                     c.gui.setScreen(null);
                     ExampleHudController.select("none");
                     advance(3000);
                 }
-                case 11 -> { mark(); advance(1000); }
-                case 12 -> {
+                case 13 -> { mark(); advance(1000); }
+                case 14 -> {
                     check(allDrew(WATCHED), "vanilla hotbar, hearts, food and crosshair draw without a PaneLib HUD");
                     ExampleHudController.select("wayfarer-hud");
                     advance(2500);
                 }
-                case 13 -> { mark(); frames = belt().snapshot().frames(); advance(1000); }
-                case 14 -> {
+                case 15 -> { mark(); frames = belt().snapshot().frames(); advance(1000); }
+                case 16 -> {
                     check(belt().snapshot().hasSurface() && belt().snapshot().frames() > frames, "Wayfarer HUD draws in the world");
                     check(noneDrew(WATCHED), "it hides exactly the vanilla elements it replaces");
                     capture(c, "world-hud-on");
                     toggleKey();
                     advance(900);
                 }
-                case 15 -> { mark(); advance(1000); }
-                case 16 -> {
+                case 17 -> { mark(); advance(1000); }
+                case 18 -> {
                     check(ExampleHudController.wayfarer().huds().stream().noneMatch(h -> h.snapshot().hasSurface()), "J toggles every HUD surface off");
                     check(allDrew(WATCHED), "toggled off, vanilla HUD comes back");
                     capture(c, "world-hud-off");
                     toggleKey();
                     advance(900);
                 }
-                case 17 -> {
+                case 19 -> {
                     check(belt().enabled(), "J toggles the HUD back on");
                     c.options.guiScale().set(2);
                     c.resizeGui();
                     advance(1500);
                 }
-                case 18 -> { mark(); frames = belt().snapshot().frames(); advance(1000); }
-                case 19 -> {
+                case 20 -> { mark(); frames = belt().snapshot().frames(); advance(1000); }
+                case 21 -> {
                     var bounds = belt().snapshot().bounds();
                     check(belt().snapshot().frames() > frames && bounds != null && bounds.x() >= 0 && bounds.y() >= 0
                         && bounds.right() <= window.getGuiScaledWidth() + 1 && bounds.bottom() <= window.getGuiScaledHeight() + 1,
@@ -164,20 +173,20 @@ final class WindowHudAuditTest {
                     c.gui.hud.toggle();
                     advance(600);
                 }
-                case 20 -> { mark(); frames = belt().snapshot().frames(); advance(800); }
-                case 21 -> {
+                case 22 -> { mark(); frames = belt().snapshot().frames(); advance(800); }
+                case 23 -> {
                     check(c.gui.hud.isHidden() && belt().snapshot().frames() == frames && noneDrew(WATCHED), "F1 hides the PaneLib HUD with vanilla's");
                     c.gui.hud.toggle();
                     advance(600);
                 }
-                case 22 -> { frames = belt().snapshot().frames(); advance(800); }
-                case 23 -> {
+                case 24 -> { frames = belt().snapshot().frames(); advance(800); }
+                case 25 -> {
                     check(belt().snapshot().frames() > frames, "showing the GUI again resumes the HUD");
                     ExampleHudController.select("none");
                     advance(900);
                 }
-                case 24 -> { mark(); advance(1000); }
-                case 25 -> {
+                case 26 -> { mark(); advance(1000); }
+                case 27 -> {
                     check(allDrew(WATCHED), "removing the HUD restores vanilla");
                     c.disconnect(new TitleScreen(), false);
                     advance(800);
@@ -241,6 +250,15 @@ final class WindowHudAuditTest {
         check(c.gui.screen() == gallery, label + ": Escape returns to the launcher");
         pendingNext.run();
         deadline = System.nanoTime() + pendingWait * 1_000_000;
+    }
+
+    private void hover(Minecraft c, String id) throws Exception {
+        var r = gallery.regionBounds(id).orElseThrow();
+        var window = c.getWindow();
+        Method move = MouseHandler.class.getDeclaredMethod("onMove", long.class, double.class, double.class);
+        move.setAccessible(true);
+        move.invoke(c.mouseHandler, window.handle(), r.centerX() / gallery.layoutScale() * window.getScreenWidth() / window.getGuiScaledWidth(),
+            r.centerY() / gallery.layoutScale() * window.getScreenHeight() / window.getGuiScaledHeight());
     }
 
     private UiHud belt() { return ExampleHudController.wayfarer().belt(); }
