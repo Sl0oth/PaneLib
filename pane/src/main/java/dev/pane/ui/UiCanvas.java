@@ -512,12 +512,13 @@ public final class UiCanvas {
         if (glassCache != null && backdropParent == null) {
             // Screen surface: reuse the frost when nothing beneath it changed.
             Rectangle read = new Rectangle(left, top, pixelWidth, pixelHeight);
-            int[] backdrop = glassCache.scratch(pixelWidth * pixelHeight);
-            readStraight(target, read, backdrop, 0, pixelWidth);
+            int[] raster = plainRaster();
+            int[] backdrop = raster == null ? readBackdrop(read) : null;
             var key = new UiGlassCache.Key(read, read, pixelRadius, 0, 0, 0, 0, null);
-            long hash = UiGlassCache.hash(backdrop, pixelWidth * pixelHeight);
+            long hash = raster != null ? UiGlassCache.hash(raster, target.getWidth(), read) : UiGlassCache.hash(backdrop, pixelWidth * pixelHeight);
             BufferedImage frosted = glassCache.find(key, hash);
             if (frosted == null) {
+                if (backdrop == null) backdrop = readBackdrop(read);
                 boxBlur(backdrop, pixelWidth, pixelHeight, pixelRadius);
                 frosted = new BufferedImage(pixelWidth, pixelHeight, BufferedImage.TYPE_INT_ARGB);
                 frosted.setRGB(0, 0, pixelWidth, pixelHeight, backdrop, 0, pixelWidth);
@@ -602,6 +603,20 @@ public final class UiCanvas {
     /** Glass on this canvas reads {@code parent}'s pixels beneath it, this canvas's origin lying at (x, y) there. */
     void readBackdropFrom(UiCanvas parent, int x, int y) {
         backdropParent = parent; backdropX = x; backdropY = y;
+    }
+
+    /** The surface's own pixel array when it holds straight ARGB rows with no offset, or null. */
+    private int[] plainRaster() {
+        if (target.getType() != BufferedImage.TYPE_INT_ARGB || !(target.getRaster().getDataBuffer() instanceof java.awt.image.DataBufferInt buffer)
+                || !(target.getSampleModel() instanceof java.awt.image.SinglePixelPackedSampleModel model) || model.getScanlineStride() != target.getWidth()
+                || target.getRaster().getSampleModelTranslateX() != 0 || target.getRaster().getSampleModelTranslateY() != 0) return null;
+        return buffer.getData();
+    }
+
+    private int[] readBackdrop(Rectangle read) {
+        int[] backdrop = glassCache.scratch(read.width * read.height);
+        readStraight(target, read, backdrop, 0, read.width);
+        return backdrop;
     }
 
     private void recordBackdropRead(Rectangle read) {
@@ -701,10 +716,12 @@ public final class UiCanvas {
         Rectangle source = new Rectangle(area.x - margin, area.y - margin, area.width + margin * 2, area.height + margin * 2)
             .intersection(surfaceBounds);
         int sw = source.width, sh = source.height;
-        int[] backdrop = backdropPixels(source.x, source.y, sw, sh);
         // Unchanged pixels under unchanged glass give the same lens: reuse it instead of recomputing.
         var key = glassCache == null ? null : new UiGlassCache.Key(area, source, centerX, centerY, halfW, halfH, corner, glass);
-        long hash = key == null ? 0 : UiGlassCache.hash(backdrop, sw * sh);
+        // On the screen surface the backdrop hashes in place and is copied out only to compute a new lens.
+        int[] raster = key != null && backdropParent == null ? plainRaster() : null;
+        int[] backdrop = raster == null ? backdropPixels(source.x, source.y, sw, sh) : null;
+        long hash = key == null ? 0 : raster != null ? UiGlassCache.hash(raster, target.getWidth(), source) : UiGlassCache.hash(backdrop, sw * sh);
         var finished = finishedKey(key, deviceClip, area, source, scale);
         if (finished != null) {
             BufferedImage pixels = glassCache.find(finished, hash);
@@ -719,6 +736,7 @@ public final class UiCanvas {
         }
         BufferedImage output = key == null ? null : glassCache.find(key, hash);
         if (output == null) {
+            if (backdrop == null) backdrop = backdropPixels(source.x, source.y, sw, sh);
             output = lens(backdrop, source, area, centerX, centerY, halfW, halfH, corner, bend, rim, spread, blur, glass);
             if (key != null) glassCache.store(key, hash, output);
         }

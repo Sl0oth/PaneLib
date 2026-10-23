@@ -84,6 +84,17 @@ class UiScopedRepaintTest {
         assertEquals(first, again, "chunked hashing is deterministic");
         pixels[123_457] ^= 1;
         assertNotEquals(first, UiGlassCache.hash(pixels, pixels.length), "one changed bit changes the hash");
+        // Hashing a rectangle in place gives the number its copied-out rows give, small and large.
+        var random = new java.util.Random(4);
+        for (int[] size : new int[][] {{40, 30}, {700, 400}}) {
+            int stride = size[0] + 37, rows = size[1] + 11;
+            int[] raster = new int[stride * rows];
+            for (int i = 0; i < raster.length; i++) raster[i] = random.nextInt();
+            var area = new java.awt.Rectangle(13, 5, size[0], size[1]);
+            int[] copied = new int[area.width * area.height];
+            for (int row = 0; row < area.height; row++) System.arraycopy(raster, (area.y + row) * stride + area.x, copied, row * area.width, area.width);
+            assertEquals(UiGlassCache.hash(copied, copied.length), UiGlassCache.hash(raster, stride, area));
+        }
     }
 
     @Test

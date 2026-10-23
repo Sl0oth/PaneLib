@@ -104,6 +104,29 @@ final class UiGlassCache {
         return region;
     }
 
+    /**
+     * {@link #hash(int[], int)} of the rectangle {@code area} of a raster {@code stride} pixels wide,
+     * as if its rows were first copied out one after another; the result is the same number.
+     */
+    static long hash(int[] raster, int stride, Rectangle area) {
+        int length = area.width * area.height, width = area.width;
+        if (width <= 0 || length <= 0) return hash(new int[0], 0);
+        int chunks = length < 1 << 16 ? 1 : 16, size = (length + chunks - 1) / chunks;
+        long[] parts = new long[chunks];
+        UiParallel.forEach(chunks, chunk -> {
+            long hash = 0xCBF29CE484222325L;
+            for (int i = chunk * size, end = Math.min(length, i + size); i < end; ) {
+                int row = i / width, column = i % width, run = Math.min(end - i, width - column);
+                for (int at = (area.y + row) * stride + area.x + column, stop = at + run; at < stop; at++) hash = (hash ^ raster[at]) * 0x100000001B3L;
+                i += run;
+            }
+            parts[chunk] = hash;
+        });
+        long hash = length;
+        for (long part : parts) hash = (hash ^ part) * 0x9E3779B97F4A7C15L;
+        return hash;
+    }
+
     /** Hash of the first {@code length} pixels. */
     static long hash(int[] pixels, int length) {
         // Large backdrops hash in independent chunks across cores, then combine in order.
