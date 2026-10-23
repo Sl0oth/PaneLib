@@ -71,6 +71,24 @@ class UiBandsTest {
     }
 
     @Test
+    void opaqueFillsMatchOneAntialiasedDraw() {
+        var random = new Random(33);
+        for (double scale : new double[] {1, 1.05, 1.5, 2, 2.1}) for (int trial = 0; trial < 8; trial++) {
+            float x = random.nextFloat() * 40 - 5, y = random.nextFloat() * 40 - 5, w = 200 + random.nextFloat() * 600, h = 150 + random.nextFloat() * 600;
+            float arc = trial % 3 == 0 ? 0 : 4 + random.nextFloat() * 80;
+            for (int clip = 0; clip < 3; clip++) for (int round = 0; round < 2; round++) {
+                Shape shape = round == 1 ? new RoundRectangle2D.Float(x, y, w, h, arc, arc) : new Rectangle2D.Float(x, y, w, h);
+                double corner = round == 1 ? Math.min(arc / 2, h / 2) : 0;
+                int k = clip;
+                Consumer<Graphics2D> setup = g -> { g.scale(scale, scale); clip(g, k); g.setColor(new Color(0xFF1C1C1E)); };
+                int[] expected = paint(setup, g -> g.fill(shape));
+                int[] actual = paint(setup, g -> UiBands.fill(g, shape, y + corner, y + h - corner));
+                assertArrayEquals(expected, actual, "scale=" + scale + " trial=" + trial + " clip=" + clip + " round=" + round + " " + shape.getBounds2D());
+            }
+        }
+    }
+
+    @Test
     void bandedStrokesMatchOneDraw() {
         var random = new Random(21);
         for (double scale : new double[] {1, 1.05, 1.5, 2.1}) for (int trial = 0; trial < 5; trial++) {

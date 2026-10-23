@@ -57,6 +57,7 @@ final class UiBands {
         Rectangle device = deviceBounds(graphics, shape.getBounds2D());
         Rectangle straight = deviceBounds(graphics, new Rectangle2D.Double(0, straightTop, 1, straightBottom - straightTop));
         if (device == null || straight == null) { graphics.fill(shape); return; }
+        if (opaqueFill(graphics, shape, device, straight)) return;
         int grid = 0, origin = 0;
         if (texture) {
             // The rasterizer's first tile starts at the first row whose centre lies inside both the rectangle and the clip.
@@ -91,6 +92,61 @@ final class UiBands {
         Rectangle straight = deviceBounds(graphics, new Rectangle2D.Double(0, straightTop + width, 1, straightBottom - straightTop - width * 2));
         if (device == null || straight == null) { graphics.draw(shape); return; }
         draw(graphics, device, straight.y + 3, straight.y + straight.height - 3, 0, 0, g -> g.draw(shape));
+    }
+
+    /**
+     * An opaque colour drawn over anything leaves exactly itself, so the pixels a rectangle or
+     * rounded rectangle covers completely need no antialiasing or blending: they are filled as one
+     * plain rectangle. Only the rim, the rows holding the corners and a few columns along each side,
+     * is antialiased, clipped to those parts. Rim parts end only on rows or columns where the outline
+     * is straight, where a clip changes no coverage. Returns false when the fill does not qualify.
+     */
+    private static boolean opaqueFill(Graphics2D graphics, Shape shape, Rectangle device, Rectangle straight) {
+        if (!shortcuts || !(graphics.getPaint() instanceof Color color) || color.getAlpha() != 255
+                || !(graphics.getComposite() instanceof AlphaComposite alpha) || alpha.getRule() != AlphaComposite.SRC_OVER || alpha.getAlpha() != 1
+                || !(shape instanceof Rectangle2D || shape instanceof java.awt.geom.RoundRectangle2D)) return false;
+        Shape clip = graphics.getClip();
+        if (clip != null && !(clip instanceof Rectangle2D)) return false;
+        AffineTransform m = graphics.getTransform();
+        Rectangle2D bounds = shape.getBounds2D();
+        double x0 = bounds.getMinX() * m.getScaleX() + m.getTranslateX(), x1 = bounds.getMaxX() * m.getScaleX() + m.getTranslateX();
+        double left = Math.min(x0, x1), right = Math.max(x0, x1);
+        // Columns this far inside both sides see only straight edges in every row of the interior.
+        double corner = shape instanceof java.awt.geom.RoundRectangle2D round
+            ? Math.min(round.getArcWidth() / 2, bounds.getWidth() / 2) * Math.abs(m.getScaleX()) : 0;
+        int innerLeft = (int) Math.ceil(left + corner) + 3, innerRight = (int) Math.floor(right - corner) - 3;
+        int innerTop = straight.y + 3, innerBottom = straight.y + straight.height - 3;
+        if (innerRight - innerLeft < MIN_ROWS || innerBottom - innerTop < MIN_ROWS
+                || (long) (innerRight - innerLeft) * (innerBottom - innerTop) < MIN_PIXELS / 4) return false;
+        // Inside the interior band, pixels between the straight sides are fully covered.
+        int coreLeft = (int) Math.ceil(left) + 1, coreRight = (int) Math.floor(right) - 1;
+        Rectangle core = new Rectangle(coreLeft, innerTop, coreRight - coreLeft, innerBottom - innerTop);
+        Rectangle[] rim = {
+            new Rectangle(device.x, device.y, device.width, innerTop - device.y),
+            new Rectangle(device.x, innerBottom, device.width, device.y + device.height - innerBottom),
+            new Rectangle(device.x, innerTop, innerLeft - device.x, innerBottom - innerTop),
+            new Rectangle(innerRight, innerTop, device.x + device.width - innerRight, innerBottom - innerTop)};
+        // The side strips' inner edges fall inside the core's columns, which the plain fill covers again identically.
+        Graphics2D plain = (Graphics2D) graphics.create();
+        try {
+            plain.setTransform(new AffineTransform());
+            plain.setRenderingHint(java.awt.RenderingHints.KEY_ANTIALIASING, java.awt.RenderingHints.VALUE_ANTIALIAS_OFF);
+            draw(plain, core, g -> g.fillRect(core.x, core.y, core.width, core.height));
+        } finally { plain.dispose(); }
+        for (int i = 0; i < rim.length; i++) {
+            Rectangle part = rim[i];
+            if (part.isEmpty()) continue;
+            Graphics2D edge = (Graphics2D) graphics.create();
+            try {
+                edge.setTransform(new AffineTransform());
+                edge.clipRect(part.x, part.y, part.width, part.height);
+                edge.setTransform(m);
+                // The corner rows draw once; the side strips are straight throughout and may band.
+                if (i < 2) edge.fill(shape);
+                else draw(edge, part, g -> g.fill(shape));
+            } finally { edge.dispose(); }
+        }
+        return true;
     }
 
     /** Height of the rasterizer's antialiasing tiles, or 0 when it is configured in a way not known here. */
