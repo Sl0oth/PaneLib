@@ -130,19 +130,23 @@ public final class UiCanvas {
 
     public void fill(int color, float x, float y, float width, float height) {
         graphics.setColor(awtColor(color));
-        graphics.fill(new Rectangle2D.Float(x, y, width, height));
+        UiBands.fill(graphics, new Rectangle2D.Float(x, y, width, height));
     }
 
     public void roundRect(int color, float x, float y, float width, float height, float radius) {
         graphics.setColor(awtColor(color));
-        graphics.fill(roundShape(x, y, width, height, radius));
+        RoundRectangle2D.Float shape = roundShape(x, y, width, height, radius);
+        float corner = Math.min(shape.archeight / 2, height / 2);
+        UiBands.fill(graphics, shape, y + corner, y + height - corner);
     }
 
     /** Rounded rectangle with independent corner radii, clockwise from the top left. */
     public void roundRect(int color, float x, float y, float width, float height,
                           float topLeft, float topRight, float bottomRight, float bottomLeft) {
         graphics.setColor(awtColor(color));
-        graphics.fill(cornerShape(x, y, width, height, topLeft, topRight, bottomRight, bottomLeft));
+        float limit = Math.min(width, height) / 2;
+        UiBands.fill(graphics, cornerShape(x, y, width, height, topLeft, topRight, bottomRight, bottomLeft),
+            y + Math.clamp(Math.max(topLeft, topRight), 0, limit), y + height - Math.clamp(Math.max(bottomLeft, bottomRight), 0, limit));
     }
 
     public void strokeRoundRect(int color, float stroke, float x, float y, float width, float height, float radius) {
@@ -345,7 +349,7 @@ public final class UiCanvas {
         Rectangle area = new Rectangle((int) Math.floor(centerX - halfW - reach), (int) Math.floor(centerY - halfH - reach), 0, 0);
         area.add(Math.ceil(centerX + halfW + reach), Math.ceil(centerY + halfH + reach));
         Shape clip = graphics.getClip();
-        Shape deviceClip = clip == null ? null : matrix.createTransformedShape(clip);
+        Shape deviceClip = deviceClip(clip, matrix);
         if (target != null) area = area.intersection(new Rectangle(target.getWidth(), target.getHeight()));
         // Outside-only shadows keep whole bands, so cached bands match whatever a later paint clips to.
         if (deviceClip != null && (caster == null || glassCache == null)) area = area.intersection(deviceClip.getBounds());
@@ -391,8 +395,10 @@ public final class UiCanvas {
             output.setTransform(new AffineTransform());
             output.setClip(deviceClip);
             output.setComposite(AlphaComposite.SrcOver);
-            output.drawImage(shadowMask, area.x, area.y, area.x + area.width, area.y + area.height,
-                0, 0, area.width, area.height, null);
+            BufferedImage mask = shadowMask;
+            Rectangle drawn = area;
+            UiBands.draw(output, drawn, g -> g.drawImage(mask, drawn.x, drawn.y, drawn.x + drawn.width, drawn.y + drawn.height,
+                0, 0, drawn.width, drawn.height, null));
         } finally { output.dispose(); }
         return true;
     }
@@ -426,6 +432,7 @@ public final class UiCanvas {
             output.setTransform(new AffineTransform());
             output.setClip(deviceClip);
             output.setComposite(AlphaComposite.SrcOver);
+            List<UiBands.Placed> placed = new ArrayList<>(bands.size());
             for (Rectangle band : bands) {
                 if (band.width <= 0 || band.height <= 0 || deviceClip != null && !deviceClip.intersects(band)) continue;
                 var key = glassCache == null ? null : new UiGlassCache.ShadowKey(band, cx, cy, chw, chh, casterCorner, centerX, centerY, innerW, innerH, corner, ramp);
@@ -452,8 +459,9 @@ public final class UiCanvas {
                     });
                     if (key != null) glassCache.store(key, 0, image);
                 }
-                output.drawImage(image, band.x, band.y, null);
+                placed.add(new UiBands.Placed(image, band.x, band.y));
             }
+            UiBands.images(output, placed);
         } finally { output.dispose(); }
     }
 
@@ -485,7 +493,7 @@ public final class UiCanvas {
         // Recorded before clipping, so a partial repaint that touches the region repaints all it reads.
         recordBackdropRead(new Rectangle(left, top, pixelWidth, pixelHeight));
         Shape clip = graphics.getClip();
-        Shape deviceClip = clip == null ? null : graphics.getTransform().createTransformedShape(clip);
+        Shape deviceClip = deviceClip(clip, graphics.getTransform());
         if (deviceClip != null && !deviceClip.intersects(left, top, pixelWidth, pixelHeight)) return false;
 
         int maximumRadius = Math.max(1, (Math.min(pixelWidth, pixelHeight) - 1) / 2);
@@ -550,7 +558,7 @@ public final class UiCanvas {
             output.setTransform(new AffineTransform());
             output.setClip(deviceClip);
             output.clipRect(left, top, pixelWidth, pixelHeight);
-            output.drawImage(blurred, left, top, null);
+            UiBands.image(output, blurred, left, top);
         } finally {
             output.dispose();
         }
@@ -562,8 +570,23 @@ public final class UiCanvas {
         try {
             output.setTransform(new AffineTransform());
             output.setClip(deviceClip);
-            output.drawImage(image, x, y, null);
+            UiBands.image(output, image, x, y);
         } finally { output.dispose(); }
+    }
+
+    /**
+     * The current clip in device pixels, as Java2D itself holds it: a rectangle stays a rectangle
+     * under an axis-aligned transform, which keeps device-space draws on the fast rectangular path.
+     */
+    private static Shape deviceClip(Shape clip, AffineTransform matrix) {
+        if (clip == null) return null;
+        if (clip instanceof Rectangle2D rectangle && matrix.getShearX() == 0 && matrix.getShearY() == 0) {
+            double[] corners = {rectangle.getX(), rectangle.getY(), rectangle.getMaxX(), rectangle.getMaxY()};
+            matrix.transform(corners, 0, corners, 0, 2);
+            double left = Math.min(corners[0], corners[2]), top = Math.min(corners[1], corners[3]);
+            return new Rectangle2D.Double(left, top, Math.max(corners[0], corners[2]) - left, Math.max(corners[1], corners[3]) - top);
+        }
+        return matrix.createTransformedShape(clip);
     }
 
     /** Glass on this canvas reads {@code parent}'s pixels beneath it, this canvas's origin lying at (x, y) there. */
@@ -659,7 +682,7 @@ public final class UiCanvas {
         recordBackdropRead(new Rectangle(area.x - margin, area.y - margin, area.width + margin * 2, area.height + margin * 2)
             .intersection(surfaceBounds));
         Shape clip = graphics.getClip();
-        Shape deviceClip = clip == null ? null : matrix.createTransformedShape(clip);
+        Shape deviceClip = deviceClip(clip, matrix);
         if (deviceClip != null) area = area.intersection(deviceClip.getBounds());
         area = area.intersection(surfaceBounds);
         if (area.isEmpty()) return true;
@@ -1354,7 +1377,7 @@ public final class UiCanvas {
             float inherited = graphics.getComposite() instanceof AlphaComposite alpha ? alpha.getAlpha() : 1;
             output.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER,
                 inherited * Math.max(0, Math.min(1, opacity))));
-            output.drawImage(image, pixels.x, pixels.y, null);
+            UiBands.image(output, image, pixels.x, pixels.y);
         } finally { output.dispose(); }
     }
 
@@ -1432,8 +1455,14 @@ public final class UiCanvas {
         try {
             if (axisAligned && scale == layer.quality) {
                 graphics.setTransform(new AffineTransform());
-                graphics.drawImage(layer.cachedImage(), (int) Math.round(originX - layer.alignX) + layer.cachedX(),
-                    (int) Math.round(originY - layer.alignY) + layer.cachedY(), null);
+                Composite composite = graphics.getComposite();
+                // Over an opaque cache, source-over leaves exactly the source: copying skips the blend.
+                if (layer.opaque() && composite instanceof AlphaComposite alpha && alpha.getRule() == AlphaComposite.SRC_OVER && alpha.getAlpha() == 1)
+                    graphics.setComposite(AlphaComposite.Src);
+                try {
+                    UiBands.image(graphics, layer.cachedImage(), (int) Math.round(originX - layer.alignX) + layer.cachedX(),
+                        (int) Math.round(originY - layer.alignY) + layer.cachedY());
+                } finally { graphics.setComposite(composite); }
             } else {
                 graphics.translate(bounds.x(), bounds.y());
                 graphics.scale(1 / layer.quality, 1 / layer.quality);

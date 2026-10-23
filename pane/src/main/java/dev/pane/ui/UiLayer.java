@@ -9,7 +9,7 @@ public final class UiLayer {
     private BufferedImage image;
     private int[] pixels;
     private Object revision;
-    private boolean cached;
+    private boolean cached, opaque;
     private BufferedImage cachedImage;
     private int cachedX, cachedY;
     /** Device scale and sub-pixel offset the cached pixels were painted at. */
@@ -17,6 +17,7 @@ public final class UiLayer {
 
     BufferedImage prepare(int width, int height) {
         cached = false;
+        opaque = false;
         cachedImage = null;
         if (image == null || image.getWidth() != width || image.getHeight() != height) {
             // Java2D's transformed alpha compositing consumes premultiplied pixels.
@@ -58,8 +59,13 @@ public final class UiLayer {
         cachedX = Math.max(0, left - 1); cachedY = Math.max(0, top - 1);
         right = Math.min(width - 1, right + 1); bottom = Math.min(height - 1, bottom + 1);
         cachedImage = image.getSubimage(cachedX, cachedY, right - cachedX + 1, bottom - cachedY + 1);
+        opaque = true;
+        for (int y = cachedY; y <= bottom && opaque; y++)
+            for (int x = cachedX; x <= right; x++) if ((pixels[y * width + x] >>> 24) != 255) { opaque = false; break; }
     }
     BufferedImage cachedImage() { return cachedImage; }
+    /** Every cached pixel is fully opaque, so drawing it over anything leaves exactly its own pixels. */
+    boolean opaque() { return opaque; }
     int cachedX() { return cachedX; }
     int cachedY() { return cachedY; }
 
