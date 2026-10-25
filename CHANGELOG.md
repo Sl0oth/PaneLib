@@ -67,6 +67,11 @@
   events only to a focused window, so a control under the cursor stayed unhovered after another
   app or a fullscreen change took focus.
 
+### Added
+
+- `UiScreen.settled()`: whether the screen has finished drawing, for tests that measure idle
+  repainting. A cold first frame can outlast the opening transition, which then paints once more.
+
 ## 1.0.0-beta.2 — readable tooltips, the demo mod and Windows verification
 
 - Fixed default tooltips on light themes: the near-black plate drew the theme's dark text, so the

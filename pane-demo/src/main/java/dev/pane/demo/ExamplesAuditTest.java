@@ -16,7 +16,7 @@ final class ExamplesAuditTest {
     private UiScreen gallery;
     private TitleScreen parent;
     private int stage, checks, paints;
-    private long deadline;
+    private long deadline, settleStarted;
     private boolean done;
     private String inventory;
     private WayfarerHudShowcase previous;
@@ -30,7 +30,11 @@ final class ExamplesAuditTest {
                 gallery=ExampleGallery.createScreen(parent);c.gui.setScreen(gallery);advance(1300);return;
             }
             switch(stage){
-                case 1 -> { capture(c,"example-shelf");check(c.level==null,"gallery needs no world");check(gallery.buttonState("wayfarer").orElseThrow().label().equals("Open Wayfarer menu"),"gallery exposes named keyboard targets");paints=gallery.paintCount();advance(900); }
+                case 1 -> {
+                    // A cold first frame can outlast the opening transition, which then paints its last frame next; idle starts once that is done.
+                    if(settleStarted==0)settleStarted=System.nanoTime();
+                    if(!gallery.settled()&&System.nanoTime()-settleStarted<5_000_000_000L)return;
+                    check(gallery.settled(),"gallery settles after opening"+(gallery.settled()?"":" ("+pending(gallery)+")"));capture(c,"example-shelf");check(c.level==null,"gallery needs no world");check(gallery.buttonState("wayfarer").orElseThrow().label().equals("Open Wayfarer menu"),"gallery exposes named keyboard targets");paints=gallery.paintCount();advance(900); }
                 case 2 -> {check(gallery.paintCount()==paints,"idle gallery does not repaint");click(gallery,"wayfarer");advance(1200);}
                 case 3 -> {var s=current(c);check(s.regionBounds("deploy").isPresent(),"Wayfarer opens from gallery");check(c.level==null,"player menu stays world-free");capture(c,"wayfarer-current");escape(s);advance(600);}
                 case 4 -> {check(c.gui.screen()==gallery,"Wayfarer restores gallery parent");click(gallery,"paneos");advance(2600);}
@@ -65,6 +69,14 @@ final class ExamplesAuditTest {
     private String inventory(Minecraft c){var out=new StringBuilder();for(int i=0;i<36;i++)out.append(c.player.getInventory().getItem(i)).append(';');return out.toString();}
     private UiScreen current(Minecraft c){return (UiScreen)c.gui.screen();}
     private void check(boolean valid,String label){checks++;if(!valid)throw new IllegalStateException(label);System.out.println("[ExamplesTest] PASS "+label);}
+    /** The screen's own state that keeps it from settling, read by reflection for the failure message. */
+    private static String pending(UiScreen s){
+        var out=new StringBuilder();
+        for(String name:new String[]{"paintCount","dirty","transitionEnd","interactionEnd","customAnimationsActive","scrollMotions","toastOverlay","tooltipRevealAt","hoveredId"}){
+            try{var f=UiScreen.class.getDeclaredField(name);f.setAccessible(true);out.append(name).append('=').append(f.get(s)).append(' ');}catch(ReflectiveOperationException e){out.append(name).append("=? ");}
+        }
+        return out.append("now=").append(System.nanoTime()).toString().trim();
+    }
     private void advance(long millis){stage++;deadline=System.nanoTime()+millis*1_000_000;}
     private void capture(Minecraft c,String name){Screenshot.grab(c.gameDirectory,name+".png",c.gameRenderer.mainRenderTarget(),1,m->{});}
     private void escape(UiScreen s){s.keyPressed(new KeyEvent(GLFW.GLFW_KEY_ESCAPE,0,0));}

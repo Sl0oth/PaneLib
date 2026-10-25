@@ -503,6 +503,17 @@ public class UiScreen extends Screen {
     /** How many times the surface has been rasterized. A diagnostic, not a frame count. */
     public int paintCount() { return paintCount; }
 
+    /**
+     * Whether the screen has finished drawing: it has painted, no repaint is waiting, and no page
+     * transition, hover or press animation, custom animation, scroll motion, toast or tooltip delay
+     * is still running. A settled screen paints nothing more until input, data or the window
+     * changes. A diagnostic, like {@link #paintCount()}; tests wait for it before measuring idle.
+     */
+    public boolean settled() {
+        return paintCount > 0 && !dirty && transitionEnd == 0 && interactionEnd == 0 && !customAnimationsActive
+            && scrollMotions.isEmpty() && toastOverlay.isEmpty() && tooltipRevealAt == 0;
+    }
+
     /** CPU raster plus upload time for the latest retained repaint. */
     public long lastPaintDurationNanos() { return lastPaintDurationNanos; }
 

@@ -40,7 +40,7 @@ The public API is every `public` type and member in `dev.pane.ui`. These are not
 - **Exact pixels.** Default looks, antialiasing and colours may be refined, as when beta.2 made
   default tooltip text readable on light themes. Documented geometry, such as where a control's
   hit area is, does not change without notice.
-- **Diagnostics.** Counters such as `paintCount()`, `glassLensRenderCount()` and
+- **Diagnostics.** Counters and states such as `paintCount()`, `settled()`, `glassLensRenderCount()` and
   `performanceSnapshot()` describe the current implementation; what they count may change.
 - **Performance.** Timings and memory use are not part of the contract, though regressions are bugs.
 - **Narration wording.** Narrated text follows Minecraft's own translations and may follow them
