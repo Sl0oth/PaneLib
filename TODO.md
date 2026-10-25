@@ -149,6 +149,8 @@ Done means:
 ## Next
 
 1. Choose a public Maven host and run Windows/Linux GPU profiling before calling the API 1.0.
+2. Take real screenshots for the README and the Modrinth gallery: PaneLib screens as a mod would
+   ship them in a normal game, not the demo showcase pages.
 
 ## Parking lot
 
