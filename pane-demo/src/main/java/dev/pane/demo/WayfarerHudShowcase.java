@@ -23,8 +23,7 @@ final class WayfarerHudShowcase {
     static final int INK=0xFF081725, PAPER=0xFFE8D9B4, LIGHT=0xFFF5F6F0,
         GOLD=0xFFFFD357, EDGE=0xFF314550, GREEN=0xFF84B59A, RED=0xFFE19B4C;
     static final String FONT=ExampleFonts.FAMILY;
-    static final Identifier PAPER_TEXTURE=Identifier.fromNamespaceAndPath("pane_demo","textures/bramble/parchment.png"),
-        METAL_TEXTURE=Identifier.fromNamespaceAndPath("pane_demo","textures/wayfarer-hud/metal.jpg"),
+    static final Identifier METAL_TEXTURE=Identifier.fromNamespaceAndPath("pane_demo","textures/wayfarer-hud/metal.jpg"),
         FABRIC_TEXTURE=Identifier.fromNamespaceAndPath("pane_demo","textures/wayfarer-hud/fabric.jpg");
     private UiHud location, journal, vitals, belt, compass, badge, crosshair;
     private int stage,ticks;private long deadline,started;private boolean done;
@@ -170,7 +169,12 @@ final class WayfarerHudShowcase {
     }
     private void text(UiCanvas g,String s,float x,float y,float size,int color,boolean bold){g.text(s,x,y,size,color,bold?Font.BOLD:Font.PLAIN,FONT);}
     private void label(UiCanvas g,String s,float x,float y,float size,int color){g.trackedText(s,x,y,size,color,Font.BOLD,FONT,1.3F);}
-    private void paper(UiCanvas g,float x,float y,float w,float h){g.minecraftTextureRegion(PAPER_TEXTURE,0,0,640,480,x,y,w,h);}
+    /** Field paper drawn in code: a warm sheet, fine grain and faint ruled fibres. */
+    private void paper(UiCanvas g,float x,float y,float w,float h){
+        g.fill(PAPER,x,y,w,h);g.grain(0x16503C1E,.08F,x,y,w,h);
+        for(float yy=y+6;yy<y+h;yy+=9)g.fill(0x0C6B5330,x,yy,w,1);
+        g.gradientRect(0x00000000,0x1A5A4526,90,x,y+h*.6F,w,h*.4F,0);
+    }
     private void metal(UiCanvas g,float x,float y,float w,float h){
         g.roundRect(0xAA050F17,x+2,y+4,w,h,3);g.roundRect(INK,x,y,w,h,3);
         g.withRoundedClip(x+1,y+1,w-2,h-2,2,()->g.minecraftTextureRegion(METAL_TEXTURE,280,100,1400,Math.min(1900,Math.round(1400*h/w)),x+1,y+1,w-2,h-2));
@@ -218,7 +222,7 @@ final class WayfarerHudShowcase {
         g.circle(INK,62,91,53);g.circle(0xFFA99D75,62,88,51);
         g.withCircleClip(62,88,48,()->g.minecraftTextureRegion(METAL_TEXTURE,420,250,700,700,14,40,96,96));
         g.strokeCircle(GOLD,1.2F,62,88,46);g.circle(INK,62,88,40);
-        g.withCircleClip(62,88,38,()->g.minecraftTextureRegion(PAPER_TEXTURE,100,60,440,350,24,50,76,76));
+        g.withCircleClip(62,88,38,()->paper(g,24,50,76,76));
         for(int i=0;i<=20;i++){double a=Math.toRadians(-135+i*13.5);float r=i%5==0?29:32;g.line(i<4?RED:EDGE,i%5==0?1.4F:.7F,62+(float)Math.sin(a)*r,88-(float)Math.cos(a)*r,62+(float)Math.sin(a)*36,88-(float)Math.cos(a)*36);}
         int pct=Math.round(100F*v.health()/Math.max(1,v.max()));double a=Math.toRadians(-135+270*pct/100F);
         g.line(INK,2,62,88,62+(float)Math.sin(a)*27,88-(float)Math.cos(a)*27);g.circle(INK,62,88,3);
@@ -249,7 +253,7 @@ final class WayfarerHudShowcase {
         if(audit!=null)audit.heading(heading);
         canvas(g,36,4,328,55);metal(g,11,11,378,47);screw(g,20,20);screw(g,380,20);
         g.withRoundedClip(30,17,340,35,1,()->{
-            g.minecraftTextureRegion(PAPER_TEXTURE,50,100,540,230,30,17,340,35);
+            paper(g,30,17,340,35);
             int first=(int)Math.floor((heading-90)/5)*5;
             for(int tick=first;tick<=heading+90;tick+=5){
                 float x=200+(tick-heading)*2;int degree=Math.floorMod(tick,360);
