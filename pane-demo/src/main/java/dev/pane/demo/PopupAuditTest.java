@@ -160,9 +160,11 @@ final class PopupAuditTest {
             if(tick==155) {
                 check(screen.popupRetainedPixels()==0,"closing popup releases cropped backing");
                 check(!overlayPointerBlocked,"native overlay pointer state restored on close");
-                click("row-choice-0");
+                clickThroughMinecraft(client,"row-choice-0");
             }
             if(tick==160) {
+                check("row-choice-0".equals(hovered()),"the pointer still rests on the trigger below its menu");
+                check(screen.visibleTooltipId().isEmpty(),"the trigger's own tooltip stays hidden over the menu it opened ("+screen.visibleTooltipId().orElse("")+")");
                 check(screen.regionBounds("menu:row-choice-0:option-0").isPresent(),"virtual-row menu survives transition into popup composition");
                 check(Math.abs(screen.regionBounds("menu:row-choice-0:option-0").orElseThrow().height()-31)<.1F,"virtual-row menu retains styled row geometry");
                 key(GLFW.GLFW_KEY_END,0);key(GLFW.GLFW_KEY_ENTER,0);
@@ -174,6 +176,26 @@ final class PopupAuditTest {
                 System.out.println("[PopupTest] complete "+(failed?"FAIL":"PASS")+" checks="+checks);client.stop();
             }
         } catch(Throwable error) {System.out.println("[PopupTest] complete FAIL "+error);error.printStackTrace();client.stop();}
+    }
+    /** Clicks the way a player does, through Minecraft's mouse handler, so the cursor stays where the click was. */
+    private void clickThroughMinecraft(Minecraft client,String id){
+        try{
+            var b=screen.regionBounds(id).orElseThrow();var window=client.getWindow();
+            double x=b.centerX()/screen.layoutScale()*window.getScreenWidth()/window.getGuiScaledWidth();
+            double y=b.centerY()/screen.layoutScale()*window.getScreenHeight()/window.getGuiScaledHeight();
+            var move=net.minecraft.client.MouseHandler.class.getDeclaredMethod("onMove",long.class,double.class,double.class);
+            var button=net.minecraft.client.MouseHandler.class.getDeclaredMethod("onButton",long.class,MouseButtonInfo.class,int.class);
+            move.setAccessible(true);button.setAccessible(true);
+            move.invoke(client.mouseHandler,window.handle(),x,y);
+            var left=new MouseButtonInfo(GLFW.GLFW_MOUSE_BUTTON_LEFT,0);
+            button.invoke(client.mouseHandler,window.handle(),left,GLFW.GLFW_PRESS);
+            button.invoke(client.mouseHandler,window.handle(),left,GLFW.GLFW_RELEASE);
+        }catch(ReflectiveOperationException e){throw new IllegalStateException(e);}
+    }
+    /** The control under the pointer; private to the screen, read for the trigger-tooltip check. */
+    private String hovered() {
+        try { var f=UiScreen.class.getDeclaredField("hoveredId"); f.setAccessible(true); return (String) f.get(screen); }
+        catch(ReflectiveOperationException e){throw new IllegalStateException(e);}
     }
     private boolean visible(String id) {
         var b=screen.regionBounds(id);

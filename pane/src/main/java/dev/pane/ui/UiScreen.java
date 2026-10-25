@@ -2861,6 +2861,8 @@ public class UiScreen extends Screen {
 
     private UiTooltip hoveredTooltip() {
         if (hoveredId == null || !focusAllowed(hoveredId)) return null;
+        // A trigger's tip would cover the menu it just opened.
+        if (hoveredId.equals(openMenuId)) return null;
         for (int i = virtual.tooltips.size() - 1; i >= 0; i--) {
             UiTooltip tooltip = virtual.tooltips.get(i);
             if (hoveredId.equals(tooltip.id())) return tooltip;
