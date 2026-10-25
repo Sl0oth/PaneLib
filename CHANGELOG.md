@@ -57,6 +57,9 @@
 - Every public type, member and enum constant has Javadoc; mixins and `dev.pane.ui.internal` are
   marked internal. `-Pdoclint=all,-missing` reports nothing.
 - `docs/compatibility.md` drafts what 1.x will promise and lists experimental APIs.
+- PaneOS opened in a world starts on an **Overworld** wallpaper: the world you are standing in,
+  which its glass dock, widgets and lock-screen blur bend and soften. Settings › Wallpaper offers it
+  beside the generated ones.
 - New fixtures: `narrationTest`, `imeTest`; the perf fixture gained `-PperfLoop`, `-PperfCompare`,
   `-PperfVerbose` and per-phase upload and dirty-area figures.
 
@@ -73,6 +76,9 @@
 
 ### Added
 
+- `UiScreenOptions.Builder.worldSnapshot(true)` and `UiContext.worldSnapshot()`: a screen captures
+  the game frame beneath it, without GUI, when it opens and after each resize, so a page can paint
+  the world and have liquid glass and blur act on it (`UiWorldSnapshot`).
 - `UiScreen.settled()`: whether the screen has finished drawing, for tests that measure idle
   repainting. A cold first frame can outlast the opening transition, which then paints once more.
 

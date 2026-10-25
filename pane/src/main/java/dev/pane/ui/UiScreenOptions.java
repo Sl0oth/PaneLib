@@ -11,6 +11,7 @@ public final class UiScreenOptions {
     private final UiClickHandler clickHandler;
     private final UiCloseHandler closeHandler;
     private final UiPerformanceDiagnostics performanceDiagnostics;
+    private final boolean worldSnapshot;
 
     private UiScreenOptions(Builder builder) {
         parent = builder.parent;
@@ -20,6 +21,7 @@ public final class UiScreenOptions {
         clickHandler = builder.clickHandler;
         closeHandler = builder.closeHandler;
         performanceDiagnostics = builder.performanceDiagnostics;
+        worldSnapshot = builder.worldSnapshot;
     }
 
     /** No parent screen, the default backdrop and no extra handlers. */
@@ -41,6 +43,8 @@ public final class UiScreenOptions {
     public UiCloseHandler closeHandler() { return closeHandler; }
     /** Opt-in render-thread diagnostics; disabled by default. */
     public UiPerformanceDiagnostics performanceDiagnostics() { return performanceDiagnostics; }
+    /** Whether the screen captures the game frame beneath it for {@link UiContext#worldSnapshot()}. */
+    public boolean worldSnapshot() { return worldSnapshot; }
 
     /** Collects values for one style; any left unset uses the default. */
     public static final class Builder {
@@ -55,6 +59,7 @@ public final class UiScreenOptions {
         private UiClickHandler clickHandler = UiClickHandler.NONE;
         private UiCloseHandler closeHandler = UiCloseHandler.NONE;
         private UiPerformanceDiagnostics performanceDiagnostics = UiPerformanceDiagnostics.NONE;
+        private boolean worldSnapshot;
 
         /** Parent restored by the default Escape/back behavior. Also inherits its background. */
         public Builder parent(Screen parent) {
@@ -99,6 +104,15 @@ public final class UiScreenOptions {
             performanceDiagnostics = diagnostics == null ? UiPerformanceDiagnostics.NONE : diagnostics;
             return this;
         }
+
+        /**
+         * Captures the game frame beneath the screen, without any GUI, when it opens and after each
+         * resize, for pages to paint with {@link UiContext#worldSnapshot()}. Because the page owns
+         * those pixels, liquid glass and backdrop blur bend and soften the world itself. The capture
+         * is a still: pair it with {@link #pauseGame(boolean)} so a singleplayer world stays as shown.
+         * Defaults to false.
+         */
+        public Builder worldSnapshot(boolean capture) { worldSnapshot = capture; return this; }
 
         /** The finished, immutable style. */
         public UiScreenOptions build() { return new UiScreenOptions(this); }

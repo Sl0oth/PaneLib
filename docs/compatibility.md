@@ -56,6 +56,7 @@ in the changelog:
 |---|---|---|
 | `UiNarration`, `UiContext.narration` | 1.0.0-beta.3 | New; roles and wording may grow as more controls are narrated. |
 | `UiScreen.compositionText` | 1.0.0-beta.3 | Diagnostic view of input-method composition. |
+| `UiScreenOptions.Builder.worldSnapshot`, `UiContext.worldSnapshot`, `UiWorldSnapshot` | 1.0.0-beta.3 | New; when captures are taken, such as a live mode for multiplayer, may grow. |
 | `UiContext.gpuGroup`, `gpuTransition`, `dragLayer` | 1.0.0-beta.1 | How glass inside GPU layers sees its backdrop may change. |
 | `UiCanvas.liquidGlass`, `UiGlass` | 1.0.0-beta.1 | The parameters' ranges and the look may be tuned. |
 

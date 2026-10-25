@@ -84,6 +84,8 @@ public class UiScreen extends Screen {
     private final Map<String, UiRect> nativeOverlayLayers = new LinkedHashMap<>();
     private final Map<String, UiRect> nativeOverlayLayersView = Collections.unmodifiableMap(nativeOverlayLayers);
     private final UiInteractionState interactions = new UiInteractionState();
+    /** Increments with each world capture request, so only the latest is kept. */
+    private long worldCaptureRequest;
     private double scrollOffset(String id) { return interactions.offsets.getOrDefault(id, 0D); }
     private List<UiHitRegion> hitRegions = List.of();
     private List<UiScrollRegion> scrollRegions = List.of();
@@ -1054,11 +1056,22 @@ public class UiScreen extends Screen {
     protected void init() {
         requestFullRepaint();
         hoverDirty = true;
+        if (options.worldSnapshot()) captureWorld();
         // Minecraft also calls init() on resize; only the first one is an entrance.
         if (!opened) {
             opened = true;
             startTransition(180);
         }
+    }
+
+    /** Asks for the next world frame; a capture that lands after the screen closed or reopened is dropped. */
+    private void captureWorld() {
+        long request = ++worldCaptureRequest;
+        dev.pane.ui.internal.WorldFrameCapture.request(image -> {
+            if (request != worldCaptureRequest) return;
+            interactions.worldSnapshot = new UiWorldSnapshot(image, request);
+            requestFullRepaint();
+        });
     }
 
     @Override
@@ -3050,6 +3063,7 @@ public class UiScreen extends Screen {
     @Override
     public void removed() {
         preedit = null; preeditBounds = null;
+        worldCaptureRequest++; interactions.worldSnapshot = null;
         if (textInputFocused) { textInputFocused = false; Minecraft.getInstance().onTextInputFocusChange(this, false); }
         pressedId = null; draggingSlider = null; draggingTextInput = null; draggingKey = null;
         nativeText.clear(); lastNativeTextCount = 0;

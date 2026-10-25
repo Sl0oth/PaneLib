@@ -16,9 +16,11 @@ final class PaneOsArt {
         GRAPHITE = 0xFF8E8E93;
     static final int[] ACCENTS = {BLUE, PURPLE, RED, ORANGE, YELLOW, GREEN, GRAPHITE};
     static final String[] ACCENT_NAMES = {"Blue", "Purple", "Red", "Orange", "Yellow", "Green", "Graphite"};
-    static final String[] WALLPAPERS = {"Tahoe", "Sequoia", "Ivory"};
+    static final String[] WALLPAPERS = {"Tahoe", "Sequoia", "Ivory", "Overworld"};
+    /** The wallpaper that is the Minecraft world behind the screen, when one is loaded. */
+    static final int OVERWORLD = 3;
     /** Whether the menu bar sits on a light area of each wallpaper. */
-    static final boolean[] LIGHT_TOP = {false, false, true};
+    static final boolean[] LIGHT_TOP = {false, false, true, false};
 
     private PaneOsArt() { }
 
@@ -54,18 +56,23 @@ final class PaneOsArt {
 
     // ------------------------------------------------------------------ wallpapers
 
-    static void wallpaper(UiCanvas g, int kind, boolean dark, float w, float h) {
-        art(g, kind, w, h);
+    static void wallpaper(UiCanvas g, int kind, boolean dark, float w, float h) { wallpaper(g, kind, dark, w, h, null); }
+
+    /** {@code world} is the frame behind the screen, painted for {@link #OVERWORLD}; without one that falls back to Tahoe. */
+    static void wallpaper(UiCanvas g, int kind, boolean dark, float w, float h, UiWorldSnapshot world) {
+        art(g, kind, w, h, world);
         finish(g, kind, dark, w, h);
     }
 
     /** The wallpaper with its painting kept in {@code art}, so switching appearance only re-tints it. */
-    static void wallpaper(UiCanvas g, UiLayer art, int kind, boolean dark, float w, float h) {
-        g.cachedLayer(art, List.of(Math.round(w), Math.round(h), kind), new UiRect(0, 0, w, h), c -> art(c, kind, w, h));
+    static void wallpaper(UiCanvas g, UiLayer art, int kind, boolean dark, float w, float h, UiWorldSnapshot world) {
+        g.cachedLayer(art, List.of(Math.round(w), Math.round(h), kind, world == null ? 0 : world.revision()), new UiRect(0, 0, w, h),
+            c -> art(c, kind, w, h, world));
         finish(g, kind, dark, w, h);
     }
 
-    private static void art(UiCanvas g, int kind, float w, float h) {
+    private static void art(UiCanvas g, int kind, float w, float h, UiWorldSnapshot world) {
+        if (kind == OVERWORLD && world != null) { g.image(world.image(), new UiRect(0, 0, w, h), UiImageOptions.photo()); return; }
         switch (kind) {
             case 1 -> sequoia(g, w, h);
             case 2 -> ivory(g, w, h);

@@ -518,6 +518,13 @@ public final class UiContext {
         return value != null && value.equals(stringValue(key, null));
     }
 
+    /**
+     * The game frame beneath this screen when it was opened with
+     * {@link UiScreenOptions.Builder#worldSnapshot(boolean)}; empty until the first capture arrives
+     * (the page repaints then), and always empty on HUDs and screens that did not ask for it.
+     */
+    public java.util.Optional<UiWorldSnapshot> worldSnapshot() { return java.util.Optional.ofNullable(interactions.worldSnapshot); }
+
     /** The number stored under {@code key}, or {@code fallback} when it holds none. */
     public double numberValue(String key, double fallback) {
         Object value = state.get(key);

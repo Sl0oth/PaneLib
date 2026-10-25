@@ -56,7 +56,7 @@ public final class PaneOsShowcase {
     /** Caches that outlive individual paints. */
     static final class Caches {
         final UiLayer wallpaper = new UiLayer(), wallpaperArt = new UiLayer(), desk = new UiLayer(), photos = new UiLayer(), map = new UiLayer(), lock = new UiLayer();
-        final UiLayer[] wallpaperThumbs = {new UiLayer(), new UiLayer(), new UiLayer()};
+        final UiLayer[] wallpaperThumbs = {new UiLayer(), new UiLayer(), new UiLayer(), new UiLayer()};
     }
 
     /** Builds the screen object; the performance probe substitutes a measuring subclass. */
@@ -79,13 +79,16 @@ public final class PaneOsShowcase {
                 .font(12, Font.PLAIN).shape(26, 8).preferAbove(true))
             .page(new UiPage("desktop", "PaneOS", "", PaneOsArt.BLUE, ui -> paint(ui, caches))).build();
         UiScreen[] self = new UiScreen[1];
-        var options = UiScreenOptions.builder().parent(parent).backdrop(UiBackdrop.NONE)
+        // In a world, the desktop starts on the world itself, held still beneath it.
+        boolean inWorld = Minecraft.getInstance().level != null;
+        var options = UiScreenOptions.builder().parent(parent).backdrop(UiBackdrop.NONE).worldSnapshot(inWorld).pauseGame(inWorld)
             .onKey(PaneOsShowcase::key)
             .onClick((screen, click) -> { pointerDown(screen, click.targetId(), click.doubleClick()); return false; })
             .onClose(PaneOsShowcase::escape).build();
         self[0] = maker.make(doc, PaneOsEvents::handle, options);
         self[0].setValue("boot:at", (double) System.currentTimeMillis());
         self[0].setValue("locked", true);
+        if (inWorld) self[0].setValue("wallpaper", (double) PaneOsArt.OVERWORLD);
         self[0].requestFocus("lock:field");
         return self[0];
     }
@@ -159,7 +162,8 @@ public final class PaneOsShowcase {
         boolean widgets = ui.booleanValue("widgets", true);
         long day = java.time.LocalDate.now().toEpochDay();
         String reminders = PaneOsWidgets.reminderKey(ui);
-        Object wallRevision = List.of(Math.round(w), Math.round(h), wallpaper, look.dark());
+        UiWorldSnapshot world = ui.worldSnapshot().orElse(null);
+        Object wallRevision = List.of(Math.round(w), Math.round(h), wallpaper, look.dark(), world == null ? 0 : world.revision());
         Object deskRevision = List.of(wallRevision, widgets, day, reminders, look.accent(),
             Math.round(ui.numberValue("refraction", 14) * 10), Math.round(ui.numberValue("frost", 6) * 10),
             ui.booleanValue("music:playing", false), (int) ui.numberValue("music:track", 0));
@@ -170,7 +174,7 @@ public final class PaneOsShowcase {
         long sinceUnlock = System.currentTimeMillis() - (long) ui.numberValue("unlockedAt", 0);
 
         g.cachedLayer(caches.desk, deskRevision, new UiRect(0, 0, w, h), c -> {
-            c.cachedLayer(caches.wallpaper, wallRevision, new UiRect(0, 0, w, h), wc -> PaneOsArt.wallpaper(wc, caches.wallpaperArt, wallpaper, look.dark(), w, h));
+            c.cachedLayer(caches.wallpaper, wallRevision, new UiRect(0, 0, w, h), wc -> PaneOsArt.wallpaper(wc, caches.wallpaperArt, wallpaper, look.dark(), w, h, world));
             if (widgets) PaneOsWidgets.paintStatic(c, ui, look, h);
         });
         ui.hit("desk:bg", "desk:none", 0, MENU_H, w, h - MENU_H);

@@ -31,6 +31,7 @@ something changes and is otherwise one reused GPU texture, so idle screens cost 
 | Backgrounds | Title panorama, in-world, the parent screen or full-screen | ✅ 0.9.1 |
 | HUDs | In-game HUDs that can replace vanilla elements and put them back | ✅ 0.9.x |
 | Demo mod | PaneOS (a Mac-like desktop), Wayfarer menu and HUD, Pane Mail inbox | ✅ 1.0.0-beta.2 |
+| World snapshot | A screen can paint the game frame behind it, so glass and blur bend the world (PaneOS's Overworld wallpaper) | 🔜 1.0.0-beta.3 |
 | Speed | Draws on several cores with identical pixels: full PaneOS repaints 13–18 ms, clicks 8–13 ms (were 33 and 26) | 🔜 1.0.0-beta.3 |
 | IME input | Chinese, Japanese and Korean composition at the caret; a committed word undoes in one step | 🔜 1.0.0-beta.3 |
 | Narrator | Minecraft's narrator reads controls, their state, dialogs, toasts and list rows | 🔜 1.0.0-beta.3 |

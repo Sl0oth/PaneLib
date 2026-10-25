@@ -551,9 +551,12 @@ final class PaneOsApps {
                 }
             }
             case 4 -> {
-                float tw = (cw - 24) / 3, th = tw * .62F;
+                // The Overworld wallpaper is offered only where there is a world behind the screen.
+                UiWorldSnapshot world = ui.worldSnapshot().orElse(null);
+                int count = world == null ? 3 : 4;
+                float tw = (cw - 12 * (count - 1)) / count, th = tw * .62F;
                 int current = (int) ui.numberValue("wallpaper", 0);
-                for (int i = 0; i < 3; i++) {
+                for (int i = 0; i < count; i++) {
                     float tx = cx + i * (tw + 12);
                     int kind = i;
                     boolean chosen = current == i;
@@ -561,13 +564,14 @@ final class PaneOsApps {
                     ui.paintedButton("settings:wall:" + i, PaneOsArt.WALLPAPERS[i], "wallpaper:" + i, tx, y, tw, th + 26, 12, true, (c, s) -> {
                         if (chosen) c.strokeRoundRect(look.accent(), 3, tx - 3, y - 3, tw + 6, th + 6, 13);
                         c.withRoundedClip(tx, y, tw, th, 10, () -> c.withTranslation(tx, y, () ->
-                            c.cachedLayer(thumb, List.of(kind, Math.round(tw), look.dark()), new UiRect(0, 0, tw, th),
-                                l -> PaneOsArt.wallpaper(l, kind, look.dark(), tw, th))));
+                            c.cachedLayer(thumb, List.of(kind, Math.round(tw), look.dark(), world == null ? 0 : world.revision()), new UiRect(0, 0, tw, th),
+                                l -> PaneOsArt.wallpaper(l, kind, look.dark(), tw, th, world))));
                         c.centeredText(PaneOsArt.WALLPAPERS[kind], tx + tw / 2, y + th + 15, 12.5F, chosen ? look.text() : look.secondary(),
                             chosen ? Font.BOLD : Font.PLAIN, PaneOsArt.FONT);
                     });
                 }
-                g.text("Wallpapers are generated from code at the exact pixel size of your window.", cx, y + th + 48, 12, look.secondary(), Font.PLAIN, PaneOsArt.FONT);
+                g.text(world == null ? "Wallpapers are generated from code at the exact pixel size of your window."
+                    : "Overworld is the world behind PaneOS; the others are generated from code.", cx, y + th + 48, 12, look.secondary(), Font.PLAIN, PaneOsArt.FONT);
             }
             case 5 -> {
                 float pw = cw, ph = 150;

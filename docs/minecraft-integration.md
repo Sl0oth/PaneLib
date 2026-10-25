@@ -43,6 +43,29 @@ ui.canvas().grain(0x10000000, .05F, 0, 0, ui.width(), ui.height());
 This makes a screen feel embedded in the game while retaining crisp text, arbitrary geometry, and
 event-driven idle rendering.
 
+### Painting the world itself
+
+Minecraft showing through a transparent surface is drawn by the GPU after PaneLib's pixels, so
+`liquidGlass` and `backdropBlur` cannot bend or soften it. When they should, ask the screen for a
+snapshot of the world frame and paint it yourself:
+
+```java
+UiScreenOptions options = UiScreenOptions.builder()
+    .worldSnapshot(true)  // capture the game frame, without any GUI, on open and after each resize
+    .pauseGame(true)      // a capture is a still; pausing keeps a singleplayer world as shown
+    .build();
+
+// In the page painter:
+ui.worldSnapshot().ifPresent(world ->
+    ui.canvas().image(world.image(), new UiRect(0, 0, ui.width(), ui.height()), UiImageOptions.photo()));
+ui.canvas().liquidGlass(x, y, w, h, 24, glass);  // now refracts the landscape
+```
+
+The snapshot is empty until the first capture arrives a frame or two after opening, and the page
+repaints when it does. `UiWorldSnapshot.revision()` changes with each capture, so it can key a
+`UiLayer` cache. In multiplayer the world keeps moving behind the still; prefer a transparent page
+there. PaneOS's Overworld wallpaper is built this way.
+
 ## Escape and custom back behavior
 
 With a parent configured, ordinary Escape restores it automatically. Add a close hook only when

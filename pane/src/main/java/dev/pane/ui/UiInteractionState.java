@@ -16,6 +16,8 @@ final class UiInteractionState {
     final Deque<UiScrollRegion> ancestors = new ArrayDeque<>();
     /** Present only while a screen's page paint can hand groups to the GPU compositor. */
     UiGpuLayers.Collector gpuLayers;
+    /** The world frame captured beneath the screen, or null; set by the screen before each paint. */
+    UiWorldSnapshot worldSnapshot;
     /** Show/hide state of each {@link UiContext#gpuTransition}, kept between paints. */
     final Map<String, Transition> transitions = new HashMap<>();
 
