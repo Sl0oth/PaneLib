@@ -1126,11 +1126,9 @@ public class UiScreen extends Screen {
             popupDirty = toastOverlay.dirty = tooltipOverlay.dirty = true;
         }
         synchronizeViewport(graphics);
-        boolean pointerMoved = this.mouseX != mouseX || this.mouseY != mouseY;
-        this.mouseX = mouseX;
-        this.mouseY = mouseY;
-        // Minecraft reports the cursor every frame; follow it even when no move event arrived.
-        if (pointerMoved) trackPointer(mouseX * eventLayoutScale(), mouseY * eventLayoutScale());
+        // Minecraft reports the cursor every frame but sends move events only while its window has
+        // focus; follow the cursor here too, as vanilla widgets hover beneath it in an unfocused window.
+        if (this.mouseX != mouseX || this.mouseY != mouseY) mouseMoved(mouseX, mouseY);
         long now = System.nanoTime();
         dialogBlurScratch.releaseIfIdle(now);
         if (transitionEnd > 0) {

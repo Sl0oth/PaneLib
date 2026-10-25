@@ -63,6 +63,9 @@
 ### Fixed
 
 - Hover repaints stay page-wide for painters that read the shared `UiContext.interactionMotion`.
+- Hover follows the cursor in an unfocused window, as vanilla widgets do. Minecraft sends move
+  events only to a focused window, so a control under the cursor stayed unhovered after another
+  app or a fullscreen change took focus.
 
 ## 1.0.0-beta.2 — readable tooltips, the demo mod and Windows verification
 
