@@ -57,9 +57,12 @@
 - Every public type, member and enum constant has Javadoc; mixins and `dev.pane.ui.internal` are
   marked internal. `-Pdoclint=all,-missing` reports nothing.
 - `docs/compatibility.md` drafts what 1.x will promise and lists experimental APIs.
+- The demo's gallery opens a **Field kit** in a world: a PaneLib panel beside the running world
+  with the live player model, real item icons, tabs, a dropdown and tooltips.
 - PaneOS opened in a world starts on an **Overworld** wallpaper: the world you are standing in,
   which its glass dock, widgets and lock-screen blur bend and soften. Settings › Wallpaper offers it
   beside the generated ones.
+- `-PscreenshotTour` captures gallery screenshots in a fresh survival world, PaneOS included.
 - New fixtures: `narrationTest`, `imeTest`; the perf fixture gained `-PperfLoop`, `-PperfCompare`,
   `-PperfVerbose` and per-phase upload and dirty-area figures.
 
@@ -69,6 +72,10 @@
 - Hover follows the cursor in an unfocused window, as vanilla widgets do. Minecraft sends move
   events only to a focused window, so a control under the cursor stayed unhovered after another
   app or a fullscreen change took focus.
+- The Wayfarer HUD's paper panels drew a parchment texture the demo no longer ships, leaving dark
+  text on dark cloth. The paper is now drawn in code.
+- A dropdown's own tooltip no longer shows over the menu it opened while the pointer rests on the
+  trigger.
 - A GPU-animated group that finished while only another part of the page was repainting, such as
   the second of two PaneOS windows opened together while music played, never reached the screen:
   its animation ended and the page beneath had not been uploaded there. The screen now repaints

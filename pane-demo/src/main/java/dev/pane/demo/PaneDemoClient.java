@@ -41,6 +41,7 @@ public final class PaneDemoClient implements ClientModInitializer {
     private final WindowHudAuditTest windowHudTest = Boolean.getBoolean("pane.demo.windowHudTest") ? new WindowHudAuditTest() : null;
     private final NarrationAuditTest narrationTest = Boolean.getBoolean("pane.demo.narrationTest") ? new NarrationAuditTest() : null;
     private final ImeAuditTest imeTest = Boolean.getBoolean("pane.demo.imeTest") ? new ImeAuditTest() : null;
+    private final ScreenshotTour screenshotTour = Boolean.getBoolean("pane.demo.screenshotTour") ? new ScreenshotTour() : null;
     private final AdoptionAuditTest adoptionTest = Boolean.getBoolean("pane.demo.adoptionTest") ? new AdoptionAuditTest() : null;
     private int startupTicks;
     private boolean demoShown;
@@ -75,6 +76,7 @@ public final class PaneDemoClient implements ClientModInitializer {
             while (OPEN_DEMO.consumeClick()) client.gui.setScreen(ExampleGallery.createScreen(client.gui.screen()));
             while (TOGGLE_HUD.consumeClick()) ExampleHudController.toggle();
             if (examplesTest != null) { examplesTest.tick(client); return; }
+            if (screenshotTour != null) { screenshotTour.tick(client); return; }
             if (windowHudTest != null) { windowHudTest.tick(client); return; }
             if (narrationTest != null) { narrationTest.tick(client); return; }
             if (imeTest != null) { imeTest.tick(client); return; }

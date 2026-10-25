@@ -12,6 +12,8 @@ pane/logs/
 *.jfr
 
 pane-demo/run-benchmark/
+# Screenshots are taken with -PscreenshotTour and published outside the repository.
+docs/screenshots/
 
 # Local release preservation and reproducible gallery exports
 /release-snapshots/
