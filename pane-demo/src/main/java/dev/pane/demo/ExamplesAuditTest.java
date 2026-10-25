@@ -61,7 +61,9 @@ final class ExamplesAuditTest {
                 case 17 -> {check(!ExampleHudController.vanilla().enabled(),"vanilla recipe toggles off");ExampleHudController.select("wayfarer-hud");advance(600);}
                 case 18 -> {check(ExampleHudController.wayfarer().belt().snapshot().hasSurface(),"closed attachment IDs can be reused");check(inventory.equals(inventory(c)),"switching recipes preserves inventory");net.minecraft.client.KeyMapping.click(com.mojang.blaze3d.platform.InputConstants.Type.KEYSYM.getOrCreate(GLFW.GLFW_KEY_H));advance(600);}
                 case 19 -> {gallery=current(c);check(gallery.regionBounds("wayfarer").isPresent(),"H opens the public shelf during gameplay");click(gallery,"disable-hud");advance(400);}
-                case 20 -> {check(!ExampleHudController.active(),"HUD off removes selected owner through gallery input");c.disconnect(new TitleScreen(),false);advance(600);}
+                case 20 -> {check(!ExampleHudController.active(),"HUD off removes selected owner through gallery input");click(gallery,"field-kit");advance(900);}
+                case 21 -> {var s=current(c);check(s!=gallery&&s.regionBounds("slot-hit0").isPresent()&&s.regionBounds("tabs-1").isPresent(),"Field kit opens over the world from the gallery");capture(c,"field-kit-live-world");escape(s);advance(500);}
+                case 22 -> {check(c.gui.screen()==null,"Escape closes the field kit back to the game");c.disconnect(new TitleScreen(),false);advance(600);}
                 default -> {if(c.level!=null)return;check(!ExampleHudController.active(),"disconnect after removing recipe leaves no active owner");System.out.println("[ExamplesTest] complete PASS checks="+checks);done=true;c.stop();}
             }
         } catch(Throwable error) {error.printStackTrace();System.out.println("[ExamplesTest] FAIL "+error);done=true;c.stop();}

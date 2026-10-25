@@ -6,7 +6,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.resources.Identifier;
 
-/** The one showcase launcher: three curated examples plus the example HUDs. Esc returns here from each. */
+/** The one showcase launcher: three curated examples, the example HUDs and the in-world field kit. Esc returns here from each. */
 public final class ExampleGallery {
     private static final int PAPER=0xFFF1EBDD, INK=0xFF252820, MUTED=0xFF686B61, RULE=0xFFCCC8B9, GOLD=0xFFFFD357;
     private static final String FONT=ExampleFonts.FAMILY;
@@ -29,6 +29,10 @@ public final class ExampleGallery {
                     ExampleHudController.select(key);
                     if(client.level!=null) client.gui.setScreen(null);
                     else { s.setValue("hud-note",key.equals("wayfarer-hud")?"Wayfarer HUD selected":"Vanilla HUD selected"); s.invalidate(); }
+                }
+                case "field-kit" -> {
+                    if(client.level!=null) client.gui.setScreen(InWorldShowcase.createScreen());
+                    else { s.setValue("hud-note","Open a world first, then press H and choose Field kit."); s.invalidate(); }
                 }
                 case "disable-hud" -> { ExampleHudController.select("none"); s.setValue("hud-note","Example HUD removed"); s.invalidate(); }
                 case "back" -> s.onClose();
@@ -75,6 +79,7 @@ public final class ExampleGallery {
         button(ui,"wayfarer-hud","Wayfarer HUD",m,foot+22,160,30);
         button(ui,"vanilla-hud","Vanilla HUD",m+170,foot+22,145,30);
         button(ui,"disable-hud","HUD off",m+325,foot+22,95,30);
+        button(ui,"field-kit","Field kit",m+430,foot+22,100,30);
         text(g,ui.stringValue("hud-note", "Choose a HUD, then open a world. H: this launcher · J: toggle HUD · Esc: back here."),m,foot+62,11,MUTED,false);
         button(ui,"back","Back to Minecraft",w-m-170,foot+22,170,30);
     }
