@@ -18,4 +18,4 @@ Developer regression:
 ./gradlew :pane-demo:runClient -Pisolated -PgmailTest
 ```
 
-The scroll test uses a smaller window to guarantee overflow; a roomy inbox correctly has nothing to scroll. See [all examples](../README.md). Historical capture notes are archived under `examples/archive/notes/`.
+The scroll test uses a smaller window to guarantee overflow; a roomy inbox correctly has nothing to scroll. See [all examples](../README.md).

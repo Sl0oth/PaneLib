@@ -23,4 +23,4 @@ That supplementary panel uses vanilla textures, live native items and Minecraft'
 
 Deterministic capture fixtures remain separate in `tools/fixtures/wayfarer-hud.py` and create a scratch world when their isolated profile has no save. Compatibility commands such as `python3 examples/wayfarer-hud/launch.py --restoration-test` build first, then run those fixtures. They are not the public launch path. `--test`, `--font-test`, `--quality-test`, `--placement-test` and `--efficiency-test` are separate invocations.
 
-Materials: [source credits](materials/LICENSE-AND-SOURCE.md). Earlier capture history is archived under `examples/archive/notes/`. See [the example index](../README.md) and `docs/audits/` for evidence and limitations.
+Materials: [source credits](materials/LICENSE-AND-SOURCE.md). See [the example index](../README.md).

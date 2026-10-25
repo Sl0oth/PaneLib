@@ -55,8 +55,7 @@ and forced-redraw measurements. It opens no world and quits after printing resul
 The listener runs at most once per 250 ms even during repainting. Static toasts no longer schedule
 frames; only their changing fade opacity and removal invalidate the retained surface.
 
-See [the engineering audit](engineering-audit-2026-10-16.md) for before/after evidence and remaining
-profiling work. Snapshot timings are latest values, not retained maxima; short spikes can occur
+Snapshot timings are latest values, not retained maxima; short spikes can occur
 between callback samples. Use a frame capture or JFR when measuring those spikes.
 
 The subsequent layered UI pass moves toast fades/expiry to an independent cropped texture.
@@ -68,24 +67,9 @@ The Atlas pass adds `cachedLayer` to reuse expensive drawing under changing affi
 and optional worker-side `prewarmFonts` to move cold font work out of a first visible frame.
 `UiHud.setValue` coalesces equal values; its retained content repaints only on changed data,
 finite content animation, or visibility transitions. Anchor motion composites the cached texture.
-See [the Atlas report](atlas-iteration-2026-10-16.md) for active-animation timings, cold-start
-observations, actual-world input/lifecycle tests, and capture limitations.
+Run `-Pbenchmark -Pprofile` for the isolated Atlas benchmark; it keeps the interactive client's
+run directory separate.
 
-The [active performance follow-up](performance-iteration-2026-10-16.md) records matched client
-CSV/JFR measurements, premultiplied/cropped drawing caches, full regression results, and the
-remaining frame-time and Windows validation limits. Run `-Pbenchmark -Pprofile` for the isolated
-Atlas benchmark; it keeps the interactive client's run directory separate.
-
-The [October 21 editor and pixel-transfer pass](audits/performance-2026-10-21.md) removes hidden
-selection painting and redundant geometry copies, and reduces pixel conversion cost. It includes
-reproducible CPU workloads, pixel/geometry parity checks and matched Minecraft measurements;
-the measured upload improvement is not a general FPS claim.
-
-The [October 21 cleanup and paint-cost pass](audits/cleanup-and-paint-2026-10-21.md) draws
-shadows in one blend instead of up to fourteen antialiased rings, limits caret and selection
-updates to their editor, and removes duplicated surface and control code. A full-page CPU
-repaint benchmark halved; it is a raster workload, not a frame-rate claim.
-
-The [screen split and GPU layers pass](audits/screen-split-and-gpu-layers-2026-10-21.md) adds
-`ui.gpuLayer`, which animates a cached group's transform and opacity on the GPU with zero page
-repaints per frame, and moves toasts, tooltips, popups and virtual lists out of `UiScreen`.
+Shadows draw in one blend, and caret and selection updates repaint only their editor.
+`ui.gpuLayer` animates a cached group's transform and opacity on the GPU with zero page repaints
+per frame; toasts, tooltips, popups and virtual lists draw in their own layers.

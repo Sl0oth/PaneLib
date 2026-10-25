@@ -8,7 +8,6 @@ All 25 immutable version files were downloaded anonymously over verified HTTPS a
 approved candidate. Independent file and public Maven consumers built successfully, the bundled
 JAR matched exactly, and both completed their Minecraft smoke checks on macOS ARM64. Dependency
 caches were reused; fresh endpoint downloads were checked separately. See the
-[publication audit](audits/public-maven-publication-2026-10-21.md) and
 [installation guide](installation.md).
 
 **`1.0.0-beta.2` was added on October 22, 2026.** Its [release](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.2)

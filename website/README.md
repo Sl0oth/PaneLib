@@ -12,7 +12,7 @@ python3 -m venv .venv
 ```
 
 Open `http://127.0.0.1:4173/`. All thirteen guides appear below the introduction in one continuous document. Menu and search links jump to section anchors; old guide URLs still jump to the matching section. The site works under a GitHub Pages subdirectory.
-Generated `dist/`, the environment and copied Claude reference packet are ignored. Local fonts
+Generated `dist/` and the environment are ignored. Local fonts
 retain their included OFL license. Original screenshots/captures are from PaneLib's actual client.
 
 The `Documentation` workflow builds documentation and the complete approved Maven catalog together
@@ -25,7 +25,3 @@ repository token and Pages/OIDC deployment permissions, with no personal access 
 `dist/maven/`; it downloads pinned release ZIPs and never rebuilds library binaries. Local docs-only
 preview is fine, but do not manually deploy that directory without assembling the complete catalog.
 The workflow is the deployment path for both. See [public Maven hosting](../docs/public-maven.md).
-
-The planned Maven endpoint is not published yet. The committed catalog is empty; local publication
-staging is not approval or evidence of a public download. Public Maven examples must use a version
-from the approved catalog once populated, never assume the working version is already published.

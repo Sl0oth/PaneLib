@@ -110,4 +110,4 @@ python3 examples/wayfarer-hud/launch.py --font-test
 This copies the existing private fixture world to `pane-demo/run-native-font`, creates a temporary
 font pack there, tests the HUD, then disconnects and tests a world-free screen. It exits afterward.
 It never selects a personal save. The existing `--restoration-test` also exercises the migrated
-example. See [verification and limits](audits/vanilla-font-api-2026-10-21.md).
+example.

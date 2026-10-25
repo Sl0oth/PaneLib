@@ -96,5 +96,4 @@ upload, append-only catalog change, Pages deployment and anonymous consumer veri
 already verified candidate ZIP byte for byte. Do not rebuild an older release to deploy documentation
 or add a newer version. Keep publication separate from `prepareRelease` and consumer verification.
 
-See [installation](installation.md) for developer instructions and the
-[improvement plan](audits/grade-improvement-plan-2026-10-21.md) for remaining gates.
+See [installation](installation.md) for developer instructions.

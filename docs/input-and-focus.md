@@ -23,8 +23,7 @@ complements `textWidth` for custom layout. Public lengths and caret indices use 
 but editing stops at extended grapheme boundaries: an accented letter, emoji with skin tone,
 flag or joined emoji sequence stays together during navigation, selection, deletion and truncation.
 This behavior is in **1.0.0-beta.1** and later; 0.9.9-beta.1 still uses codepoint
-boundaries. No consumer API change is needed. Segmentation follows Java 25's Unicode 16 rules;
-see [Unicode editing validation](audits/grapheme-editing-2026-10-21.md).
+boundaries. No consumer API change is needed. Segmentation follows Java 25's Unicode 16 rules.
 
 Insertion limits still count UTF-16 units, not visible characters. If the remaining capacity cannot
 fit a complete cluster, the inserted text is shortened at the preceding cluster boundary. Existing

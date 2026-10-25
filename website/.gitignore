@@ -1,6 +1,3 @@
 .venv/
 dist/
-reference/
-empty-mcp.json
 __pycache__/
-CLAUDE_BRIEF.md

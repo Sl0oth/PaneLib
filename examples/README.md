@@ -33,4 +33,4 @@ On October 22 the demo module was trimmed to the examples above. Gather, Briarke
 Atlas/Studio benchmark, Design Lab, the style gallery and the small feature showcases were removed,
 together with fixtures that only exercised them. No library features were removed.
 
-`tools/fixtures/` contains internal frozen-client regression launchers. These are separate from consumer launch commands. Run `./gradlew :pane-demo:runExamples -PexampleTest` for the new gallery and live HUD flow in a newly generated disposable world. Detailed evidence lives in `docs/audits/`.
+`tools/fixtures/` contains internal frozen-client regression launchers. These are separate from consumer launch commands. Run `./gradlew :pane-demo:runExamples -PexampleTest` for the new gallery and live HUD flow in a newly generated disposable world.

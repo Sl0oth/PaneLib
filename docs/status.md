@@ -16,11 +16,10 @@ unchanged. This release does not update Modrinth or establish its approval statu
 
 A clean source rebuild reproduced all nine release files byte for byte. Public endpoint downloads
 matched all 25 immutable version files. Independent file and public Maven consumers built, matched
-the nested runtime bytes, and passed actual Minecraft smoke checks on macOS ARM64. See the
-[publication audit](audits/public-maven-publication-2026-10-21.md). This establishes the published
-beta's consumption path; the remaining adoption limits below still apply.
+the nested runtime bytes, and passed actual Minecraft smoke checks on macOS ARM64. This establishes
+the published beta's consumption path; the remaining adoption limits below still apply.
 
-1.0.0-beta.1 adds [grapheme-safe editing](audits/grapheme-editing-2026-10-21.md), liquid glass, GPU-animated
+1.0.0-beta.1 adds grapheme-safe editing, liquid glass, GPU-animated
 groups and region-only repaints. The 0.9.9-beta.1 artifacts described above are unchanged. [Platform testing](platform-testing.md)
 records hosted build/client checks and the Windows 11 desktop run, where every automated client check passed.
 
@@ -70,19 +69,8 @@ removed on October 22 so the demo module holds only the three examples above and
 
 ## Evidence and its limits
 
-Each audit records the tested source/artifact, fixture scope, and runtime environment. Do not add
-historical check counts together and treat that as one test run of the current binary.
-
-- [Curated examples and portable launches](audits/example-refresh-2026-10-21.md): the completed
-  example-refresh baseline, including real-client checks and packaged-consumer validation.
-- [Native Minecraft fonts](audits/vanilla-font-api-2026-10-21.md): label rendering, resource reloads,
-  clipping, and HUD/native-layer interaction checks at that artifact revision.
-- [API and efficiency work](audits/api-comparison-and-efficiency-2026-10-21.md): scoped upload,
-  placement, and state-projection measurements. These are not general FPS guarantees.
-
-The October 16 Atlas reports and October 17 independent audit remain historical evidence. Their
-old feature inventories and issue status do not supersede the newer per-change reports or current
-source.
+[Platform testing](platform-testing.md) records which source and machines each check ran on. Do not
+add check counts from different runs together and treat them as one test of the current binary.
 
 ## Limits to consider before adopting
 
