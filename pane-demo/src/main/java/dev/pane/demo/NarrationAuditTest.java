@@ -6,6 +6,7 @@ import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.narration.ScreenNarrationCollector;
 import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import org.lwjgl.glfw.GLFW;
 
@@ -91,11 +92,31 @@ final class NarrationAuditTest {
                 String changed = screen.collect(true);
                 check(first.contains("Save button") && changed.contains("Name edit box") && !changed.contains("Save"),
                     "moving focus speaks the newly focused control (\"" + changed + "\")");
+                // Minecraft speaks what changed after every key; typing must not read the field back each time.
+                screen.keyPressed(new KeyEvent(GLFW.GLFW_KEY_END, 0, 0));
+                for (char typed : "abc".toCharArray()) {
+                    screen.charTyped(new CharacterEvent(typed));
+                    String said = screen.collect(true);
+                    check(said.isEmpty(), "typing \"" + typed + "\" in a focused field says nothing (\"" + said + "\")");
+                }
+                for (int key : new int[] {GLFW.GLFW_KEY_LEFT, GLFW.GLFW_KEY_RIGHT, GLFW.GLFW_KEY_BACKSPACE}) {
+                    screen.keyPressed(new KeyEvent(key, 0, 0));
+                    String said = screen.collect(true);
+                    check(said.isEmpty(), "key " + key + " in a focused field says nothing (\"" + said + "\")");
+                }
+                screen.focus("save");
+                screen.collect(true);
+                deadline = System.nanoTime() + 200_000_000L;
+            }
+            case 2 -> {
+                screen.focus("name");
+                String back = screen.collect(true);
+                check(back.contains("Name edit box: Sl0othab"), "returning to the field reads its new text once (\"" + back + "\")");
                 screen.focus("ask");
                 screen.keyPressed(new KeyEvent(GLFW.GLFW_KEY_ENTER, 0, 0));
                 deadline = System.nanoTime() + 300_000_000L;
             }
-            case 2 -> {
+            case 3 -> {
                 String dialog = screen.collect(false);
                 check(dialog.contains("Delete note?") && dialog.contains("This cannot be undone.") && dialog.contains("Keep button"),
                     "an open dialog speaks its title, message and focused button (\"" + dialog + "\")");
@@ -103,7 +124,7 @@ final class NarrationAuditTest {
                 screen.showPage("about");
                 deadline = System.nanoTime() + 300_000_000L;
             }
-            case 3 -> {
+            case 4 -> {
                 check(screen.getNarrationMessage().getString().contains("About"), "switching pages changes the narrated title");
                 System.out.println("[NarrationTest] complete " + (failures == 0 ? "PASS" : "FAIL") + " checks=" + checks);
                 finished = true;

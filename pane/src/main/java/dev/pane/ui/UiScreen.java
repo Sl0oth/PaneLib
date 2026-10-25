@@ -197,6 +197,8 @@ public class UiScreen extends Screen {
     private UiRect imeArea;
     /** What the narrator says about each control of the latest paint. */
     private Map<String, UiNarration> narrations = Map.of();
+    /** The focused field's text when focus reached it; narrated instead of the live text so typing is not read back. */
+    private String narratedFocusId, narratedFieldText;
     /** Controls whose hover or press state the latest paint read, or null when any control's may change the page. */
     private Set<String> interactionPainted = Set.of();
     /** Timed repaints requested by the latest paint, each due on its own. */
@@ -814,6 +816,14 @@ public class UiScreen extends Screen {
         }
         String id = focusedId != null ? focusedId : hoveredId;
         UiNarration narration = narration(id);
+        if (!Objects.equals(focusedId, narratedFocusId)) {
+            narratedFocusId = focusedId;
+            narratedFieldText = narration != null && id.equals(focusedId) ? narration.state() : null;
+        }
+        // A focused field is described with the text it had when focus arrived: Minecraft speaks
+        // whatever changed after each key, so the live text would be read back on every keystroke.
+        if (narration != null && narration.role() == UiNarration.Role.TEXT_FIELD && id.equals(focusedId))
+            narration = narration.withState(narratedFieldText);
         if (narration != null) parts.addAll(narration.parts(id.equals(focusedId)));
         return parts;
     }

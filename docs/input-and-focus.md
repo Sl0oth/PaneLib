@@ -275,7 +275,9 @@ document). Built-in controls describe themselves in Minecraft's own words: "Save
 Enter to activate", "Checkbox: Snap to grid. ON", "Volume: 50% slider", "Name edit box: Sl0oth",
 "Audio tab. Selected tab 2 out of 3". Password fields never speak their characters. A dialog speaks
 its title, message and focused button; toasts are spoken as they appear; a control in a
-`virtualList` row is spoken as that row of the whole list.
+`virtualList` row is spoken as that row of the whole list. A focused text field or area is read
+with the text it had when focus arrived, so typing is not read back after every key; moving focus
+away and back reads its current text.
 
 Controls without words of their own, such as `toggle`, `iconButton` and `slider`, take their label
 from a `tooltip` with the same id, or from an explicit description:

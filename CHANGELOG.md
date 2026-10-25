@@ -41,6 +41,8 @@
 - The focused control, or the hovered one, is narrated under the screen title, which includes the
   page title in a multi-page document. Dialogs speak their title, message and focused button,
   toasts are spoken as they appear, and virtual-list rows say their place in the whole list.
+- A focused text field or text area is read with the text it had when focus reached it. Minecraft
+  speaks whatever changed after each key, so the live text was read back on every keystroke.
 
 ### Input methods
 

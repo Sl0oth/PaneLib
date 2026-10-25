@@ -34,7 +34,7 @@ public record UiNarration(Role role, String label, String state, int position, i
         TAB,
         /** "Volume: 40% slider", with how to change it from the keyboard. */
         SLIDER,
-        /** "Name edit box:" followed by the field's text. */
+        /** "Name edit box:" followed by the field's text as it was when focus reached it, so typing is not read back. */
         TEXT_FIELD,
         /** An edit box whose characters are never spoken. */
         PASSWORD,
