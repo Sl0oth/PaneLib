@@ -80,8 +80,11 @@ final class UiGpuLayers {
         return false;
     }
 
-    /** Adopts one paint's requests: rasterizes changed content, retargets motion, drops absent ids. */
-    void reconcile(List<Request> requests, float quality, float motionScale, long now) {
+    /**
+     * Adopts one paint's requests: rasterizes changed content, retargets motion, drops absent ids.
+     * Returns where each dropped layer was shown, since the page beneath must now hold that content.
+     */
+    List<UiRect> reconcile(List<Request> requests, float quality, float motionScale, long now) {
         var seen = new HashSet<String>();
         for (Request request : requests) {
             seen.add(request.id());
@@ -129,13 +132,16 @@ final class UiGpuLayers {
             layer.quality = quality;
             rasterCount++;
         }
+        var dropped = new ArrayList<UiRect>();
         var iterator = layers.entrySet().iterator();
         while (iterator.hasNext()) {
             var entry = iterator.next();
             if (seen.contains(entry.getKey())) continue;
             if (entry.getValue().surface != null) entry.getValue().surface.close();
+            if (entry.getValue().screen != null) dropped.add(entry.getValue().screen);
             iterator.remove();
         }
+        return dropped;
     }
 
     /** Draws every layer at its current animated transform, pivoting on the centre of its bounds. */

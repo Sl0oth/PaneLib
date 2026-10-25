@@ -179,7 +179,21 @@ final class PaneOsAuditTest {
                         }
                         if (phase == 30) capture(client, "paneos-app-" + TOUR[step]);
                     }
-                    if (t == 440 + TOUR.length * 34) finish(client);
+                    int end = 440 + TOUR.length * 34;
+                    if (t == end) {
+                        // A window that settles while only another part of the page repaints, here the playing
+                        // track's progress, must still land on the page.
+                        PaneOsEvents.handleAction(screen, "close:" + TOUR[TOUR.length - 1]);
+                        PaneOsEvents.handleAction(screen, "music:1");
+                        PaneOsEvents.openApp(screen, "music");
+                        PaneOsEvents.openApp(screen, "calculator");
+                    }
+                    // What reaches the screen must match a full repaint of the same state.
+                    if (t == end + 30) framePixel(client, "calculator:00", pixel -> settledPixel = pixel);
+                    if (t == end + 34) screen.invalidate();
+                    if (t == end + 40) framePixel(client, "calculator:00", pixel -> check(pixel == settledPixel,
+                        String.format("a window that settles during another region's repaint reaches the screen (%08X, full repaint %08X)", settledPixel, pixel)));
+                    if (t == end + 46) finish(client);
                 }
             }
         } catch (Throwable error) {
@@ -216,6 +230,17 @@ final class PaneOsAuditTest {
             }
             default -> { }
         }
+    }
+
+    private int settledPixel;
+
+    /** The game frame's colour at the centre of a region, read back from the GPU. */
+    private void framePixel(Minecraft client, String region, java.util.function.IntConsumer receiver) {
+        var bounds = screen.regionBounds(region).orElseThrow();
+        var target = client.gameRenderer.mainRenderTarget();
+        float scale = target.width / (float) screen.rasterQuality().layoutWidth();
+        int x = Math.round(bounds.centerX() * scale), y = Math.round(bounds.centerY() * scale);
+        net.minecraft.client.Screenshot.takeScreenshot(target, image -> { try (image) { receiver.accept(image.getPixel(x, y)); } });
     }
 
     private void rightClick(float x, float y) {

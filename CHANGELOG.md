@@ -66,6 +66,10 @@
 - Hover follows the cursor in an unfocused window, as vanilla widgets do. Minecraft sends move
   events only to a focused window, so a control under the cursor stayed unhovered after another
   app or a fullscreen change took focus.
+- A GPU-animated group that finished while only another part of the page was repainting, such as
+  the second of two PaneOS windows opened together while music played, never reached the screen:
+  its animation ended and the page beneath had not been uploaded there. The screen now repaints
+  where each finished group was. The PaneOS fixture compares the game frame with a full repaint.
 
 ### Added
 

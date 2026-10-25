@@ -2557,7 +2557,11 @@ public class UiScreen extends Screen {
                 dragPaintedX = x; dragPaintedY = y;
                 gpuLayers.follow(UiGpuLayers.DRAG_PREFIX + draggingKey, 0, 0);
             }
-            gpuLayers.reconcile(gpuCollector.requests, qualityScale, motionScale(), now);
+            for (UiRect shown : gpuLayers.reconcile(gpuCollector.requests, qualityScale, motionScale(), now)) {
+                // A group that settled during a partial paint elsewhere, such as the second of two windows
+                // that finished opening together, reaches the screen only when its own area repaints.
+                if (partial && !repaintRegion.contains(shown)) requestPartialRepaint(shown.expandAndClamp(layoutWidth, layoutHeight, 2));
+            }
             for (String id : interactions.scrollEnds.takeResolved()) scrollMotions.remove(id);
             rootAnimationIds=animationClock.usedIds();
 
