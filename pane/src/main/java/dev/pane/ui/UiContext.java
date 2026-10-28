@@ -649,6 +649,24 @@ public final class UiContext {
     }
 
     /**
+     * Whether the scroll region {@code id} painted earlier in this pass is showing its last line:
+     * true when it cannot scroll or sits at its maximum offset. With {@link UiScrollFollow#WHEN_AT_END}
+     * this is also whether new content will keep following, so a "Jump to latest" control can
+     * appear exactly when it is false.
+     */
+    public boolean scrollAtEnd(String id) {
+        return interactions.scrollEnds.atEnd(id, interactions.offsets.getOrDefault(id, 0D));
+    }
+
+    /**
+     * The current vertical offset of scroll region {@code id}, in layout units; 0 before it first
+     * paints. Read it after the region's {@link #scroll} call to paint only the visible rows.
+     */
+    public double scrollOffset(String id) {
+        return interactions.offsets.getOrDefault(id, 0D);
+    }
+
+    /**
      * Paints only a bounded visible/overscan window of a large fixed-height list. PaneLib retains
      * those rows in a GPU atlas, moves them without repainting page chrome, and uploads only rows
      * that enter the cache or are explicitly invalidated.
@@ -783,6 +801,12 @@ public final class UiContext {
 
     private void addInput(String id, String key, float x, float y, float width, float height,
                           int maxLength, boolean multiline, float[] caretXs, float[] caretYs, List<UiTextLine> lines, boolean masked) {
+        addInput(id, key, x, y, width, height, maxLength, multiline, caretXs, caretYs, lines, masked, false);
+    }
+
+    private void addInput(String id, String key, float x, float y, float width, float height,
+                          int maxLength, boolean multiline, float[] caretXs, float[] caretYs, List<UiTextLine> lines,
+                          boolean masked, boolean readOnly) {
         UiRect bounds = new UiRect(x + offsetX, y + offsetY, width, height);
         // UiInputRegion owns defensive copies. Only allocate a translated intermediate when needed.
         float[] movedXs = caretXs, movedYs = caretYs;
@@ -796,12 +820,12 @@ public final class UiContext {
         }
         var movedLines = offsetX == 0 && offsetY == 0 ? lines
             : lines.stream().map(line -> line.translate(offsetX, offsetY)).toList();
-        var registered = new UiInputRegion(id, key, bounds, maxLength, multiline, movedXs, movedYs, movedLines, masked);
+        var registered = new UiInputRegion(id, key, bounds, maxLength, multiline, movedXs, movedYs, movedLines, masked, readOnly);
         interactions.inputs.put(id, registered);
         UiRect clipped = inputClip == null ? bounds : intersect(bounds, inputClip);
         if (clipped.width() > 0 && clipped.height() > 0)
             inputRegions.add(clipped.equals(bounds) ? registered
-                : new UiInputRegion(id, key, clipped, maxLength, multiline, movedXs, movedYs, movedLines, masked));
+                : new UiInputRegion(id, key, clipped, maxLength, multiline, movedXs, movedYs, movedLines, masked, readOnly));
     }
 
     private void drawScrollBar(UiRect viewport, float contentHeight, float offset) {
@@ -854,8 +878,52 @@ public final class UiContext {
         if (enabled) hit(id, action, x, y, width, height);
     }
 
+    /**
+     * A restylable button with a leading icon. The icon and label are centred together; the label
+     * is the button's accessible name and is shortened with an ellipsis when the width is too small.
+     */
+    public void button(String id, String label, UiSymbol icon, String action, float x, float y, float width, float height,
+                       UiButtonStyle style, boolean enabled) {
+        paintStyledButton(id, label, icon, false, x, y, width, height, style, enabled, false);
+        describe(id, UiNarration.Role.BUTTON, label, null);
+        if (enabled) hit(id, action, x, y, width, height);
+    }
+
+    /**
+     * The width a styled button needs for its label and optional icon, with the standard side
+     * padding. A menu trigger adds room for its arrow; see {@link #menuButtonWidth}.
+     */
+    public float buttonWidth(String label, UiSymbol icon, UiButtonStyle style) {
+        return contentWidth(label, icon, false, style == null ? DEFAULT_BUTTON_STYLE : style);
+    }
+
+    /** The width a styled {@link #menuButton(String, String, UiSymbol, float, float, float, float, UiButtonStyle, boolean, List)} needs. */
+    public float menuButtonWidth(String label, UiSymbol icon, UiButtonStyle style) {
+        return contentWidth(label, icon, true, style == null ? DEFAULT_BUTTON_STYLE : style);
+    }
+
+    private float contentWidth(String label, UiSymbol icon, boolean chevron, UiButtonStyle paint) {
+        float size = paint.textSize() == null ? 9 : paint.textSize();
+        int fontStyle = paint.fontStyle() == null ? Font.BOLD : paint.fontStyle();
+        String family = paint.fontFamily() == null ? theme.fontFamily() : paint.fontFamily();
+        float text = label == null || label.isEmpty() ? 0 : canvas.textWidth(label, size, fontStyle, family);
+        float gap = Math.round(size * .55F), w = text;
+        if (icon != null) w += iconSize(size) + (text > 0 ? gap : 0);
+        if (chevron) w += chevronSize(size) + gap;
+        return Math.round(w + buttonPadding(size) * 2);
+    }
+
+    private static float iconSize(float textSize) { return Math.round(textSize * 1.15F); }
+    private static float chevronSize(float textSize) { return Math.round(textSize * .8F); }
+    private static float buttonPadding(float textSize) { return Math.max(8, Math.round(textSize)); }
+
     private void paintStyledButton(String id, String label, float x, float y, float width, float height,
                                    UiButtonStyle style, boolean enabled, boolean selector) {
+        paintStyledButton(id, label, null, false, x, y, width, height, style, enabled, selector);
+    }
+
+    private void paintStyledButton(String id, String label, UiSymbol icon, boolean chevron, float x, float y,
+                                   float width, float height, UiButtonStyle style, boolean enabled, boolean selector) {
         UiButtonStyle paint = style == null ? DEFAULT_BUTTON_STYLE : style;
         float shadowPadding = paint.shadowSpread() == null ? 4 : Math.max(4, paint.shadowSpread() + 4);
         UiRect repaintBounds = controlRepaintBounds(x, y, width, height, shadowPadding);
@@ -895,12 +963,48 @@ public final class UiContext {
                         textSize, text, fontStyle, family));
                 float arrowY = y + height / 2 - 2;
                 canvas.polygon(text, arrowX, arrowY, arrowX + arrowWidth, arrowY, arrowX + arrowWidth / 2, arrowY + 5);
-            } else {
+            } else if (icon == null && !chevron) {
                 canvas.centeredText(label, x + width / 2, y + height / 2, textSize, text, fontStyle, family);
+            } else {
+                paintButtonContent(label, icon, chevron, x, y, width, height, textSize, text, fontStyle, family);
             }
             if (enabled && focused(id)) drawFocusRing(focus,
                 x - 2, y - 2, width + 4, height + 4, radius + 2);
         });
+    }
+
+    /** Icon, label and optional menu arrow, centred together; the label gives way first. */
+    private void paintButtonContent(String label, UiSymbol icon, boolean chevron, float x, float y, float width,
+                                    float height, float textSize, int color, int fontStyle, String family) {
+        float gap = Math.round(textSize * .55F), is = icon == null ? 0 : iconSize(textSize), cs = chevron ? chevronSize(textSize) : 0;
+        float pad = Math.min(buttonPadding(textSize), Math.max(0, width / 2));
+        String text = label == null ? "" : label;
+        float fixed = is + cs + (chevron ? gap : 0), room = Math.max(0, width - pad * 2 - fixed - (icon != null && !text.isEmpty() ? gap : 0));
+        String shown = text.isEmpty() ? "" : canvas.ellipsize(text, room, textSize, fontStyle, family);
+        float tw = shown.isEmpty() ? 0 : canvas.textWidth(shown, textSize, fontStyle, family);
+        float total = fixed + tw + (icon != null && tw > 0 ? gap : 0), cx = x + Math.max(pad, (width - total) / 2), cy = y + height / 2;
+        float stroke = Math.max(1.1F, textSize / 7F);
+        if (icon != null) { icon.draw(canvas, color, cx, cy - is / 2, is, stroke); cx += is + (tw > 0 ? gap : 0); }
+        if (tw > 0) { canvas.text(shown, cx, cy - canvas.textHeight(textSize, fontStyle, family) / 2, textSize, color, fontStyle, family); cx += tw; }
+        if (chevron) UiIcon.CHEVRON_DOWN.draw(canvas, UiCanvas.fade(color, .7F), cx + gap, cy - cs / 2 + .5F, cs, stroke);
+    }
+
+    /**
+     * A square, restylable button showing only an icon. {@code label} is required: it is the
+     * accessible name and the hover tooltip, since the icon alone does not say what it does.
+     */
+    public void iconButton(String id, String label, UiSymbol icon, String action, float x, float y, float size,
+                           UiButtonStyle style, boolean enabled) {
+        if (label == null || label.isBlank()) throw new IllegalArgumentException("Icon buttons need a label");
+        paintStyledButton(id, "", null, false, x, y, size, size, style, enabled, false);
+        UiButtonStyle paint = style == null ? DEFAULT_BUTTON_STYLE : style;
+        int color = paint.text() == null ? theme.accentText() : paint.text();
+        float is = Math.round(size * .42F);
+        canvas.withOpacity(enabled ? 1 : .42F, () -> {
+            if (icon != null) icon.draw(canvas, color, x + (size - is) / 2, y + (size - is) / 2, is, Math.max(1.1F, size / 22F));
+        });
+        describe(id, UiNarration.Role.BUTTON, label, null);
+        if (enabled) { hit(id, action, x, y, size, size); tooltip(id, label); }
     }
 
     /** Compact code-drawn icon button with the same input and focus behavior as a text button. */
@@ -1139,6 +1243,29 @@ public final class UiContext {
     public void menuButton(String id, String label, float x, float y, float width, float height,
                            UiButtonStyle triggerStyle, List<UiMenuItem> items, UiMenuStyle menuStyle) {
         menuButton(id, label, x, y, width, height, triggerStyle, true, items, menuStyle);
+    }
+
+    /**
+     * Styled menu trigger with an optional leading icon and a trailing down arrow, so it reads as
+     * a menu rather than a plain button. Size it with {@link #menuButtonWidth}.
+     */
+    public void menuButton(String id, String label, UiSymbol icon, float x, float y, float width, float height,
+                           UiButtonStyle triggerStyle, boolean enabled, List<UiMenuItem> items) {
+        menuButton(id, label, icon, x, y, width, height, triggerStyle, enabled, items, UiMenuStyle.defaults());
+    }
+
+    /** {@link #menuButton(String, String, UiSymbol, float, float, float, float, UiButtonStyle, boolean, List)} with a styled popup. */
+    public void menuButton(String id, String label, UiSymbol icon, float x, float y, float width, float height,
+                           UiButtonStyle triggerStyle, boolean enabled, List<UiMenuItem> items, UiMenuStyle menuStyle) {
+        java.util.Objects.requireNonNull(menuStyle, "menuStyle");
+        boolean available = enabled && items != null && !items.isEmpty();
+        recordButtonState(id, label, available);
+        paintStyledButton(id, label, icon, true, x, y, width, height, triggerStyle, available, false);
+        describe(id, UiNarration.Role.BUTTON, label, null);
+        if (available) {
+            hit(id, internalAction("menu:" + id), x, y, width, height);
+            registerMenu(id, x, y, width, height, items, null, menuStyle);
+        }
     }
 
     /** Styled menu trigger with normal focus, semantic label and disabled handling. */
@@ -1447,6 +1574,54 @@ public final class UiContext {
     /** Multiline input with retained wheel browsing and caret reveal on editing/navigation. */
     public String textArea(String id, String key, String placeholder, float x, float y, float width,
                            float height, String fallback, int maxLength, UiInputStyle style) {
+        return paintTextArea(id, key, placeholder, x, y, width, height, fallback, maxLength, style, false, false, null, UiScrollFollow.NONE);
+    }
+
+    /**
+     * Read-only, scrollable text that can be selected and copied but not edited, such as a log,
+     * a chat transcript or generated code. {@code text} is shown as given on every paint. With
+     * {@code lineNumbers}, each line of {@code text} is numbered in a gutter on its first visual row.
+     * Web links are underlined in the accent colour and open, through Minecraft's link
+     * confirmation, when clicked.
+     */
+    public void textView(String id, String text, float x, float y, float width, float height,
+                         UiInputStyle style, boolean lineNumbers) {
+        textView(id, text, x, y, width, height, style, lineNumbers, UiScrollFollow.NONE);
+    }
+
+    /**
+     * {@link #textView(String, String, float, float, float, float, UiInputStyle, boolean)} that can
+     * follow new text: with {@link UiScrollFollow#WHEN_AT_END} a view showing its last line keeps
+     * showing it as text is added, like a log. {@code scrollTo}, {@code scrollToEnd},
+     * {@link #scrollAtEnd} and {@link #scrollOffset} work on the view's id.
+     */
+    public void textView(String id, String text, float x, float y, float width, float height,
+                         UiInputStyle style, boolean lineNumbers, UiScrollFollow follow) {
+        textView(id, UiRichText.plain(text), x, y, width, height, style, lineNumbers, follow);
+    }
+
+    /**
+     * A text view whose runs keep their own colours, underlines and strikethroughs, such as a log
+     * with red error lines. The view's font is used throughout, so bold and italic runs are drawn
+     * in it as well.
+     */
+    public void textView(String id, UiRichText text, float x, float y, float width, float height,
+                         UiInputStyle style, boolean lineNumbers, UiScrollFollow follow) {
+        String key = "pane:view:" + id;
+        UiRichText rich = text == null ? UiRichText.plain("") : text;
+        state.put(key, UiTextBoundary.normalizeLines(rich.plainText()));
+        paintTextArea(id, key, null, x, y, width, height, "", 0, style, true, lineNumbers, rich,
+            follow == null ? UiScrollFollow.NONE : follow);
+    }
+
+    /** {@link #textView(String, String, float, float, float, float, UiInputStyle, boolean)} in the default style, without line numbers. */
+    public void textView(String id, String text, float x, float y, float width, float height) {
+        textView(id, text, x, y, width, height, UiInputStyle.defaults(), false);
+    }
+
+    private String paintTextArea(String id, String key, String placeholder, float x, float y, float width,
+                                 float height, String fallback, int maxLength, UiInputStyle style,
+                                 boolean readOnly, boolean lineNumbers, UiRichText rich, UiScrollFollow follow) {
         java.util.Objects.requireNonNull(style);
         UiInputAppearance paint = style.appearance();
         String family = style.fontFamily() == null ? theme.fontFamily() : style.fontFamily();
@@ -1467,9 +1642,14 @@ public final class UiContext {
             ? boundaries.floor(textInput.selectionEnd()) : cursor;
         paintInputSurface(paint, focused, x, y, width, height);
 
-        float textX = x + paddingX;
+        // Line numbers take a gutter sized for the largest number, so the text never shifts as it grows.
+        int logicalLines = 1;
+        if (lineNumbers) for (int i = 0; i < value.length(); i++) if (value.charAt(i) == '\n') logicalLines++;
+        float numberSize = size * .85F;
+        float gutter = lineNumbers ? Math.round(canvas.textWidth(String.valueOf(logicalLines), numberSize, Font.PLAIN, family) + size) : 0;
+        float textX = x + paddingX + gutter;
         float firstBaseline = y + paddingY;
-        float innerWidth = Math.max(0, width - paddingX * 2);
+        float innerWidth = Math.max(0, width - paddingX * 2 - gutter);
         float lineHeight = Math.max(textHeight, style.lineHeight());
         List<UiShapedText.Line> lines = canvas.wrapShapedText(value,innerWidth,size,fontStyle,family,focused?interactions.textLayouts:interactions.restingLayouts);
         List<UiTextLine> visualLines = new java.util.ArrayList<>();
@@ -1497,11 +1677,38 @@ public final class UiContext {
         }
 
         float innerHeight = Math.max(0, height - paddingY * 2);
-        UiEditorViewport editor=interactions.editors.computeIfAbsent(id,ignored->new UiEditorViewport());
+        UiEditorViewport editor=interactions.editors.computeIfAbsent(id,ignored->{
+            // A view coming back, or one scrolled with scrollTo before it first painted, starts where it was left.
+            UiEditorViewport created=new UiEditorViewport();
+            created.offset=(float)(double)interactions.offsets.getOrDefault(id,0D);
+            return created;
+        });
         editor.viewport=new UiRect(textX+offsetX,firstBaseline+offsetY,innerWidth,innerHeight);
-        float offset=editor.layout(value,cursor,textInput!=null&&textInput.upstream(),focused,innerWidth,innerHeight,
+        editor.readOnly=readOnly;
+        float layoutOffset=editor.layout(value,cursor,textInput!=null&&textInput.upstream(),focused,innerWidth,innerHeight,
             (lines.size()-1)*lineHeight+textHeight,caretYs[cursor]-textHeight/2-firstBaseline,textHeight,lineHeight);
+        float offset=(float)interactions.scrollEnds.resolve(id,layoutOffset,editor.maximum,follow);
+        editor.offset=offset;
+        interactions.offsets.put(id,(double)offset);
         for (int i = 0; i < caretYs.length; i++) caretYs[i] -= offset;
+        if (lineNumbers) canvas.withClip(x + paddingX, y + paddingY, gutter, innerHeight, () -> {
+            int number = 0;
+            int numberColor = UiInputAppearance.color(paint.placeholder(), theme.mutedText());
+            for (int lineIndex = 0; lineIndex < lines.size(); lineIndex++) {
+                UiShapedText.Line line = lines.get(lineIndex);
+                boolean starts = line.start() == 0 || value.charAt(line.start() - 1) == '\n';
+                if (!starts) continue;
+                number++;
+                float baseline = firstBaseline + lineIndex * lineHeight - offset;
+                if (baseline + textHeight < y + paddingY || baseline >= y + height - paddingY) continue;
+                String label = String.valueOf(number);
+                float lw = canvas.textWidth(label, numberSize, Font.PLAIN, family);
+                canvas.text(label, textX - size * .6F - lw, baseline + (textHeight - canvas.textHeight(numberSize, Font.PLAIN, family)) / 2,
+                    numberSize, numberColor, Font.PLAIN, family);
+            }
+        });
+        int textColor = UiInputAppearance.color(paint.text(), theme.text());
+        List<TextRun> runs = readOnly ? textRuns(rich, value, textColor) : null;
         canvas.withClip(textX, y + paddingY, innerWidth, innerHeight, () -> {
             if (value.isEmpty() && !focused && placeholder != null && !placeholder.isEmpty()) {
                 canvas.shapedText(canvas.shapeText(placeholder,size,fontStyle,family),textX,firstBaseline,UiInputAppearance.color(paint.placeholder(), theme.mutedText()));
@@ -1518,17 +1725,85 @@ public final class UiContext {
                 }
                 if(line.start()==line.end() && selectionStart<=line.start() && selectionEnd>line.end())
                     canvas.fill(UiInputAppearance.color(paint.selection(), UiCanvas.fade(accent,.45F)),textX,baseline,1,textHeight);
-                canvas.shapedText(line.text(),textX,baseline,UiInputAppearance.color(paint.text(), theme.text()));
+                if (runs == null) canvas.shapedText(line.text(),textX,baseline,textColor);
+                else paintRuns(line, runs, caretXs, textX, baseline, textHeight, y + paddingY, innerHeight);
             }
-            if (focused) canvas.line(UiInputAppearance.color(paint.caret(), accent), 1, caretXs[cursor], caretYs[cursor] - textHeight / 2,
+            if (focused && !readOnly) canvas.line(UiInputAppearance.color(paint.caret(), accent), 1, caretXs[cursor], caretYs[cursor] - textHeight / 2,
                 caretXs[cursor], caretYs[cursor] + textHeight / 2);
         });
         describe(id, UiNarration.Role.TEXT_FIELD, placeholder, value);
         interactions.live.typography.put(id, new UiInputTypography(size, fontStyle, family, UiInputAppearance.color(paint.text(), theme.text()), accent, theme.raisedSurface()));
         internalHit(id, "input:" + key, x, y, width, height);
         addInput(id, key, x, y, width, height, maxLength, true, caretXs, caretYs,
-            offset == 0 ? visualLines : visualLines.stream().map(line -> line.translate(0, -offset)).toList(), false);
+            offset == 0 ? visualLines : visualLines.stream().map(line -> line.translate(0, -offset)).toList(), false, readOnly);
         return value;
+    }
+
+    /** One styled stretch of a text view: characters {@code start} to {@code end} share colour and lines. */
+    private record TextRun(int start, int end, int color, boolean underline, boolean strike) {}
+
+    /**
+     * Splits a view's text into styled runs from its rich spans and its web links, or null when it is
+     * all one plain colour and can be drawn a line at a time.
+     */
+    private List<TextRun> textRuns(UiRichText rich, String value, int textColor) {
+        List<UiTextLinks.Link> links = UiTextLinks.find(value);
+        List<UiRichText.Span> spans = rich == null ? List.of() : rich.spans();
+        boolean styled = spans.stream().anyMatch(span -> span.color() != null || span.underlined() || span.strikethrough());
+        if (!styled && links.isEmpty()) return null;
+        // Span offsets follow the same line normalization as the value they were joined into.
+        java.util.TreeSet<Integer> cuts = new java.util.TreeSet<>(List.of(0, value.length()));
+        List<int[]> spanRanges = new java.util.ArrayList<>();
+        int at = 0;
+        for (UiRichText.Span span : spans) {
+            int length = UiTextBoundary.normalizeLines(span.text()).length();
+            spanRanges.add(new int[]{at, Math.min(value.length(), at + length)});
+            at += length; cuts.add(Math.min(value.length(), at));
+        }
+        for (UiTextLinks.Link link : links) { cuts.add(link.start()); cuts.add(link.end()); }
+        List<TextRun> runs = new java.util.ArrayList<>();
+        int spanIndex = 0, linkIndex = 0;
+        Integer previous = null;
+        for (int cut : cuts) {
+            if (previous != null && cut > previous) {
+                int start = previous;
+                while (spanIndex < spanRanges.size() && spanRanges.get(spanIndex)[1] <= start) spanIndex++;
+                while (linkIndex < links.size() && links.get(linkIndex).end() <= start) linkIndex++;
+                UiRichText.Span span = spanIndex < spans.size() ? spans.get(spanIndex) : null;
+                boolean link = linkIndex < links.size() && links.get(linkIndex).start() <= start;
+                int color = link ? accent : span == null || span.color() == null ? textColor
+                    : (textColor & 0xFF000000) | (span.color() & 0x00FFFFFF);
+                runs.add(new TextRun(start, cut, color, link || span != null && span.underlined(),
+                    span != null && span.strikethrough()));
+            }
+            previous = cut;
+        }
+        return runs;
+    }
+
+    /** Draws one wrapped line run by run, each clipped to its own characters so glyphs keep their shaped positions. */
+    private void paintRuns(UiShapedText.Line line, List<TextRun> runs, float[] caretXs, float textX, float top,
+                           float textHeight, float clipTop, float clipHeight) {
+        int first = 0;
+        while (first < runs.size() - 1 && runs.get(first).end() <= line.start()) first++;
+        for (int i = first; i < runs.size(); i++) {
+            TextRun run = runs.get(i);
+            if (run.start() >= line.end()) break;
+            int from = Math.max(run.start(), line.start()), to = Math.min(run.end(), line.end());
+            float left = from == line.start() ? textX - textHeight : caretX(caretXs, from, textX);
+            float right = to == line.end() ? textX + line.text().width() + textHeight : caretX(caretXs, to, textX);
+            if (right <= left) continue;
+            canvas.withClip(left, clipTop, right - left, clipHeight, () -> canvas.shapedText(line.text(), textX, top, run.color()));
+            float stroke = Math.max(1, textHeight / 14F);
+            float startX = Math.max(left, textX), endX = Math.min(right, textX + line.text().width());
+            if (run.underline() && endX > startX) canvas.fill(run.color(), startX, top + line.text().ascent + 1, endX - startX, stroke);
+            if (run.strike() && endX > startX) canvas.fill(run.color(), startX, top + line.text().ascent * .62F, endX - startX, stroke);
+        }
+    }
+
+    private static float caretX(float[] caretXs, int index, float fallback) {
+        for (int i = index; i >= 0; i--) if (!Float.isNaN(caretXs[i])) return caretXs[i];
+        return fallback;
     }
 
     /**

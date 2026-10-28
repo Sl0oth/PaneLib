@@ -79,7 +79,21 @@ public enum UiIcon implements UiSymbol {
     /** Two people. */
     PEOPLE,
     /** A filled star. */
-    STAR_FILLED;
+    STAR_FILLED,
+    /** A filled square, for stopping. */
+    STOP,
+    /** A folder. */
+    FOLDER,
+    /** A command prompt: a chevron and an underscore. */
+    TERMINAL,
+    /** An arrow pointing left, for going back. */
+    ARROW_LEFT,
+    /** An arrow pointing down. */
+    ARROW_DOWN,
+    /** A shield with a check mark, for safety notes. */
+    SHIELD,
+    /** A filled dot, for starting a recording. */
+    RECORD;
 
     /** Draws this icon inside the supplied square. */
     public void draw(UiCanvas canvas, int color, float x, float y, float size, float stroke) {
@@ -149,6 +163,26 @@ public enum UiIcon implements UiSymbol {
                 g.line(color, s, 11, 4, 11, 20);
                 g.line(color, s, 16, 4, 16, 20);
             }
+            case STOP -> g.roundRect(color, 6, 6, 12, 12, 2);
+            case RECORD -> g.circle(color, 12, 12, 6.5F);
+            case FOLDER -> g.path().moveTo(3, 6).lineTo(9, 6).lineTo(11, 8).lineTo(21, 8).lineTo(21, 19)
+                .lineTo(3, 19).close().stroke(color, s);
+            case TERMINAL -> {
+                g.path().moveTo(4, 7).lineTo(10, 12).lineTo(4, 17).stroke(color, s);
+                g.line(color, s, 12, 18, 20, 18);
+            }
+            case ARROW_LEFT -> {
+                g.line(color, s, 20, 12, 4, 12);
+                g.path().moveTo(10, 6).lineTo(4, 12).lineTo(10, 18).stroke(color, s);
+            }
+            case ARROW_DOWN -> {
+                g.line(color, s, 12, 4, 12, 20);
+                g.path().moveTo(6, 14).lineTo(12, 20).lineTo(18, 14).stroke(color, s);
+            }
+            case SHIELD -> {
+                g.path().moveTo(12, 3).lineTo(20, 6).lineTo(20, 12).lineTo(12, 21).lineTo(4, 12).lineTo(4, 6).close().stroke(color, s);
+                g.path().moveTo(8.5F, 12).lineTo(11, 14.5F).lineTo(15.5F, 9.5F).stroke(color, s);
+            }
             case TRASH -> {
                 g.path().moveTo(5, 7).lineTo(19, 7).moveTo(9, 7).lineTo(9, 4)
                     .lineTo(15, 4).lineTo(15, 7).moveTo(7, 7).lineTo(8, 21)
@@ -168,7 +202,7 @@ public enum UiIcon implements UiSymbol {
             case CHEVRON_LEFT,CHEVRON_RIGHT->{float a=this == CHEVRON_LEFT?1:-1;g.line(c,s,x+10+a*3,y+4,x+10-a*3,y+10);g.line(c,s,x+10-a*3,y+10,x+10+a*3,y+16);}
             case SEND->{g.line(c,s,x+2,y+2,x+19,y+10);g.line(c,s,x+19,y+10,x+2,y+18);g.line(c,s,x+2,y+18,x+5,y+10);g.line(c,s,x+5,y+10,x+2,y+2);g.line(c,s,x+5,y+10,x+15,y+10);}
             case TAG->{g.line(c,s,x+2,y+4,x+12,y+4);g.line(c,s,x+12,y+4,x+19,y+10);g.line(c,s,x+19,y+10,x+12,y+16);g.line(c,s,x+12,y+16,x+2,y+16);g.line(c,s,x+2,y+16,x+2,y+4);g.circle(c,x+6,y+10,1.5F);}
-            case CLOCK,HELP,SETTINGS,REFRESH->{g.strokeRoundRect(c,s,x+2,y+2,16,16,8);if(this == CLOCK){g.line(c,s,x+10,y+5,x+10,y+10);g.line(c,s,x+10,y+10,x+14,y+12);}else if(this == HELP)g.text("?",x+6,y+2,14,c,java.awt.Font.BOLD);else if(this == REFRESH)g.polygon(c,x+13,y,x+20,y+2,x+17,y+8);else {g.strokeRoundRect(c,s,x+7,y+7,6,6,3);for(int i=0;i<8;i++){double a=i*Math.PI/4;g.line(c,s,x+10+(float)Math.cos(a)*8,y+10+(float)Math.sin(a)*8,x+10+(float)Math.cos(a)*11,y+10+(float)Math.sin(a)*11);}}}
+            case CLOCK,HELP,SETTINGS,REFRESH->{if(this == SETTINGS)g.strokeRoundRect(c,s,x+4,y+4,12,12,6);else g.strokeRoundRect(c,s,x+2,y+2,16,16,8);if(this == CLOCK){g.line(c,s,x+10,y+5,x+10,y+10);g.line(c,s,x+10,y+10,x+14,y+12);}else if(this == HELP)g.text("?",x+6,y+2,14,c,java.awt.Font.BOLD);else if(this == REFRESH)g.polygon(c,x+13,y,x+20,y+2,x+17,y+8);else {g.strokeRoundRect(c,s,x+7.5F,y+7.5F,5,5,2.5F);for(int i=0;i<8;i++){double a=i*Math.PI/4;g.line(c,s,x+10+(float)Math.cos(a)*6,y+10+(float)Math.sin(a)*6,x+10+(float)Math.cos(a)*9,y+10+(float)Math.sin(a)*9);}}}
             case FILE->{g.strokeRoundRect(c,s,x+4,y+2,12,16,1);g.line(c,s,x+7,y+8,x+13,y+8);g.line(c,s,x+7,y+12,x+13,y+12);}
             case PEN->{g.line(c,s * 1.8F,x+4,y+15,x+15,y+4);g.polygon(c,x+2,y+18,x+4,y+12,x+8,y+16);g.line(c,s,x+13,y+2,x+18,y+7);}
             case APPS->{for(int a=0;a<3;a++)for(int b=0;b<3;b++)g.circle(c,x+3+a*6,y+3+b*6,1.6F);}

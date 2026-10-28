@@ -512,7 +512,7 @@ final class UiVirtualLists {
                     for (int i = 0; i < ys.length; i++) ys[i] += shiftY;
                     nextInputs.add(new UiInputRegion(input.id(), input.key(), moved, input.maxLength(),
                         input.multiline(), input.caretXs(), ys,
-                        input.lines().stream().map(line -> line.translate(0, shiftY)).toList(), input.masked()));
+                        input.lines().stream().map(line -> line.translate(0, shiftY)).toList(), input.masked(), input.readOnly()));
                 }
                 for (UiTooltip tooltip : row.tooltips) {
                     UiRect moved = tooltip.anchor().translate(0, shiftY).intersection(clip);

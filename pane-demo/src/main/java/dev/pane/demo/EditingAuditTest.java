@@ -16,6 +16,7 @@ final class EditingAuditTest {
     private long deadline;
     private boolean failed, finished;
     private String originalClipboard;
+    private volatile String logText = "";
     private static final int SHORTCUT = System.getProperty("os.name", "").startsWith("Mac")
         ? GLFW.GLFW_MOD_SUPER : GLFW.GLFW_MOD_CONTROL;
     private static final String ACCENT = "e\u0301", FAMILY = "👩‍👩‍👧‍👦", FLAG = "🇺🇸";
@@ -36,6 +37,8 @@ final class EditingAuditTest {
                         ui.textArea("area", "lines", "", 30, 100, 300, 100, "abcdef\n".repeat(30), 1000);
                         ui.textField("limited", "limitedValue", "", 30, 220, 130, "", 4);
                         ui.passwordField("masked", "secret", "", 180, 220, 150, "", 1000);
+                        ui.textView("view", "read only\nsecond line", 30, 260, 300, 50, UiInputStyle.defaults(), true);
+                        ui.textView("log", logText, 360, 100, 260, 60, UiInputStyle.defaults(), false, UiScrollFollow.WHEN_AT_END);
                     })).build());
                 client.gui.setScreen(screen); deadline=System.nanoTime()+600_000_000L; return;
             }
@@ -79,6 +82,9 @@ final class EditingAuditTest {
                 try { clipboardEdits(client); joinedEdits(client); lengthLimits(client); }
                 finally { restoreClipboard(client); }
                 maskedEdits();
+                readOnlyView(client);
+                screen.setValue("value","notes.py");screen.clearFocus();screen.requestFocus("field",0,5);type('x');
+                check(screen.stringValue("value","").equals("x.py"),"requestFocus with a range selects it, so typing replaces the name");
                 screen.setValue("lines", ROW+"\n"+ROW+"\n"+ROW); screen.focus("area");
                 key(GLFW.GLFW_KEY_HOME, SHORTCUT); key(GLFW.GLFW_KEY_RIGHT,0); key(GLFW.GLFW_KEY_RIGHT,0);
                 advance(); return;
@@ -95,10 +101,44 @@ final class EditingAuditTest {
                     "Up returns to the matching grapheme boundary after repaint");
                 field(POINTER_TEXT); advance(); return;
             }
+            if (stage>=9) { followingLog(client); return; }
             click(34+pointerProbe*8,45,0,false); type('|');
             check(boundaryInsertion(screen.stringValue("value", "")),
                 "painted pointer probe "+pointerProbe+" inserts only at a complete grapheme boundary");
             if (++pointerProbe<17) { field(POINTER_TEXT); deadline=System.nanoTime()+150_000_000L; return; }
+            logText="line\n".repeat(30)+"end"; screen.invalidate(); screen.scrollToEnd("log"); advance();
+        } catch (Throwable error) {
+            finished=true; error.printStackTrace();
+            try { restoreClipboard(client); } catch (Throwable restoreError) { restoreError.printStackTrace(); }
+            System.out.println("[EditingTest] complete FAIL "+error); client.stop();
+        }
+    }
+
+    /** A following text view stays on its last line as text arrives, scrolls by id, and opens links on click. */
+    private void followingLog(Minecraft client) {
+        try {
+            var log=screen.scrollSnapshot("log").orElseThrow();
+            double end=log.contentHeight()-log.viewport().height();
+            if (stage==9) {
+                check(end>0 && Math.abs(log.offset()-end)<1,"scrollToEnd reaches the end of a text view");
+                logText=logText+"\nmore\nmore\nmore"; screen.invalidate(); advance(); return;
+            }
+            if (stage==10) {
+                check(end>0 && Math.abs(log.offset()-end)<1,"a following text view keeps showing new lines");
+                screen.scrollTo("log",0); advance(); return;
+            }
+            if (stage==11) {
+                check(log.offset()==0,"scrollTo moves a text view");
+                logText="https://example.com/x\nplain text after"; screen.invalidate(); advance(); return;
+            }
+            if (stage==12) {
+                click(log.viewport().right()-8,log.viewport().y()+6,0,false);
+                check(client.gui.screen()==screen,"a click past the end of a link's line does not open it");
+                click(log.viewport().x()+30,log.viewport().y()+6,0,false);
+                check(client.gui.screen() instanceof net.minecraft.client.gui.screens.ConfirmLinkScreen,
+                    "clicking a link in a text view asks to open it");
+                client.gui.setScreen(screen); advance(); return;
+            }
             finished=true; restoreClipboard(client);
             System.out.println("[EditingTest] complete "+(failed?"FAIL":"PASS")+" checks="+checks); client.stop();
         } catch (Throwable error) {
@@ -202,6 +242,22 @@ final class EditingAuditTest {
         var event=new MouseButtonEvent(x/screen.layoutScale(),y/screen.layoutScale(),new MouseButtonInfo(0,mods));
         screen.mouseClicked(event,twice);screen.mouseReleased(event);
     }
+    /** A text view selects and copies like a text area, but no key, paste or cut edits it. */
+    private void readOnlyView(Minecraft client) {
+        var controls=screen.controls();
+        check(controls.stream().anyMatch(ctl->ctl.id().equals("field")&&ctl.narration()!=null&&ctl.narration().role()==UiNarration.Role.TEXT_FIELD&&ctl.bounds().width()==300),
+            "controls() lists a painted field with its role and bounds");
+        check(controls.stream().map(UiScreen.Control::id).distinct().count()==controls.size(),"controls() lists each control once");
+        String text="read only\nsecond line";
+        check(screen.focus("view"),"a text view takes keyboard focus");
+        type('q'); key(GLFW.GLFW_KEY_BACKSPACE,0); key(GLFW.GLFW_KEY_ENTER,0);
+        client.keyboardHandler.setClipboard("pasted"); key(GLFW.GLFW_KEY_V,SHORTCUT); key(GLFW.GLFW_KEY_X,SHORTCUT);
+        check(screen.stringValue("pane:view:view","").equals(text),"typing, Backspace, Enter, paste and cut leave a text view unchanged");
+        key(GLFW.GLFW_KEY_A,SHORTCUT); key(GLFW.GLFW_KEY_C,SHORTCUT);
+        check(client.keyboardHandler.getClipboard().equals(text),"select all and copy work in a text view");
+        screen.clearFocus();
+    }
+
     private void key(int key,int mods) { screen.keyPressed(new KeyEvent(key,0,mods)); }
     private void type(char value) { screen.charTyped(new CharacterEvent(value)); }
     private void check(boolean passed,String message) { checks++; failed|=!passed; System.out.println("[EditingTest] "+message+": "+(passed?"PASS":"FAIL")); }

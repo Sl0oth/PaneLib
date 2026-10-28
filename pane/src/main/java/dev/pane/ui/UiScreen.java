@@ -174,6 +174,8 @@ public class UiScreen extends Screen {
     private float preferredCaretX = Float.NaN;
     private boolean menuOpenedWithPointer;
     private String openDialogId;
+    /** A dialog opened by {@link #showDialog} rather than by a painted trigger. */
+    private UiDialogRequest shownDialog;
     private String visibleTooltipId;
     private long tooltipRevealAt;
     private UiHitRegion draggingSlider;
@@ -444,10 +446,10 @@ public class UiScreen extends Screen {
         interactions.editors.keySet().retainAll(registered);
         if(focusedId==null||!registered.contains(focusedId))interactions.textLayouts.clear();
     }
-    /** Viewport, content height, offset and target offset of scroll region {@code id}, if it is on the page. */
+    /** Viewport, content height, offset and target offset of scroll region or text area {@code id}, if it is on the page. */
     public Optional<UiScrollSnapshot> scrollSnapshot(String id) {
         UiScrollRegion region = scrollRegion(id);
-        if (region == null) return Optional.empty();
+        if (region == null) return editorScrollSnapshot(id);
         double offset = scrollOffset(id);
         UiScrollPhysics.Motion motion = scrollMotions.get(id);
         return Optional.of(new UiScrollSnapshot(id, region.viewport(), region.contentHeight(), offset, motion == null ? offset : motion.target()));
@@ -456,6 +458,7 @@ public class UiScreen extends Screen {
      * Sets an internal scroll offset in layout units without emitting a consumer VALUE event.
      * Clamps to the current extent; before the first paint, the request is clamped when its viewport registers.
      * Safe from worker threads. Scroll ids retain their offsets across pages on this screen.
+     * Works on scroll regions, virtual lists, text areas and text views alike.
      */
     public void scrollTo(String id, double offset) {
         if (id == null || id.isBlank() || !Double.isFinite(offset)) throw new IllegalArgumentException("Finite offset and nonblank id required");
@@ -466,6 +469,8 @@ public class UiScreen extends Screen {
         if (region != null) next = Math.min(next, region.maxOffset());
         interactions.scrollEnds.navigate(id, next);
         interactions.offsets.put(id, next);
+        UiEditorViewport editor = region == null ? interactions.editors.get(id) : null;
+        if (editor != null) { editor.offset = (float) Math.min(next, editor.maximum); editor.pointerPlacement = true; }
         scrollMotions.remove(id);
         requestFullRepaint();
     }
@@ -498,6 +503,32 @@ public class UiScreen extends Screen {
 
     /** The confirmation dialog currently open on this screen, if any. */
     public Optional<String> openDialogId() { return Optional.ofNullable(openDialogId); }
+
+    /**
+     * Opens a native confirmation dialog from code, for prompts no button opens: a delete chosen
+     * from a menu, or a request that arrives while the screen is open. It looks and behaves exactly
+     * like one from {@link UiContext#dialogButton}: focus starts on Cancel, Escape and the backdrop
+     * cancel, and the chosen action arrives through the usual event listener. Nothing happens while
+     * another dialog is open. Safe to call from worker threads.
+     */
+    public void showDialog(String id, UiDialog dialog) {
+        if (id == null || id.isBlank()) throw new IllegalArgumentException("Dialog id is required");
+        Objects.requireNonNull(dialog, "dialog");
+        Minecraft client = Minecraft.getInstance();
+        if (client != null && !client.isSameThread()) { client.execute(() -> showDialog(id, dialog)); return; }
+        if (openDialogId != null) return;
+        closeMenu(false);
+        shownDialog = new UiDialogRequest(id, dialog);
+        openDialog(id);
+    }
+
+    /** Requests painted this pass plus one opened by {@link #showDialog}. */
+    private List<UiDialogRequest> withShown(List<UiDialogRequest> painted) {
+        if (shownDialog == null) return painted;
+        var all = new ArrayList<UiDialogRequest>(painted.size() + 1);
+        all.addAll(painted); all.add(shownDialog);
+        return all;
+    }
 
     /** The tooltip currently painted after a short hover delay, if any. */
     public Optional<String> visibleTooltipId() { return Optional.ofNullable(visibleTooltipId); }
@@ -771,6 +802,8 @@ public class UiScreen extends Screen {
      */
     private void synchronizeTextInput() {
         UiInputRegion input = inputRegion(focusedId);
+        // A read-only view takes keyboard focus for selection, but never an input method.
+        if (input != null && input.readOnly()) input = null;
         boolean focused = input != null;
         Minecraft client = Minecraft.getInstance();
         if (focused != textInputFocused) {
@@ -814,7 +847,7 @@ public class UiScreen extends Screen {
     /** The parts {@link #updateNarratedWidget} speaks for the current focus, hover and dialog. */
     List<UiNarration.Part> narrationParts() {
         var parts = new ArrayList<UiNarration.Part>();
-        if (openDialogId != null) for (UiDialogRequest request : dialogs) if (openDialogId.equals(request.id())) {
+        if (openDialogId != null) for (UiDialogRequest request : withShown(dialogs)) if (openDialogId.equals(request.id())) {
             var dialog = request.dialog();
             var words = new ArrayList<Component>();
             words.add(Component.literal(dialog.title()));
@@ -924,6 +957,26 @@ public class UiScreen extends Screen {
         return visible.isPresent() ? visible : target == null ? Optional.empty() : Optional.of(target.hit());
     }
 
+    /**
+     * One control the last paint drew: its id, how the narrator describes it (null when it has no
+     * description), and its bounds in layout units. Divide by {@link #layoutScale()} for GUI pixels.
+     */
+    public record Control(String id, UiNarration narration, UiRect bounds) {}
+
+    /**
+     * Every control the last paint drew that can be clicked, focused or typed in, in paint order:
+     * page controls, then virtual-list rows, then toasts. For tests and automation that need to
+     * find "the Save button" without knowing its id.
+     */
+    public List<Control> controls() {
+        List<Control> out = new ArrayList<>();
+        Set<String> seen = new HashSet<>();
+        for (List<UiHitRegion> list : List.of(hitRegions, virtual.hits, toastOverlay.hits()))
+            for (UiHitRegion hit : list)
+                if (seen.add(hit.id())) out.add(new Control(hit.id(), narrations.get(hit.id()), new UiRect(hit.x(), hit.y(), hit.width(), hit.height())));
+        return List.copyOf(out);
+    }
+
     private Optional<UiHitRegion> region(String id) {
         if (id == null) return Optional.empty();
         for (UiHitRegion candidate : toastOverlay.hits()) if (candidate.id().equals(id)) return Optional.of(candidate);
@@ -963,6 +1016,7 @@ public class UiScreen extends Screen {
         tooltips = List.of();
         menus = List.of();
         dialogs = List.of();
+        shownDialog = null;
         animations.clear();
         rootAnimationIds=Set.of();
         customAnimationBounds = Map.of();
@@ -1471,12 +1525,35 @@ public class UiScreen extends Screen {
         float scale = eventLayoutScale();
         UiHitRegion region = regionAt(event.x() * scale, event.y() * scale);
         String action = region != null && region.id().equals(pressedId) ? region.action() : null;
+        UiInputRegion releasedInput = draggingTextInput;
         pressedId = null;
         draggingSlider = null;
         draggingTextInput = null;
+        if (releasedInput != null && releasedInput.readOnly() && textAnchor == textCursor
+                && releasedInput.id().equals(releasedId) && openLinkAt(releasedInput, event.x() * scale, event.y() * scale)) return true;
         if (action != null) runAction(action, true);
         if (wasInteracting) startInteraction(150, releasedId);
         return wasInteracting;
+    }
+
+    /** A click, not a drag, on a link in a text view opens it the way chat links open. */
+    private boolean openLinkAt(UiInputRegion input, double layoutX, double layoutY) {
+        var position = input.caretPositionAt((float) layoutX, (float) layoutY);
+        String value = editingValue(input);
+        int index = Math.min(position.index(), value.length());
+        // At the end of a wrapped row the caret's index is the next row's first character.
+        UiTextLinks.Link link = position.upstream() ? null : UiTextLinks.at(value, index);
+        // The right half of a link's last character puts the caret after it; empty space past the
+        // end of the line does too, so that only counts when the pointer is still over the text.
+        if (link == null && index > 0 && layoutX <= input.caretX(index, position.upstream()) + 1)
+            link = UiTextLinks.at(value, index - 1);
+        if (link == null) return false;
+        Minecraft client = Minecraft.getInstance();
+        java.net.URI uri;
+        try { uri = new java.net.URI(link.url()); } catch (java.net.URISyntaxException exception) { return false; }
+        if (client.options.chatLinksPrompt().get()) net.minecraft.client.gui.screens.ConfirmLinkScreen.confirmLinkNow(this, uri, false);
+        else net.minecraft.util.Util.getPlatform().openUri(uri);
+        return true;
     }
 
     @Override
@@ -1665,11 +1742,7 @@ public class UiScreen extends Screen {
         action = internalBody(action);
         if (action.startsWith("input:") || action.startsWith("drag:")) return;
         if (action.startsWith(DIALOG_PREFIX)) {
-            dialogRestore = new FocusRestore(focusedId, textCursor, textAnchor);
-            openDialogId = action.substring(DIALOG_PREFIX.length());
-            dialogOffset=0;dialogLayout=null;dialogLayoutKey=null;dialogHitsStale=true;
-            focus(null); pendingFocus = new FocusRestore("dialog-cancel", -1, -1);
-            requestFullRepaint();
+            openDialog(action.substring(DIALOG_PREFIX.length()));
             return;
         }
         if (action.startsWith(DIALOG_CONFIRM_PREFIX)) {
@@ -1888,12 +1961,22 @@ public class UiScreen extends Screen {
         hoverDirty = true;
     }
 
+    private void openDialog(String id) {
+        dialogRestore = new FocusRestore(focusedId, textCursor, textAnchor);
+        openDialogId = id;
+        dialogOffset=0;dialogLayout=null;dialogLayoutKey=null;dialogHitsStale=true;
+        focus(null); pendingFocus = new FocusRestore("dialog-cancel", -1, -1);
+        popupDirty = true;
+        requestFullRepaint();
+    }
+
     private void closeDialog(boolean cancelled) {
         if (openDialogId == null) return;
         dialogBlurScratch.clear();
         dialogLayout=null;dialogLayoutKey=null;dialogOffset=0;dialogHitsStale=false;
         UiDialogRequest request = null;
-        for (UiDialogRequest candidate : dialogs) if (openDialogId.equals(candidate.id())) request = candidate;
+        for (UiDialogRequest candidate : withShown(dialogs)) if (openDialogId.equals(candidate.id())) request = candidate;
+        shownDialog = null;
         if (request == null) for (UiDialogRequest candidate : virtual.dialogs) {
             if (openDialogId.equals(candidate.id())) request = candidate;
         }
@@ -1945,6 +2028,24 @@ public class UiScreen extends Screen {
     public void requestFocus(String id) {
         if (id == null || focus(id)) return;
         requestedFocus = id;
+        requestFullRepaint();
+    }
+
+    /**
+     * Focuses text field {@code id} with the text from {@code anchor} to {@code cursor} selected,
+     * now or as soon as a paint registers it. Use {@code 0} and the name's length to select a
+     * file name for renaming, so typing replaces it; equal values just place the cursor.
+     */
+    public void requestFocus(String id, int anchor, int cursor) {
+        if (id == null) return;
+        if (focus(id) && inputRegion(id) != null) {
+            String value = stringValue(inputRegion(id).key(), "");
+            textCursor = UiTextBoundary.floor(value, Math.max(0, Math.min(value.length(), cursor)));
+            textAnchor = UiTextBoundary.floor(value, Math.max(0, Math.min(value.length(), anchor)));
+            requestFullRepaint();
+            return;
+        }
+        pendingFocus = new FocusRestore(id, Math.max(0, cursor), Math.max(0, anchor));
         requestFullRepaint();
     }
 
@@ -2216,6 +2317,7 @@ public class UiScreen extends Screen {
     }
 
     private void replaceTextSelection(UiInputRegion input, String replacement, UiTextHistory.Snapshot before) {
+        if (input.readOnly()) return; // text views select and copy; nothing edits them
         revealEditorCaret(input.id());
         preferredCaretX = Float.NaN;
         String value = editingValue(input);
@@ -2777,7 +2879,7 @@ public class UiScreen extends Screen {
         }
         UiRect bounds = openMenuId != null && menuLayout != null ? menuLayout.frame() : null;
         UiDialogRequest dialog = null;
-        for (UiDialogRequest candidate : nextDialogs) if (candidate.id().equals(openDialogId)) dialog = candidate;
+        for (UiDialogRequest candidate : withShown(nextDialogs)) if (candidate.id().equals(openDialogId)) dialog = candidate;
         if (openDialogId != null && dialog == null) closeDialog(false);
         popupBackdrop = 0;
         if (dialog != null) {
@@ -2816,7 +2918,7 @@ public class UiScreen extends Screen {
             painter.translate(-bounds.x(), -bounds.y());
             UiCanvas canvas = new UiCanvas(painter, popupSurface.image);
             drawMenu(canvas, hits);
-            drawDialog(canvas, nextDialogs, hits, layoutWidth, layoutHeight);
+            drawDialog(canvas, withShown(nextDialogs), hits, layoutWidth, layoutHeight);
         } finally { painter.dispose(); }
         popupSurface.upload();
         popupUploadPixels += (long) w * h;

@@ -199,6 +199,8 @@ paint an opaque surface over the content beneath them.
 settings and other commonly used toolbar symbols. `UiSymbol.vector` lets a
 consumer author a reusable icon once in its own viewbox, with automatic aspect
 ratio fitting and centering. It does not parse SVG files.
+It also has `STOP`, `RECORD`, `FOLDER`, `TERMINAL`, `ARROW_LEFT`, `ARROW_DOWN` and `SHIELD`. Every icon
+draws inside the square you give it.
 
 ```java
 UiSymbol mark = UiSymbol.vector(24, 24, (g, color, stroke) ->

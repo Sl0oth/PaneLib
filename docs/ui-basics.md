@@ -62,6 +62,21 @@ messages.add(incoming);
 screen.invalidate();
 ```
 
+While painting, `ui.scrollOffset(id)` gives the current offset, so a long log can draw only the
+rows in view, and `ui.scrollAtEnd(id)` says whether the reader is at the bottom. Show a "Jump to
+latest" control when it is false and call `scrollToEnd` from it:
+
+```java
+ui.scroll("log", view, contentHeight, UiScrollFollow.WHEN_AT_END, log -> {
+    double top = ui.scrollOffset("log");
+    // paint only the lines between top and top + view.height()
+});
+if (!ui.scrollAtEnd("log")) ui.button("latest", "Jump to latest", UiIcon.ARROW_DOWN, "latest", bx, by, bw, 26, style, true);
+```
+
+Draw that control inside the viewport: a wheel step repaints only the viewport, so anything that
+depends on the position belongs there. Outside it, read `screen.scrollSnapshot(id)` from `tick`.
+
 `scrollToEnd(id)` is a one-time, immediate position request, not a smooth scrolling animation.
 It works before first paint. If the viewport is absent, it waits for registration without an idle
 paint loop. Multiple requests coalesce. `scrollTo`, wheel navigation, or keyboard/virtual-row reveal
@@ -330,6 +345,36 @@ line, selection, and the same state/event behavior:
 String notes = ui.textArea("notes", "notes", "Add notes...", x, y, 320, 110, "", 2000);
 ```
 
+For text people read but don't edit, such as a log, a transcript or generated code, use
+`textView`. It wraps, scrolls, selects and copies exactly like a text area, and nothing can change
+it. Pass the text every paint. With line numbers, each line gets a number on its first row:
+
+```java
+UiInputStyle code = UiInputStyle.defaults().font(UiCanvas.MONO, 11.5F, Font.PLAIN).lineHeight(16);
+ui.textView("code", scriptSource, x, y, 420, 300, code, true);
+```
+
+Web links in a text view are underlined in the accent colour. Clicking one opens it through
+Minecraft's own "open this link?" prompt, the same way chat links do.
+
+A log wants two more things: colours, and staying on the newest line. Pass `UiRichText` to colour
+runs of text, and `UiScrollFollow.WHEN_AT_END` to keep the view on its last line while the reader is
+there. Someone who scrolls up to read stays where they are:
+
+```java
+List<UiRichText.Span> spans = new ArrayList<>();
+for (String line : lines) {
+    int color = line.contains("ERROR") ? 0xFFF0908A : 0xFFDAD6CF;
+    spans.add(new UiRichText.Span(line + "\n", color, false, false, false, false, false));
+}
+ui.textView("log", UiRichText.of(spans), x, y, 420, 300, code, false, UiScrollFollow.WHEN_AT_END);
+```
+
+Colours, underlines and strikethroughs come from the runs. The view draws everything in its own
+font, so bold and italic runs are not shown bold or italic. `scrollTo`, `scrollToEnd`,
+`scrollSnapshot`, `ui.scrollOffset` and `ui.scrollAtEnd` all work with a text view's id, like with
+a scroll region.
+
 ## Common controls
 
 PaneLib provides ordinary form primitives so a consumer does not have to paint and wire them by
@@ -346,9 +391,22 @@ String section = ui.tabs("settings-tabs", "settings-section", List.of(
 ), x, y + 58, 280, 32, "appearance");
 ```
 
-`iconButton` accepts `UiIcon.CHECK`, `CLOSE`, `PLUS`, `MINUS`, `SEARCH`, `CHEVRON_DOWN`,
-`ARROW_RIGHT`, `MENU`, `HOME`, `INFO`, `WARNING`, `PLAY`, `PAUSE`, `MORE`, `COPY`, `BOOKMARK`,
-`COLUMNS`, or `TRASH`. Use `UiCanvas.path()` for a brand-specific icon. `badge` and `progress` are
+`iconButton` accepts any `UiIcon` (or your own `UiSymbol`); see the full list in
+[drawing and theming](drawing-and-theming.md). Use `UiCanvas.path()` for a brand-specific icon.
+
+### Buttons with icons
+
+Give a styled button an icon by passing it after the label. The icon and label are centred
+together, and a label that doesn't fit is shortened. Measure first so the button fits its words:
+
+```java
+UiButtonStyle run = UiButtonStyle.builder().background(0xFFC7EF88).text(0xFF1B2410).textSize(12).build();
+float w = ui.buttonWidth("Run", UiIcon.PLAY, run);
+ui.button("run", "Run", UiIcon.PLAY, "run-script", x, y, w, 30, run, true);
+
+// Icon only: the label is required and becomes the tooltip and the accessible name.
+ui.iconButton("refresh", "Reload this folder", UiIcon.REFRESH, "refresh", x + w + 6, y, 30, style, true);
+``` `badge` and `progress` are
 intentionally non-interactive display primitives. `tag` paints an optional removable pill and
 returns its measured width for flow layout.
 
@@ -411,6 +469,16 @@ ui.menuButton("waypoint-actions", "Actions", x, y, 82, 30,
         new UiMenuItem("copy", "Copy coordinates", "copy-waypoint"),
         new UiMenuItem("share", "Share with party", "share-waypoint")
     ));
+```
+
+A styled trigger can carry an icon and always shows a small down arrow, so it reads as a menu.
+`menuButtonWidth` measures it, arrow included:
+
+```java
+float w = ui.menuButtonWidth("More", null, style);
+ui.menuButton("more", "More", null, x, y, w, 30, style, true, List.of(
+    new UiMenuItem("rename", "Rename…", "rename"),
+    new UiMenuItem("delete", "Delete…", "delete")));
 ```
 
 Keep menu item ids unique within that menu. Their action strings are your mod's normal action
@@ -522,6 +590,16 @@ ui.dialogButton("delete-profile", "Delete", x, y, 76, 30,
         "Cancel", "cancel-delete-profile"
     ));
 ```
+
+When no button opens it, such as a delete picked from a menu or a request that arrives while the
+screen is open, call `showDialog` with the same `UiDialog`. It behaves exactly the same way:
+
+```java
+case "delete" -> screen.showDialog("delete", new UiDialog("Delete notes.py?", "This cannot be undone.",
+    "Delete", "delete-confirmed", "Cancel", "delete-cancelled", danger));
+```
+
+`showDialog` does nothing while another dialog is open, and is safe to call from a worker thread.
 
 Use this for an action that matters. Do not use it for normal navigation or a reversible setting;
 a menu, toggle, or toast is less disruptive there. The Waypoints showcase has a live Reset

@@ -1,10 +1,12 @@
 package dev.pane.ui;
 
 /**
- * HUD placement in logical UI points, with bounded viewport fitting. Margins apply only on
- * edge-aligned axes; a centered axis ignores its margin. Scale changes size about the chosen anchor.
+ * HUD placement in logical UI points (or GUI pixels for a HUD that {@linkplain UiHud#setScalesWithGui
+ * scales with the GUI}), with bounded viewport fitting. Margins apply only on edge-aligned axes; a
+ * centered axis ignores its margin. Offsets then move the HUD on either axis, in either direction,
+ * such as 20 below the centre. Scale changes size about the chosen anchor.
  */
-public record UiHudPlacement(Anchor anchor, float marginX, float marginY, float scale) {
+public record UiHudPlacement(Anchor anchor, float marginX, float marginY, float scale, float offsetX, float offsetY) {
     /** Corner, edge midpoint or centre of the screen a HUD is placed against. */
     public enum Anchor {
         /** The top-left corner. */
@@ -29,10 +31,21 @@ public record UiHudPlacement(Anchor anchor, float marginX, float marginY, float 
     /** A missing anchor means the top left; margins below zero become zero and the scale is kept between 0.5 and 2. */
     public UiHudPlacement {
         anchor = anchor == null ? Anchor.TOP_LEFT : anchor;
-        if (!Float.isFinite(marginX) || !Float.isFinite(marginY) || !Float.isFinite(scale))
+        if (!Float.isFinite(marginX) || !Float.isFinite(marginY) || !Float.isFinite(scale)
+                || !Float.isFinite(offsetX) || !Float.isFinite(offsetY))
             throw new IllegalArgumentException("HUD placement must be finite");
         marginX = Math.max(0, marginX); marginY = Math.max(0, marginY);
         scale = Math.max(.5F, Math.min(2, scale));
+    }
+
+    /** A placement without offsets. */
+    public UiHudPlacement(Anchor anchor, float marginX, float marginY, float scale) {
+        this(anchor, marginX, marginY, scale, 0, 0);
+    }
+
+    /** A copy moved by {@code x}, {@code y} from where the anchor and margins put it. */
+    public UiHudPlacement offset(float x, float y) {
+        return new UiHudPlacement(anchor, marginX, marginY, scale, x, y);
     }
     /** The top-left corner, 18 points in, at normal size. */
     public static UiHudPlacement topLeft() { return new UiHudPlacement(Anchor.TOP_LEFT, 18, 18, 1); }
@@ -43,17 +56,17 @@ public record UiHudPlacement(Anchor anchor, float marginX, float marginY, float 
         float w = width * scale / unit, h = height * scale / unit;
         float fit = Math.min(1, Math.min(viewportWidth / Math.max(1, w), viewportHeight / Math.max(1, h)));
         w *= fit; h *= fit;
-        float mx = marginX / unit, my = marginY / unit;
+        float mx = marginX / unit, my = marginY / unit, ox = offsetX / unit, oy = offsetY / unit;
         float x = switch (anchor) {
             case TOP_LEFT, BOTTOM_LEFT, CENTER_LEFT -> mx;
             case TOP_RIGHT, BOTTOM_RIGHT, CENTER_RIGHT -> viewportWidth - w - mx;
             case CENTER, TOP_CENTER, BOTTOM_CENTER -> (viewportWidth - w) / 2;
-        };
+        } + ox;
         float y = switch (anchor) {
             case TOP_LEFT, TOP_RIGHT, TOP_CENTER -> my;
             case BOTTOM_LEFT, BOTTOM_RIGHT, BOTTOM_CENTER -> viewportHeight - h - my;
             case CENTER, CENTER_LEFT, CENTER_RIGHT -> (viewportHeight - h) / 2;
-        };
+        } + oy;
         return new UiRect(Math.max(0, Math.min(viewportWidth - w, x)),
             Math.max(0, Math.min(viewportHeight - h, y)), w, h);
     }

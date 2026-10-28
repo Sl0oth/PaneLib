@@ -16,6 +16,8 @@ final class DialogAuditTest {
     private long beforeScroll;
     private int beforePaint;
     private final List<String> actions=new ArrayList<>();
+    private static final UiDialog DELETE=new UiDialog("Delete script?","notes.py will be deleted. This cannot be undone.",
+        "Delete","delete","Keep","keep",UiDialogStyle.builder().confirmBackground(0xFF8C3A33).confirmText(0xFFFFFFFF).build());
     private UiScreen create() {
         return new UiScreen(UiDocument.builder("Dialog audit").scaling(UiScaling.fixed())
             .page(new UiPage("main","Main","",0xFF55AAFF,ui -> {
@@ -109,6 +111,26 @@ final class DialogAuditTest {
             if(tick==80) {
                 check(screen.popupUploadPixels()>beforeScroll,"release outside clears cached pressed appearance");
                 check(screen.openDialogId().isPresent(),"dragging off an action cancels activation");
+                key(GLFW.GLFW_KEY_ESCAPE,0);
+                // A dialog opened from code, as for a delete chosen from a menu.
+                screen.showDialog("shown",DELETE);
+            }
+            if(tick==85) {
+                check(screen.openDialogId().orElse("").equals("shown"),"showDialog opens without a trigger");
+                check(screen.focusedId().orElse("").equals("dialog-cancel"),"shown dialog focuses Cancel");
+                screen.showDialog("second",DELETE);
+                check(screen.openDialogId().orElse("").equals("shown"),"showDialog leaves an open dialog alone");
+                key(GLFW.GLFW_KEY_ESCAPE,0);
+                check(Collections.frequency(actions,"keep")==1&&screen.openDialogId().isEmpty(),"Escape cancels a shown dialog once");
+                screen.showDialog("shown",DELETE);
+            }
+            if(tick==90) {
+                click("dialog-confirm");
+                check(Collections.frequency(actions,"delete")==1&&screen.openDialogId().isEmpty(),"shown dialog confirms once and closes");
+                Thread worker=new Thread(()->screen.showDialog("worker",DELETE));worker.start();
+            }
+            if(tick==95) {
+                check(screen.openDialogId().orElse("").equals("worker"),"showDialog from a worker thread opens on the client thread");
                 key(GLFW.GLFW_KEY_ESCAPE,0);
                 client.getWindow().setWindowed(originalWidth,originalHeight);
                 System.out.println("[DialogTest] complete "+(failed?"FAIL":"PASS")+" checks="+checks);client.stop();

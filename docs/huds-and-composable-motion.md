@@ -260,6 +260,34 @@ Use small components rather than a fullscreen HUD texture. Snapshots expose pain
 counters, last and cumulative raster/upload CPU cost, and last rendered bounds. They are diagnostic
 values, not GPU fence timings.
 
+## Let players move HUDs
+
+Mark each HUD players may move, then open `UiHudEditor`. PaneLib draws an outline round every
+movable HUD; players drag them, and Arrow keys nudge the last one picked. Dropping a HUD picks the
+nearest corner, edge or centre as its anchor, so it stays in place when the window changes size.
+Done or Escape hands each moved HUD's new placement to your callback, for you to save:
+
+```java
+status.setEditable("Vitals", UiHudPlacement.topLeft(), placement -> config.save("vitals", placement));
+
+// From a button or key binding:
+Minecraft.getInstance().gui.setScreen(new UiHudEditor(parentScreen));
+```
+
+**Reset** in the editor puts every HUD back at the defaults you passed. `new UiHudEditor(parent,
+theme)` matches the toolbar to your mod's colours. Nothing is saved for you: restore the placement
+with `setPlacement` when your mod starts.
+
+### Offsets, sizes and GUI pixels
+
+- `new UiHudPlacement(anchor, marginX, marginY, scale, offsetX, offsetY)`, or `placement.offset(x, y)`,
+  moves a HUD from where its anchor puts it, in either direction, such as 20 below the centre.
+  Margins can't do that: a centred axis ignores its margin.
+- `hud.setSize(width, height)` resizes a HUD, such as a label whose text grew.
+- `hud.setScalesWithGui(true)` makes the size, margins and offsets Minecraft GUI pixels. The HUD
+  then grows with the GUI Scale option like vanilla's own HUD, which suits mods porting HUD code
+  written in GUI coordinates. Pixels stay sharp either way.
+
 ## Replace vanilla HUD elements safely
 
 Declare the vanilla elements each widget replaces; loading PaneLib or attaching a normal HUD

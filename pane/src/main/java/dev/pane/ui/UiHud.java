@@ -18,7 +18,11 @@ import net.minecraft.resources.Identifier;
  */
 public final class UiHud implements AutoCloseable {
     private long minecraftTextureRevision = UiCanvas.minecraftTextureRevision();
-    private final int width, height;
+    private int width, height;
+    private boolean scalesWithGui;
+    private String editableName;
+    private UiHudPlacement editableDefaults;
+    private java.util.function.Consumer<UiHudPlacement> onMoved;
     private final UiTheme theme;
     private final UiPainter painter;
     private final NativeOverlayRenderer nativeOverlay;
@@ -126,6 +130,69 @@ public final class UiHud implements AutoCloseable {
         return new UiAnimationClock(animations, now, motionScale)
             .value("\0hud:visible", 0, visible ? 1 : 0, 220, 0, UiEasing.EASE_OUT);
     }
+    /**
+     * Changes the HUD's size in UI points (GUI pixels when it {@linkplain #setScalesWithGui scales
+     * with the GUI}), such as a label whose text grew. Repaints on the next frame; an unchanged size
+     * does nothing.
+     */
+    public void setSize(int width, int height) {
+        requireClientThread();
+        if (width < 1 || height < 1 || width > 1024 || height > 1024)
+            throw new IllegalArgumentException("A HUD must be 1..1024 UI points on each axis");
+        if (closed || width == this.width && height == this.height) return;
+        this.width = width; this.height = height;
+        dirty = true;
+    }
+    /** Width in UI points, or GUI pixels when it scales with the GUI. */
+    public int width() { return width; }
+    /** Height in UI points, or GUI pixels when it scales with the GUI. */
+    public int height() { return height; }
+
+    /**
+     * With {@code true}, the size, margins and offsets are Minecraft GUI pixels, so the HUD grows and
+     * shrinks with the GUI Scale option like vanilla's own HUD. The default, {@code false}, keeps
+     * the same physical size at every GUI scale. Pixels stay sharp either way.
+     */
+    public void setScalesWithGui(boolean value) {
+        requireClientThread();
+        if (scalesWithGui == value) return;
+        scalesWithGui = value; dirty = true;
+    }
+    /** Whether the size and placement are in GUI pixels; see {@link #setScalesWithGui}. */
+    public boolean scalesWithGui() { return scalesWithGui; }
+
+    /**
+     * Lets players move this HUD in {@link UiHudEditor}, where it shows as {@code name}. When the
+     * editor closes, {@code onMoved} receives the new placement so you can save it; Reset in the
+     * editor goes back to {@code defaults}. Passing a null name makes the HUD fixed again.
+     */
+    public void setEditable(String name, UiHudPlacement defaults, java.util.function.Consumer<UiHudPlacement> onMoved) {
+        requireClientThread();
+        if (name == null) { editableName = null; editableDefaults = null; this.onMoved = null; return; }
+        editableName = name;
+        editableDefaults = Objects.requireNonNull(defaults, "defaults");
+        this.onMoved = Objects.requireNonNull(onMoved, "onMoved");
+    }
+    /** The name shown in the HUD editor, or null when players can't move this HUD. */
+    public String editableName() { return editableName; }
+
+    UiHudPlacement editableDefaults() { return editableDefaults; }
+    boolean showsOnScreens() { return showOnScreens; }
+    float motionScale() { return motionScale; }
+    void moved(UiHudPlacement placement) { if (onMoved != null) onMoved.accept(placement); }
+    /** Where the HUD was last drawn, in GUI pixels; empty before its first frame. */
+    UiRect lastBounds() { return lastBounds; }
+    /** GUI pixels per placement unit: 1 when it scales with the GUI, else the GUI pixels in one point. */
+    static float unitsPerGui(Minecraft client, boolean scalesWithGui) {
+        if (scalesWithGui) return 1;
+        float dpi = Math.max(1, (float) client.getWindow().getWidth() / client.getWindow().getScreenWidth());
+        return (float) client.getWindow().getGuiScale() / dpi;
+    }
+    /** Attached HUDs in attach order, for the editor. */
+    static List<UiHud> attached() { return List.copyOf(Registry.huds.values()); }
+    /** Whether the HUD would draw this frame, given a world and the screen rules. */
+    boolean presented() { return eligible(Minecraft.getInstance()) && visible; }
+
     /** Set fixed placement and remove any responsive policy. Position-only changes reuse pixels. */
     public void setPlacement(UiHudPlacement value) { requireClientThread(); placement.setPlacement(value); }
     /** Fixed or most recently resolved placement; before first policy resolution, the prior value. */
@@ -187,8 +254,7 @@ public final class UiHud implements AutoCloseable {
         var clock = new UiAnimationClock(animations, now, motionScale);
         float opacity = clock.value("\0hud:visible", 0, visible ? 1 : 0, 220, 0, UiEasing.EASE_OUT);
         if (opacity <= 0 && !visible) { releaseSurface(); presentationAnimating = false; return; }
-        float dpi = Math.max(1, (float) client.getWindow().getWidth() / client.getWindow().getScreenWidth());
-        float pointsPerGui = (float) client.getWindow().getGuiScale() / dpi;
+        float pointsPerGui = unitsPerGui(client, scalesWithGui);
         UiHudPlacement resolved = placement.resolve(graphics.guiWidth() * pointsPerGui, graphics.guiHeight() * pointsPerGui);
         UiRect target = resolved.bounds(graphics.guiWidth(), graphics.guiHeight(), width, height, pointsPerGui);
         float desired = (float)Math.max(target.width()*client.getWindow().getGuiScale()/width,

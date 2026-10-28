@@ -68,6 +68,7 @@
 
 ### Fixed
 
+- The `SETTINGS` gear icon drew its teeth outside its square.
 - Hover repaints stay page-wide for painters that read the shared `UiContext.interactionMotion`.
 - Hover follows the cursor in an unfocused window, as vanilla widgets do. Minecraft sends move
   events only to a focused window, so a control under the cursor stayed unhovered after another
@@ -86,6 +87,41 @@
 - `UiScreenOptions.Builder.worldSnapshot(true)` and `UiContext.worldSnapshot()`: a screen captures
   the game frame beneath it, without GUI, when it opens and after each resize, so a page can paint
   the world and have liquid glass and blur act on it (`UiWorldSnapshot`).
+- Styled buttons with an icon: `button(id, label, icon, action, …, style, enabled)`, measured with
+  `buttonWidth(label, icon, style)`. Before, an icon meant painting over a button with no label.
+- Styled menu triggers with an icon and a down arrow: `menuButton(id, label, icon, …, style,
+  enabled, items)`, measured with `menuButtonWidth`.
+- `iconButton(id, label, icon, action, x, y, size, style, enabled)`: a restylable icon-only button
+  whose label is its tooltip and accessible name.
+- Icons `STOP`, `RECORD`, `FOLDER`, `TERMINAL`, `ARROW_LEFT`, `ARROW_DOWN` and `SHIELD`.
+- `UiScreen.showDialog(id, dialog)`: opens the native confirmation dialog from code, for prompts no
+  button opens (a delete from a menu, a request that arrives while the screen is open).
+- `UiScreen.requestFocus(id, anchor, cursor)`: focuses a text field with part of its text
+  selected, such as a file name being renamed, so typing replaces it.
+- `UiContext.textView(id, text, …, style, lineNumbers)`: read-only text that wraps, scrolls,
+  selects and copies like a text area, with optional line numbers. Before, read-only text meant
+  painting lines and writing your own selection.
+  - Takes `UiRichText` for coloured, underlined or struck-through runs, such as red error lines in
+    a log.
+  - Takes `UiScrollFollow.WHEN_AT_END`, so a log stays on its newest line while the reader is at
+    the bottom.
+  - Underlines web links in the accent colour and opens them on click through Minecraft's link
+    prompt, or straight away when the player turned that prompt off.
+- `scrollTo`, `scrollToEnd`, `scrollSnapshot`, `scrollOffset` and `scrollAtEnd` work on text areas
+  and text views by id, not only on scroll regions.
+- `UiHudEditor`: a ready-made screen where players drag HUDs to new places. Mark a HUD with
+  `UiHud.setEditable(name, defaults, onMoved)`; the editor outlines it, snaps drags to a small grid,
+  re-anchors a dropped HUD to the nearest corner, edge or centre, and hands the new placement to
+  `onMoved` when it closes. Reset goes back to the defaults. Before, every mod wrote its own editor.
+- `UiHudPlacement` offsets (`offsetX`, `offsetY`, `offset(x, y)`) move a HUD from its anchor in
+  either direction, such as 20 below the centre. The four-argument constructor still works.
+- `UiHud.setSize(width, height)` resizes a HUD after it's made.
+- `UiHud.setScalesWithGui(true)` measures a HUD in Minecraft GUI pixels, so it scales with the GUI
+  Scale option like vanilla's HUD.
+- `UiScreen.controls()` lists every control the last paint drew, with its id, how the narrator
+  describes it and its bounds, so tests and automation can find "the Save button" by its label.
+- `UiContext.scrollOffset(id)` and `scrollAtEnd(id)`, for painting only the visible rows and for a
+  "Jump to latest" control.
 - `UiScreen.settled()`: whether the screen has finished drawing, for tests that measure idle
   repainting. A cold first frame can outlast the opening transition, which then paints once more.
 

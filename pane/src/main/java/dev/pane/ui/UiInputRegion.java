@@ -2,7 +2,11 @@ package dev.pane.ui;
 
 /** A text input registered during a page paint, including exact painted caret positions. */
 record UiInputRegion(String id, String key, UiRect bounds, int maxLength, boolean multiline,
-                     float[] caretXs, float[] caretYs, java.util.List<UiTextLine> lines, boolean masked) {
+                     float[] caretXs, float[] caretYs, java.util.List<UiTextLine> lines, boolean masked, boolean readOnly) {
+    UiInputRegion(String id, String key, UiRect bounds, int maxLength, boolean multiline,
+                  float[] caretXs, float[] caretYs, java.util.List<UiTextLine> lines, boolean masked) {
+        this(id, key, bounds, maxLength, multiline, caretXs, caretYs, lines, masked, false);
+    }
     UiInputRegion(String id, String key, UiRect bounds, int maxLength, boolean multiline,
                   float[] caretXs, float[] caretYs, java.util.List<UiTextLine> lines) {
         this(id, key, bounds, maxLength, multiline, caretXs, caretYs, lines, false);

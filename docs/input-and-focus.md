@@ -86,6 +86,9 @@ screen.pushFocusScope("rename-sheet", List.of("rename", "cancel", "save"), "canc
 });
 ```
 
+To start in the name field with the old name selected, so typing replaces it, follow the push
+with `screen.requestFocus("rename", 0, oldName.length())`.
+
 Paint those same retained control ids while `sheet-visible` is true. On Save or Cancel, hide the
 sheet and pop its scope. The callback is a consumer-authored example; library code does not
 perform file writes or permissions decisions. Escape is consumed and invokes the provided
@@ -289,3 +292,19 @@ ui.narration("dark", UiNarration.of(UiNarration.Role.TOGGLE, "Dark mode", ui.boo
 `ui.narration` also describes a hand-painted `hit` area. Call it on every paint, like the control.
 `UiNarration` is experimental: its roles and wording may grow in a minor release.
 `-PnarrationTest` reads the narration through Minecraft's own collector, without sound.
+
+## Find controls from tests and automation
+
+`screen.controls()` lists every control the last paint drew: its id, its narrator description
+(role and label) and its bounds in layout units. Divide by `screen.layoutScale()` for GUI pixels.
+A test or a scripting mod can find a button by the words on it instead of by its id:
+
+```java
+var save = screen.controls().stream()
+    .filter(c -> c.narration() != null && "Save".equals(c.narration().label()))
+    .findFirst();
+```
+
+Controls you paint yourself still get a label this way when you give them one with
+`ui.narration(id, UiNarration.of(UiNarration.Role.BUTTON, "Save"))`.
+

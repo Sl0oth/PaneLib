@@ -19,6 +19,12 @@ final class UiScrollEndState {
         entry.pending = false;
         entry.navigationTarget = target;
     }
+    /** True when {@code offset} is at the last resolved maximum, or nothing has been resolved yet. */
+    boolean atEnd(String id, double offset) {
+        Entry entry = entries.get(id);
+        return entry == null || !Double.isFinite(entry.maximum) || offset >= entry.maximum - END_TOLERANCE;
+    }
+
     double resolve(String id, double offset, double maximum, UiScrollFollow follow) {
         Entry entry = entries.computeIfAbsent(id, key -> new Entry());
         double priorPosition = entry.navigationTarget == null ? offset : entry.navigationTarget;

@@ -4,7 +4,7 @@ package dev.pane.ui;
 final class UiEditorViewport {
     float offset, maximum, step;
     UiRect viewport;
-    boolean reveal, stale, pointerPlacement;
+    boolean reveal, stale, pointerPlacement, readOnly;
     private boolean wasFocused;
     private int cursor=-1;
     private boolean upstream;
@@ -18,7 +18,8 @@ final class UiEditorViewport {
         step=lineHeight*3;
         boolean changed=!nextValue.equals(value)||nextWidth!=width||nextHeight!=height
             ||caretTop!=previousCaretTop||caretHeight!=previousCaretHeight||lineHeight!=previousLineHeight;
-        if(focused && !pointerPlacement && (reveal||!wasFocused||changed||cursor!=nextCursor||upstream!=nextUpstream)) {
+        // A read-only view changes under the reader, as a log does; only moving the caret reveals it.
+        if(focused && !pointerPlacement && (reveal||!wasFocused||changed&&!readOnly||cursor!=nextCursor||upstream!=nextUpstream)) {
             if(caretTop<offset)offset=caretTop;
             else if(caretTop+caretHeight>offset+nextHeight)offset=caretTop+caretHeight-nextHeight;
         }
