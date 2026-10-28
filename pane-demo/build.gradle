@@ -87,12 +87,13 @@ if (!expectedMarkers.isEmpty()) {
     tasks.named('runClient') {
         finalizedBy(saveFixtureLog)
         timeout = java.time.Duration.ofMinutes(5)
-        // Automated clients must reach the title screen on a fresh worker, past vanilla's first-launch screen.
+        // Automated clients must reach the title screen on a fresh worker, past vanilla's first-launch screen,
+        // and stay silent.
         doFirst {
             def options = file("${loom.runs.getByName('client').runDir}/options.txt")
             options.parentFile.mkdirs()
-            def lines = options.exists() ? options.readLines().findAll { !it.startsWith('onboardAccessibility:') } : []
-            options.text = (lines + 'onboardAccessibility:false').join('\n') + '\n'
+            def lines = options.exists() ? options.readLines().findAll { !it.startsWith('onboardAccessibility:') && !it.startsWith('soundCategory_master:') } : []
+            options.text = (lines + 'onboardAccessibility:false' + 'soundCategory_master:0.0').join('\n') + '\n'
         }
         def console = System.out
         def tee = new OutputStream() {
@@ -142,8 +143,8 @@ if (project.hasProperty('exampleTest')) {
         doFirst {
             def options = file('run-examples/gallery/options.txt')
             options.parentFile.mkdirs()
-            def lines = options.exists() ? options.readLines().findAll { !it.startsWith('onboardAccessibility:') } : []
-            options.text = (lines + 'onboardAccessibility:false').join('\n') + '\n'
+            def lines = options.exists() ? options.readLines().findAll { !it.startsWith('onboardAccessibility:') && !it.startsWith('soundCategory_master:') } : []
+            options.text = (lines + 'onboardAccessibility:false' + 'soundCategory_master:0.0').join('\n') + '\n'
         }
         doLast {
             def output = capturedExamples.toString('UTF-8')
@@ -178,11 +179,11 @@ tasks.register('releaseClient', net.fabricmc.loom.task.prod.ClientProductionRunT
     doFirst {
         if (!releaseFiles.isPresent()) throw new GradleException('Pass -PreleaseFiles=<directory holding the release jars>.')
         delete gameDir
-        // A fresh game folder opens vanilla's first-launch accessibility screen; checks start at the title screen.
+        // A fresh game folder opens vanilla's first-launch accessibility screen; checks start at the title screen, silently.
         if (fixture.isPresent()) {
             def options = gameDir.get().file('options.txt').asFile
             options.parentFile.mkdirs()
-            options.text = 'onboardAccessibility:false\n'
+            options.text = 'onboardAccessibility:false\nsoundCategory_master:0.0\n'
         }
     }
 }
