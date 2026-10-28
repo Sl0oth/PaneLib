@@ -18,6 +18,12 @@
       "url": "https://github.com/Sl0oth/PaneLib/releases/download/v1.0.0-beta.2/panelib-1.0.0-beta.2-maven.zip",
       "sha256": "081a224c1a27864b8cacc3e399fcfc60794e622a6497d4e7ecd93a85220860eb",
       "size": 5131372
+    },
+    {
+      "version": "1.0.0-beta.3",
+      "url": "https://github.com/Sl0oth/PaneLib/releases/download/v1.0.0-beta.3/panelib-1.0.0-beta.3-maven.zip",
+      "sha256": "2e6b26f3df1696c003aabba79accc996283ffe658095f4b537ab795dc6072cb5",
+      "size": 5288422
     }
   ]
 }
