@@ -1,10 +1,13 @@
-# PaneLib source status — October 22, 2026
+# PaneLib source status — October 28, 2026
 
-PaneLib [`1.0.0-beta.2`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.2) is the latest beta, published on GitHub Releases on October 22,
-2026, and on the [anonymous Maven repository](public-maven.md). It fixes invisible default tooltips on
-light themes, ships the demo as its own mod and records the [Windows 11 desktop run](platform-testing.md).
+PaneLib [`1.0.0-beta.3`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.3) is the latest beta, published on GitHub Releases on October 28,
+2026, and on the [anonymous Maven repository](public-maven.md). It draws on several cores, adds the
+narrator and input methods, and adds read-only text views, a HUD editor and `UiScreen.controls()`.
 
-[`1.0.0-beta.1`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.1), published the same day,
+[`1.0.0-beta.2`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.2), published on October 22,
+2026, remains available unchanged.
+
+[`1.0.0-beta.1`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.1), published on October 22, 2026,
 remains available unchanged. All 25 of its Maven files downloaded anonymously over HTTPS matched the
 verified candidate; file and public Maven consumers built against it, matched the nested runtime bytes
 and passed their Minecraft smoke checks on macOS ARM64.

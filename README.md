@@ -4,7 +4,7 @@ PaneLib is a client-side Fabric library for building desktop-quality Minecraft s
 in plain Java. It draws natively: no browser, HTML, CSS or MCEF. A screen paints only when
 something changes and is otherwise one reused GPU texture, so idle screens cost almost nothing.
 
-**Latest:** [`1.0.0-beta.2`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.2) (beta)
+**Latest:** [`1.0.0-beta.3`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.3) (beta)
 · Minecraft 26.2 · Fabric Loader 0.19.3+ · Fabric API · Java 25
 
 **Full documentation:** [sl0oth.github.io/PaneLib](https://sl0oth.github.io/PaneLib/)
@@ -19,6 +19,7 @@ something changes and is otherwise one reused GPU texture, so idle screens cost 
 | Text | Bundled fonts, multi-style text, Minecraft colour and formatting codes (`UiRichText`) | ✅ 0.9.8 |
 | Controls | Buttons, toggles, sliders, checkboxes, radios, tabs, tags, progress bars, dropdowns | ✅ 0.9.x |
 | Text input | Fields, text areas, passwords; undo/redo, clipboard, Unicode-safe editing | ✅ 0.9.x |
+| Text views | Read-only text that scrolls, selects and copies, with coloured runs, clickable links and log-style follow-the-end | ✅ 1.0.0-beta.3 |
 | Popups | Menus, dropdowns, dialogs, toasts and tooltips | ✅ 0.9.x |
 | Menu extras | Shortcut hints, disabled rows, dividers and right-click menus | ✅ 1.0.0-beta.1 |
 | Tooltips | Default tooltips pick readable text on any theme | ✅ 1.0.0-beta.2 |
@@ -30,12 +31,13 @@ something changes and is otherwise one reused GPU texture, so idle screens cost 
 | Minecraft content | Native items, entities, player skins and textures inside your UI | ✅ 0.9.x |
 | Backgrounds | Title panorama, in-world, the parent screen or full-screen | ✅ 0.9.1 |
 | HUDs | In-game HUDs that can replace vanilla elements and put them back | ✅ 0.9.x |
+| HUD editor | A ready-made screen where players drag HUDs into place; HUDs can scale with GUI Scale | ✅ 1.0.0-beta.3 |
 | Demo mod | PaneOS (a Mac-like desktop), Wayfarer menu and HUD, Pane Mail inbox | ✅ 1.0.0-beta.2 |
-| World snapshot | A screen can paint the game frame behind it, so glass and blur bend the world (PaneOS's Overworld wallpaper) | 🔜 1.0.0-beta.3 |
-| In-world demo | Field kit: a panel over the running world with the live player model and real items | 🔜 1.0.0-beta.3 |
-| Speed | Draws on several cores with identical pixels: full PaneOS repaints 13–18 ms, clicks 8–13 ms (were 33 and 26) | 🔜 1.0.0-beta.3 |
-| IME input | Chinese, Japanese and Korean composition at the caret; a committed word undoes in one step | 🔜 1.0.0-beta.3 |
-| Narrator | Minecraft's narrator reads controls, their state, dialogs, toasts and list rows | 🔜 1.0.0-beta.3 |
+| World snapshot | A screen can paint the game frame behind it, so glass and blur bend the world (PaneOS's Overworld wallpaper) | ✅ 1.0.0-beta.3 |
+| In-world demo | Field kit: a panel over the running world with the live player model and real items | ✅ 1.0.0-beta.3 |
+| Speed | Draws on several cores with identical pixels: full PaneOS repaints 13–18 ms, clicks 8–13 ms (were 33 and 26) | ✅ 1.0.0-beta.3 |
+| IME input | Chinese, Japanese and Korean composition at the caret; a committed word undoes in one step | ✅ 1.0.0-beta.3 |
+| Narrator | Minecraft's narrator reads controls, their state, dialogs, toasts and list rows | ✅ 1.0.0-beta.3 |
 | Multiple monitors | Correct sharpness when moving between screens with different scaling | 🔜 1.0.0-beta.4 |
 | Linux | Tested in game, not only in CI | 🔜 1.0.0-beta.4 |
 | Stable API | Public API frozen, with a compatibility policy for 1.x ([draft](docs/compatibility.md)) | 🔜 1.0.0 |
@@ -47,7 +49,7 @@ something changes and is otherwise one reused GPU texture, so idle screens cost 
 
 | Platform | Result |
 |---|---|
-| macOS (Apple silicon) | 1,325 unit tests and all 19 in-game tests pass, including narrator and IME ([details](docs/platform-testing.md)) |
+| macOS (Apple silicon) | 1,347 unit tests and all 19 in-game tests pass, including narrator and IME ([details](docs/platform-testing.md)) |
 | Windows 11 (RTX 2080 SUPER) | All 19 in-game tests pass at 100% display scale, including narrator and IME; the window and HUD tests (maximize, fullscreen, GUI scale) also passed at 150% for beta.2 |
 | Linux | Builds and unit tests pass in CI; not yet tested in game |
 
@@ -55,17 +57,15 @@ something changes and is otherwise one reused GPU texture, so idle screens cost 
 
 - Beta: the API may still change before 1.0.0.
 - Minecraft 26.2 only.
-- In 1.0.0-beta.2: no IME composition (such as Chinese or Japanese input) and no narrator support;
-  both arrive in 1.0.0-beta.3. Input methods are tested with the events Minecraft delivers, not yet
-  with real IME keyboards.
+- Input methods are tested with the events Minecraft delivers, not yet with real IME keyboards.
 - Not yet tested: moving between monitors with different scaling.
-- Full repaints are costly: a full PaneOS repaint takes about 33 ms in 1.0.0-beta.2 and 13–18 ms in
-  1.0.0-beta.3 on an RTX 2080 SUPER. Partial repaints and idle screens are much cheaper.
+- Full repaints are costly: a full PaneOS repaint takes 13–18 ms on an RTX 2080 SUPER (about 33 ms
+  before 1.0.0-beta.3). Partial repaints and idle screens are much cheaper.
 
 ## Try it (players)
 
-1. Download `panelib-1.0.0-beta.2.jar` and `panelib-demo-1.0.0-beta.2.jar` from the
-   [release page](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.2).
+1. Download `panelib-1.0.0-beta.3.jar` and `panelib-demo-1.0.0-beta.3.jar` from the
+   [release page](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.3).
 2. Put both in your Minecraft 26.2 `mods` folder with [Fabric API](https://modrinth.com/mod/fabric-api).
 3. Start the game. The demo opens on the title screen; **H** reopens it, **J** toggles the
    selected HUD in a world.
@@ -80,11 +80,11 @@ repositories {
     maven { url = uri('https://sl0oth.github.io/PaneLib/maven/') }
 }
 dependencies {
-    implementation 'dev.pane:panelib:1.0.0-beta.2'
+    implementation 'dev.pane:panelib:1.0.0-beta.3'
 }
 ```
 
-Coordinate: `dev.pane:panelib:1.0.0-beta.2`. The repository needs no login or token.
+Coordinate: `dev.pane:panelib:1.0.0-beta.3`. The repository needs no login or token.
 
 The quickest start is the [first-screen starter](examples/first-screen/README.md): a complete
 Fabric mod with five controls, an opening key and real Save/Cancel.

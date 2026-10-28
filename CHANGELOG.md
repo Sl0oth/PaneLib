@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.0.0-beta.3 (unreleased) — speed, the narrator and input methods
+## 1.0.0-beta.3 — speed, the narrator, input methods and text views
 
 ### Faster
 

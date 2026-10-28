@@ -10,6 +10,9 @@ JAR matched exactly, and both completed their Minecraft smoke checks on macOS AR
 caches were reused; fresh endpoint downloads were checked separately. See the
 [installation guide](installation.md).
 
+**`1.0.0-beta.3` was added on October 28, 2026.** Its [release](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.3)
+Maven ZIP is appended to the catalog after `1.0.0-beta.2`; all four versions stay available.
+
 **`1.0.0-beta.2` was added on October 22, 2026.** Its [release](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.2)
 Maven ZIP is appended to the catalog after `1.0.0-beta.1`; all three versions stay available.
 
