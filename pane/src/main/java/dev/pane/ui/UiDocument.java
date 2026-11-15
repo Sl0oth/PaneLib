@@ -20,6 +20,7 @@ public final class UiDocument {
     private final UiRenderSettings renderSettings;
     private final UiScrollSettings scrollSettings;
     private final UiButtonStyle buttonStyle;
+    private final boolean labelTooltips;
     private final UiInputStyle inputStyle;
     private final UiMenuStyle menuStyle;
 
@@ -38,6 +39,7 @@ public final class UiDocument {
         renderSettings = builder.renderSettings == null ? UiRenderSettings.balanced() : builder.renderSettings;
         scrollSettings = builder.scrollSettings == null ? UiScrollSettings.smooth() : builder.scrollSettings;
         buttonStyle = builder.buttonStyle;
+        labelTooltips = builder.labelTooltips;
         inputStyle = builder.inputStyle == null ? UiInputStyle.defaults() : builder.inputStyle;
         menuStyle = builder.menuStyle == null ? UiMenuStyle.defaults() : builder.menuStyle;
         if (pages.isEmpty()) throw new IllegalStateException("A UI document needs at least one page");
@@ -88,6 +90,9 @@ public final class UiDocument {
     /** Wheel/trackpad distance and finite smoothing duration. */
     public UiScrollSettings scrollSettings() { return scrollSettings; }
 
+    /** Whether painted, shaped, menu and dialog buttons show their label as a hover tooltip. */
+    public boolean labelTooltips() { return labelTooltips; }
+
     /** The style of buttons and dropdown triggers drawn without one, when the document sets it. */
     public java.util.Optional<UiButtonStyle> buttonStyle() { return java.util.Optional.ofNullable(buttonStyle); }
 
@@ -123,6 +128,7 @@ public final class UiDocument {
         private UiRenderSettings renderSettings = UiRenderSettings.balanced();
         private UiScrollSettings scrollSettings = UiScrollSettings.smooth();
         private UiButtonStyle buttonStyle;
+        private boolean labelTooltips = true;
         private UiInputStyle inputStyle;
         private UiMenuStyle menuStyle;
 
@@ -189,6 +195,14 @@ public final class UiDocument {
          * design system is set once here instead of passed to each control. Null restores Pane's look.
          */
         public Builder buttonStyle(UiButtonStyle buttonStyle) { this.buttonStyle = buttonStyle; return this; }
+
+        /**
+         * Whether painted, shaped, menu and dialog buttons show their label as a hover tooltip; on by
+         * default. Turn it off for a menu whose buttons already draw their label, so hovering PLAY does
+         * not raise a tip that says PLAY. Icon buttons keep theirs, and {@link UiContext#tooltip} still
+         * adds any tip you ask for. The label stays the button's name for the narrator.
+         */
+        public Builder labelTooltips(boolean show) { labelTooltips = show; return this; }
 
         /** Styles every text field, text area and text view drawn without a style of its own. */
         public Builder inputStyle(UiInputStyle inputStyle) { this.inputStyle = inputStyle; return this; }

@@ -36,9 +36,11 @@ something changes and is otherwise one reused GPU texture, so idle screens cost 
 | Settings forms | `ui.form` lays out labelled rows: toggles, sliders, text, dropdowns, steppers, key bindings, colours | ✅ 1.0.0-beta.4 |
 | More controls | Key binding (keys and mouse buttons), colour picker, stepper | ✅ 1.0.0-beta.4 |
 | More layouts | Sideways scrolling, lists with rows of different heights, sliders and text fields in rotated or scaled groups | ✅ 1.0.0-beta.4 |
+| Game-style menus | Slanted and cut-corner shapes, skew, outlined and leaning display text, sunbursts, looping animation | ✅ 1.0.0-beta.4 |
 | Clickable HUDs | HUD buttons, toggles and sliders that work while chat is open | ✅ 1.0.0-beta.4 |
 | High refresh rate | Animation at the display's refresh rate (144 Hz and up), with an optional cap | ✅ 1.0.0-beta.4 |
 | Demo mod | PaneOS (a Mac-like desktop), Wayfarer menu and HUD, Pane Mail inbox | ✅ 1.0.0-beta.2 |
+| Game menu demos | Skydrop, a battle-royale lobby, and Overdrive, a car-sports menu with a code-drawn car | ✅ 1.0.0-beta.4 |
 | World snapshot | A screen can paint the game frame behind it, so glass and blur bend the world (PaneOS's Overworld wallpaper) | ✅ 1.0.0-beta.3 |
 | In-world demo | Field kit: a panel over the running world with the live player model and real items | ✅ 1.0.0-beta.3 |
 | Speed | Draws on several cores with identical pixels: full PaneOS repaints 13–18 ms, clicks 8–13 ms (were 33 and 26) | ✅ 1.0.0-beta.3 |

@@ -38,6 +38,8 @@ public final class UiKeyNames {
      */
     public static String name(int code) {
         if (code == UNBOUND) return "Not bound";
+        // Not a key GLFW knows, such as a raw mouse button number passed where mouse(button) was meant.
+        if (!isMouse(code) && (code < GLFW.GLFW_KEY_SPACE || code > GLFW.GLFW_KEY_LAST)) return english(code);
         try {
             if (net.minecraft.client.Minecraft.getInstance() != null) {
                 var type = isMouse(code) ? com.mojang.blaze3d.platform.InputConstants.Type.MOUSE

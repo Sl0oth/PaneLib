@@ -264,6 +264,56 @@ public final class UiCanvas {
         return new UiPath(graphics);
     }
 
+    /**
+     * Fills a parallelogram that stays inside the given bounds. A positive {@code slant} moves the
+     * top edge that many units to the right, so the shape leans like italic type; a negative one
+     * leans it the other way. This is the slanted panel and button of sport and arcade menus.
+     */
+    public void slantRect(int color, float x, float y, float width, float height, float slant) {
+        slantPath(x, y, width, height, slant).fill(color);
+    }
+
+    /**
+     * The outline {@link #slantRect} fills, for a gradient, a stroke, a clip or
+     * {@link UiContext#shapedButton}, whose pointer target then follows the slanted edges.
+     */
+    public UiPath slantPath(float x, float y, float width, float height, float slant) {
+        float lean = Math.max(-width, Math.min(width, slant)), top = Math.max(0, lean), bottom = Math.max(0, -lean);
+        return path().moveTo(x + top, y).lineTo(x + width - bottom, y)
+            .lineTo(x + width - top, y + height).lineTo(x + bottom, y + height).close();
+    }
+
+    /** Fills a rectangle whose four corners are cut off diagonally by {@code cut} units. */
+    public void chamferRect(int color, float x, float y, float width, float height, float cut) {
+        chamferPath(x, y, width, height, cut, cut, cut, cut).fill(color);
+    }
+
+    /** Fills a rectangle with each corner cut by its own amount, clockwise from the top left; zero keeps a corner square. */
+    public void chamferRect(int color, float x, float y, float width, float height,
+                            float topLeft, float topRight, float bottomRight, float bottomLeft) {
+        chamferPath(x, y, width, height, topLeft, topRight, bottomRight, bottomLeft).fill(color);
+    }
+
+    /**
+     * The outline of a rectangle with diagonally cut corners, clockwise from the top left, for a
+     * gradient, a stroke, a clip or {@link UiContext#shapedButton}. Each cut is limited to half the
+     * shorter side.
+     */
+    public UiPath chamferPath(float x, float y, float width, float height,
+                              float topLeft, float topRight, float bottomRight, float bottomLeft) {
+        float limit = Math.max(0, Math.min(width, height) / 2);
+        float tl = Math.max(0, Math.min(limit, topLeft)), tr = Math.max(0, Math.min(limit, topRight));
+        float br = Math.max(0, Math.min(limit, bottomRight)), bl = Math.max(0, Math.min(limit, bottomLeft));
+        UiPath outline = path().moveTo(x + tl, y).lineTo(x + width - tr, y);
+        if (tr > 0) outline.lineTo(x + width, y + tr);
+        outline.lineTo(x + width, y + height - br);
+        if (br > 0) outline.lineTo(x + width - br, y + height);
+        outline.lineTo(x + bl, y + height);
+        if (bl > 0) outline.lineTo(x, y + height - bl);
+        outline.lineTo(x, y + tl);
+        return outline.close();
+    }
+
     // ---------------------------------------------------------------- gradients
 
     /**
@@ -995,6 +1045,31 @@ public final class UiCanvas {
         stripes(color, thickness, gap, 0, x, y, width, height);
     }
 
+    /**
+     * A sunburst: {@code count} wedges fanning out from a centre, clipped to the given bounds, with
+     * equal gaps between them. {@code degrees} turns the whole fan, so animating it spins the rays
+     * behind a reward, a winner or a featured item.
+     */
+    public void rays(int color, int count, float degrees, float centerX, float centerY,
+                     float x, float y, float width, float height) {
+        if (count < 1 || width <= 0 || height <= 0) return;
+        float reach = 0;
+        for (float cornerX : new float[] {x, x + width}) for (float cornerY : new float[] {y, y + height})
+            reach = Math.max(reach, (float) Math.hypot(cornerX - centerX, cornerY - centerY));
+        if (reach <= 0) return;
+        reach *= 1.05F;
+        Path2D.Float fan = new Path2D.Float();
+        double step = Math.PI * 2 / count;
+        for (int i = 0; i < count; i++) {
+            double from = Math.toRadians(degrees) + i * step, to = from + step / 2;
+            fan.moveTo(centerX, centerY);
+            fan.lineTo(centerX + Math.cos(from) * reach, centerY + Math.sin(from) * reach);
+            fan.lineTo(centerX + Math.cos(to) * reach, centerY + Math.sin(to) * reach);
+            fan.closePath();
+        }
+        withClip(x, y, width, height, () -> { graphics.setColor(awtColor(color)); graphics.fill(fan); });
+    }
+
     // ---------------------------------------------------------------- text
 
     /** Draws plain text in the default family; {@code top} is the top of the line box. */
@@ -1059,6 +1134,74 @@ public final class UiCanvas {
         graphics.setColor(awtColor(color));
         graphics.drawString(value, centerX - metrics.stringWidth(value) / 2F,
             centerY + (metrics.getAscent() - metrics.getDescent()) / 2F);
+    }
+
+    /**
+     * Draws display text with an outline, drop shadow or colour ramp from a {@link UiTextEffect}.
+     * It occupies the same line box and advance as plain {@link #text}; the outline and shadow
+     * extend beyond it. A null effect draws plain text. Meant for titles and short labels in
+     * left-to-right scripts.
+     */
+    public void text(String value, float x, float top, float size, int color, int style, String family,
+                     UiTextEffect effect) {
+        if (effect == null) { text(value, x, top, size, color, style, family); return; }
+        if (value == null || value.isEmpty()) return;
+        Font font = font(size, style, family);
+        effectText(value, x, top + graphics.getFontMetrics(font).getAscent(), font, color, effect);
+    }
+
+    /** Draws effect text centred on a point; see {@link #text(String, float, float, float, int, int, String, UiTextEffect)}. */
+    public void centeredText(String value, float centerX, float centerY, float size, int color,
+                             int style, String family, UiTextEffect effect) {
+        if (effect == null) { centeredText(value, centerX, centerY, size, color, style, family); return; }
+        if (value == null || value.isEmpty()) return;
+        Font font = font(size, style, family);
+        FontMetrics metrics = graphics.getFontMetrics(font);
+        effectText(value, centerX - metrics.stringWidth(value) / 2F,
+            centerY + (metrics.getAscent() - metrics.getDescent()) / 2F, font, color, effect);
+    }
+
+    private void effectText(String value, float x, float baseline, Font font, int color, UiTextEffect effect) {
+        Shape upright = font.createGlyphVector(graphics.getFontRenderContext(), value).getOutline(x, baseline);
+        Shape glyphs = upright;
+        if (effect.lean != 0) {
+            // Sheared about the baseline, so the foot of every letter stays where plain text puts it.
+            var shear = AffineTransform.getTranslateInstance(0, baseline);
+            shear.shear(-Math.tan(Math.toRadians(effect.lean)), 0);
+            shear.translate(0, -baseline);
+            glyphs = shear.createTransformedShape(upright);
+        }
+        java.awt.Stroke oldStroke = graphics.getStroke();
+        boolean rim = effect.outline != null && effect.outlineWidth > 0;
+        // The rim is stroked at twice its width and the fill painted over the inner half.
+        var rimStroke = new BasicStroke(effect.outlineWidth * 2, BasicStroke.CAP_ROUND, BasicStroke.JOIN_ROUND);
+        if (effect.shadow != null && (effect.shadowX != 0 || effect.shadowY != 0)) {
+            AffineTransform old = graphics.getTransform();
+            graphics.translate(effect.shadowX, effect.shadowY);
+            graphics.setColor(awtColor(effect.shadow));
+            if (rim) { graphics.setStroke(rimStroke); graphics.draw(glyphs); }
+            graphics.fill(glyphs);
+            graphics.setTransform(old);
+        }
+        if (rim) { graphics.setColor(awtColor(effect.outline)); graphics.setStroke(rimStroke); graphics.draw(glyphs); }
+        if (effect.gradient != null) {
+            FontMetrics metrics = graphics.getFontMetrics(font);
+            graphics.setPaint(linearPaint(color, effect.gradient, 90, x, baseline - metrics.getAscent(),
+                Math.max(1, metrics.stringWidth(value)), metrics.getAscent() + metrics.getDescent()));
+        } else graphics.setColor(awtColor(color));
+        graphics.fill(glyphs);
+        graphics.setPaint(awtColor(0xFF000000));
+        graphics.setStroke(oldStroke);
+    }
+
+    /**
+     * The largest size, no larger than {@code size}, at which the text fits {@code maxWidth}: draw a
+     * player or item name with it so a long one shrinks instead of spilling out of its card.
+     */
+    public float fitTextSize(String value, float maxWidth, float size, int style, String family) {
+        float natural = textWidth(value, size, style, family);
+        if (natural <= maxWidth || natural <= 0) return size;
+        return Math.max(1, (float) Math.floor(size * Math.max(0, maxWidth) / natural * 16) / 16);
     }
 
     /**
@@ -1417,6 +1560,18 @@ public final class UiCanvas {
     /** Scales everything drawn inside about a pivot. */
     public void withScale(float scaleX, float scaleY, float pivotX, float pivotY, Runnable painter) {
         withMatrix(g -> { g.translate(pivotX, pivotY); g.scale(scaleX, scaleY); g.translate(-pivotX, -pivotY); }, painter);
+    }
+
+    /**
+     * Leans everything drawn inside sideways about a pivot: 12 degrees gives the forward tilt of
+     * italic type and racing-style panels, and a negative angle leans back. Points level with the
+     * pivot stay where they are. Controls painted inside keep their upright pointer targets, so
+     * pair a slanted button with {@link #slantPath} and {@link UiContext#shapedButton}.
+     */
+    public void withSkew(float degrees, float pivotX, float pivotY, Runnable painter) {
+        if (!Float.isFinite(degrees) || Math.abs(degrees) >= 89) throw new IllegalArgumentException("Skew must be between -89 and 89 degrees");
+        double lean = -Math.tan(Math.toRadians(degrees));
+        withMatrix(g -> { g.translate(pivotX, pivotY); g.shear(lean, 0); g.translate(-pivotX, -pivotY); }, painter);
     }
 
     /** Translates everything drawn inside. Used by scroll containers and custom viewports. */

@@ -311,6 +311,7 @@ public final class UiContext {
         child.interactions = new UiInteractionState(interactions.offsets, interactions.editors, interactions.textLayouts, interactions.scrollEnds);
         child.interactions.live = interactions.live;
         child.interactions.buttonStyle = interactions.buttonStyle;
+        child.interactions.labelTooltips = interactions.labelTooltips;
         child.interactions.inputStyle = interactions.inputStyle;
         child.interactions.menuStyle = interactions.menuStyle;
         child.documentMatrix = java.awt.geom.AffineTransform.getTranslateInstance(offsetX, offsetY);
@@ -573,8 +574,19 @@ public final class UiContext {
 
     /** The number stored under {@code key}, or {@code fallback} when it holds none. */
     public double numberValue(String key, double fallback) {
-        Object value = state.get(key);
-        return value instanceof Number number ? number.doubleValue() : fallback;
+        return number(state.get(key), fallback);
+    }
+
+    /** A stored number, or stored text that reads as one, such as the "3" a {@link #selectable} choice wrote. */
+    static double number(Object value, double fallback) {
+        if (value instanceof Number number) return number.doubleValue();
+        if (value instanceof String text && !text.isBlank()) {
+            try {
+                double parsed = Double.parseDouble(text.trim());
+                if (Double.isFinite(parsed)) return parsed;
+            } catch (NumberFormatException notANumber) { return fallback; }
+        }
+        return fallback;
     }
 
     /**
@@ -1615,7 +1627,7 @@ public final class UiContext {
         recordButtonState(id, label, available);
         button(id, label, internalAction("menu:" + id), x, y, width, height, triggerStyle, available);
         if (available) {
-            tooltip(id, label);
+            labelTooltip(id, label);
             registerMenu(id, x, y, width, height, items, null, menuStyle);
         }
     }
@@ -1742,7 +1754,7 @@ public final class UiContext {
         recordButtonState(id, label, enabled);
         button(id, label, internalAction("dialog:" + id), x, y, width, height, triggerStyle, enabled);
         if (enabled) {
-            tooltip(id, label);
+            labelTooltip(id, label);
             dialogs.add(new UiDialogRequest(id, dialog));
         }
     }
@@ -1812,7 +1824,7 @@ public final class UiContext {
         if (state.focused()) drawFocusRing(accent, x - 2, y - 2, width + 4, height + 4, radius + 2);
         if (enabled) {
             hit(id, action, x, y, width, height);
-            tooltip(id, label);
+            labelTooltip(id, label);
         }
     }
 
@@ -1834,7 +1846,7 @@ public final class UiContext {
         var bounds = shape.getBounds2D();
         addHit(id, action, (float) bounds.getX(), (float) bounds.getY(), (float) bounds.getWidth(), (float) bounds.getHeight(),
             (float) bounds.getX(), (float) bounds.getWidth(), shape);
-        tooltip(id, label);
+        labelTooltip(id, label);
     }
 
     private UiButtonState recordButtonState(String id, String label, boolean enabled) {
@@ -2203,6 +2215,29 @@ public final class UiContext {
             bounds == null ? null : documentRect(bounds));
     }
 
+    /**
+     * An animation that never ends: a value that climbs from 0 to 1 every {@code periodMillis} and
+     * starts again, for a spinning sunburst, a sweeping highlight or a marquee. While a paint calls
+     * it, {@code bounds} (the whole page when null) repaints once per displayed frame; stop calling
+     * it and the screen is idle again. With motion turned off it stays at 0 and repaints nothing.
+     * Screens only: a HUD is painted when its content changes.
+     */
+    public float loop(int periodMillis, UiRect bounds) {
+        if (animationClock != null && animationClock.motionScale() == 0) return 0;
+        interactions.live.requestFrame(bounds == null ? null : documentRect(bounds));
+        long period = Math.max(1, periodMillis) * 1_000_000L;
+        long now = animationClock == null ? System.nanoTime() : animationClock.now();
+        return (float) (Math.floorMod(now, period) / (double) period);
+    }
+
+    /**
+     * A looping value that swells smoothly from 0 to 1 and back every {@code periodMillis}: the
+     * breathing glow on a Play button. It repaints {@code bounds} like {@link #loop}.
+     */
+    public float pulse(int periodMillis, UiRect bounds) {
+        return (float) (.5 - .5 * Math.cos(loop(periodMillis, bounds) * Math.PI * 2));
+    }
+
     private UiRect documentRect(UiRect local) {
         UiRect moved = local.translate(offsetX, offsetY);
         return documentMatrix == null ? moved : transformedRect(documentMatrix, moved);
@@ -2275,6 +2310,11 @@ public final class UiContext {
                 return;
             }
         }
+    }
+
+    /** The tooltip that repeats a button's label, unless the document turned those off. */
+    private void labelTooltip(String id, String label) {
+        if (interactions.labelTooltips) tooltip(id, label);
     }
 
     /**

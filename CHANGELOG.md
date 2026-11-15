@@ -57,6 +57,28 @@
 - Sliders, text fields and text areas work inside `withTransform` groups: a tilted or scaled card
   can hold them, and drags and clicks are mapped into the group. They used to throw there.
 
+### For game-style menus
+
+Two new demo screens, a battle-royale lobby and a car-sports main menu, were built to find what
+still took workarounds. Each gap they found is now one call:
+
+- `canvas.slantRect` and `slantPath` draw leaning panels and buttons; `chamferRect` and
+  `chamferPath` cut corners off, each corner by its own amount. The paths work with
+  `ui.shapedButton`, so the pointer target follows the slanted or cut edge.
+- `canvas.withSkew(degrees, pivotX, pivotY, painter)` leans anything drawn inside it.
+- `UiTextEffect` gives display text an outline, a hard drop shadow, a top-to-bottom colour ramp and
+  a forward lean, in any combination: `canvas.text(..., UiTextEffect.outline(ink, 3).withShadow(...))`.
+- `canvas.rays` draws a sunburst that can turn, and `canvas.fitTextSize` shrinks a long name to fit.
+- `ui.loop(period, bounds)` and `ui.pulse(period, bounds)` are animations that never end, for a
+  breathing Play button or a turning sunburst. They repaint only their bounds, once per displayed
+  frame, and hold still when motion is off.
+- `UiDocument.Builder.labelTooltips(false)` stops painted, shaped, menu and dialog buttons raising a
+  tooltip that repeats the label they already draw.
+- `numberValue` reads a number stored as text, such as the "3" a `selectable` choice writes. It used
+  to return the fallback, so the choice never showed.
+- `UiKeyNames.name` no longer asks GLFW about a code that is not a key, such as a raw mouse button
+  number passed where `UiKeyNames.mouse(button)` was meant.
+
 ### More to customise
 
 - `UiTheme` has a `with...` method for every token, and `withRadii`, so a theme is the dark or light

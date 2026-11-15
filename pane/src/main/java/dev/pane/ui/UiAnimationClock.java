@@ -19,6 +19,10 @@ final class UiAnimationClock {
         this.motionScale = Math.max(0, motionScale);
     }
 
+    /** When this paint began, and how far durations are scaled; zero means motion is off. */
+    long now() { return now; }
+    float motionScale() { return motionScale; }
+
     float value(String id, float target, int durationMillis, UiEasing easing) {
         return value(id, target, target, durationMillis, 0, easing);
     }

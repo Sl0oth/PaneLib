@@ -25,6 +25,8 @@ public final class ExampleGallery {
                 case "paneos" -> client.gui.setScreen(PaneOsShowcase.createScreen(s));
                 case "wayfarer" -> client.gui.setScreen(WayfarerShowcase.createScreen(s));
                 case "mail" -> client.gui.setScreen(GmailShowcase.createScreen(s));
+                case "skydrop" -> client.gui.setScreen(SkydropShowcase.createScreen(s));
+                case "overdrive" -> client.gui.setScreen(OverdriveShowcase.createScreen(s));
                 case "wayfarer-hud", "vanilla-hud" -> {
                     ExampleHudController.select(key);
                     if(client.level!=null) client.gui.setScreen(null);
@@ -48,6 +50,8 @@ public final class ExampleGallery {
         for(float y=0;y<h;y+=4)g.fill(0x04726A52,0,y,w,1);
         text(g,"PaneLib",m,m,30,INK,true);
         text(g,"THE EXAMPLE SHELF",w-m-175,m+8,11,MUTED,true);
+        button(ui,"skydrop","Skydrop lobby",w-m-330,m+30,160,26);
+        button(ui,"overdrive","Overdrive menu",w-m-160,m+30,160,26);
         float top=m+64;
         g.fill(INK,m,top-13,w-2*m,2);
         text(g,"Different interfaces. One native library.",m,top,27,INK,true);
@@ -100,7 +104,7 @@ public final class ExampleGallery {
     private static void button(UiContext ui,String id,String label,float x,float y,float w,float h){
         ui.paintedButton(id,label,id,x,y,w,h,0,true,(g,s)->{
             g.fill(s.hovered()||s.focused()?INK:PAPER,x,y,w,h);g.strokeRoundRect(INK,1,x,y,w,h,0);
-            text(g,label,x+10,y+8,11,s.hovered()||s.focused()?PAPER:INK,true);
+            text(g,label,x+10,y+(h-14)/2,11,s.hovered()||s.focused()?PAPER:INK,true);
         });
     }
     private static void text(UiCanvas g,String text,float x,float y,float size,int color,boolean bold){g.text(text,x,y,size,color,bold?Font.BOLD:Font.PLAIN,FONT);}

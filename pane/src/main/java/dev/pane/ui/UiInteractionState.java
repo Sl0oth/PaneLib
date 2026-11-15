@@ -29,6 +29,8 @@ final class UiInteractionState {
 
     /** The document's styles for controls drawn without one; null means Pane's own. */
     UiButtonStyle buttonStyle;
+    /** False when the document turned off the tooltips that repeat a button's label. */
+    boolean labelTooltips = true;
     UiInputStyle inputStyle;
     UiMenuStyle menuStyle;
 
@@ -36,7 +38,10 @@ final class UiInteractionState {
     Live live = new Live();
 
     /** Everything here is in document layout units. */
-    record Refresh(long atNanos, UiRect bounds) { }
+    record Refresh(long atNanos, UiRect bounds) {
+        /** Due one frame interval after the last paint instead of at a set time. */
+        static final long NEXT_FRAME = Long.MIN_VALUE;
+    }
 
     static final class Live {
         /** Pointer position, NaN when unknown, and the areas painted from it. */
@@ -64,6 +69,8 @@ final class UiInteractionState {
         final List<String> valueChanges = new ArrayList<>();
 
         void requestRefresh(long atNanos, UiRect bounds) { refreshes.add(new Refresh(atNanos, bounds)); }
+        /** Repaints {@code bounds} on the next displayed frame, paced like a running animation. */
+        void requestFrame(UiRect bounds) { refreshes.add(new Refresh(Refresh.NEXT_FRAME, bounds)); }
 
         /** What built-in controls said about themselves this paint, and the descriptions painters set, which win. */
         final Map<String, UiNarration> narrations = new HashMap<>(), namedNarrations = new HashMap<>();

@@ -34,6 +34,7 @@ public final class PaneDemoClient implements ClientModInitializer {
     private final ReviewFollowupTest reviewTest = Boolean.getBoolean("pane.demo.reviewTest") ? new ReviewFollowupTest() : null;
     private final ApiImprovementsTest apiTest = Boolean.getBoolean("pane.demo.apiTest") ? new ApiImprovementsTest() : null;
     private final EaseOfUseAuditTest easeTest = Boolean.getBoolean("pane.demo.easeTest") ? new EaseOfUseAuditTest() : null;
+    private final GameMenusAuditTest menuTest = Boolean.getBoolean("pane.demo.menuTest") ? new GameMenusAuditTest() : null;
     private final PlayerPreviewAuditTest playerPreviewTest = Boolean.getBoolean("pane.demo.playerPreviewTest") ? new PlayerPreviewAuditTest() : null;
     private final WayfarerAuditTest wayfarerTest = Boolean.getBoolean("pane.demo.wayfarerTest") ? new WayfarerAuditTest() : null;
     private final GmailAuditTest gmailTest = Boolean.getBoolean("pane.demo.gmailTest") ? new GmailAuditTest() : null;
@@ -74,6 +75,7 @@ public final class PaneDemoClient implements ClientModInitializer {
             if (reviewTest != null) { reviewTest.tick(client); return; }
             if (apiTest != null) { apiTest.tick(client); return; }
             if (easeTest != null) { easeTest.tick(client); return; }
+            if (menuTest != null) { menuTest.tick(client); return; }
             ExampleHudController.tick(client);
             while (OPEN_DEMO.consumeClick()) client.gui.setScreen(ExampleGallery.createScreen(client.gui.screen()));
             while (TOGGLE_HUD.consumeClick()) ExampleHudController.toggle();

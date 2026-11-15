@@ -61,6 +61,7 @@ tasks.named('runClient') {
     if (project.hasProperty('reviewTest')) systemProperty 'pane.demo.reviewTest', 'true'
     if (project.hasProperty('apiTest')) systemProperty 'pane.demo.apiTest', 'true'
     if (project.hasProperty('easeTest')) systemProperty 'pane.demo.easeTest', 'true'
+    if (project.hasProperty('menuTest')) systemProperty 'pane.demo.menuTest', 'true'
     if (project.hasProperty('perftest')) {
         systemProperty 'pane.demo.perftest', 'true'
     }
@@ -73,7 +74,7 @@ tasks.named('runClient') {
 }
 
 // A graceful Minecraft shutdown is not proof that the fixture passed.
-def fixtureMarkers = [adoptionTest: '[AdoptionTest] complete PASS', wayfarerTest: '[WayfarerTest] complete PASS', gmailTest: '[GmailTest] complete PASS', resourceTest: '[ResourceTest] complete PASS', editingTest: '[EditingTest] complete PASS', animationTest: '[AnimationTest] complete PASS', editorTest: '[EditorTest] complete PASS', gpuLayerTest: '[GpuLayerTest] complete PASS', paneOsTest: '[PaneOsTest] complete PASS', windowHudTest: '[WindowHudTest] complete PASS', narrationTest: '[NarrationTest] complete PASS', imeTest: '[ImeTest] complete PASS', screenshotTour: '[ScreenshotTour] complete PASS', paneOsPerf: '[PaneOsPerf] complete PASS', dialogTest: '[DialogTest] complete PASS', popupTest: '[PopupTest] complete PASS', reviewTest: '[ReviewFix] complete PASS', apiTest: '[ApiTest] complete PASS', easeTest: '[EaseTest] complete PASS', perftest: '[PanePerf] complete PASS']
+def fixtureMarkers = [adoptionTest: '[AdoptionTest] complete PASS', wayfarerTest: '[WayfarerTest] complete PASS', gmailTest: '[GmailTest] complete PASS', resourceTest: '[ResourceTest] complete PASS', editingTest: '[EditingTest] complete PASS', animationTest: '[AnimationTest] complete PASS', editorTest: '[EditorTest] complete PASS', gpuLayerTest: '[GpuLayerTest] complete PASS', paneOsTest: '[PaneOsTest] complete PASS', windowHudTest: '[WindowHudTest] complete PASS', narrationTest: '[NarrationTest] complete PASS', imeTest: '[ImeTest] complete PASS', screenshotTour: '[ScreenshotTour] complete PASS', paneOsPerf: '[PaneOsPerf] complete PASS', dialogTest: '[DialogTest] complete PASS', popupTest: '[PopupTest] complete PASS', reviewTest: '[ReviewFix] complete PASS', apiTest: '[ApiTest] complete PASS', easeTest: '[EaseTest] complete PASS', menuTest: '[MenuTest] complete PASS', perftest: '[PanePerf] complete PASS']
 def expectedMarkers = fixtureMarkers.findAll { key, marker -> project.hasProperty(key) }.values()
 if (!expectedMarkers.isEmpty()) {
     def captured = new ByteArrayOutputStream()

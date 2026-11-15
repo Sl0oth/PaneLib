@@ -328,6 +328,7 @@ public class UiScreen extends Screen {
         createdAtNanos = System.nanoTime();
         pageId = document.initialPageId();
         interactions.buttonStyle = document.buttonStyle().orElse(null);
+        interactions.labelTooltips = document.labelTooltips();
         interactions.inputStyle = document.inputStyle();
         interactions.menuStyle = document.menuStyle();
     }
@@ -773,7 +774,7 @@ public class UiScreen extends Screen {
 
     /** The number stored under {@code key}, or {@code fallback} when it holds none. */
     public double numberValue(String key, double fallback) {
-        return state.get(key) instanceof Number number ? number.doubleValue() : fallback;
+        return UiContext.number(state.get(key), fallback);
     }
 
     /** The string stored under {@code key}, or {@code fallback} when it holds none. */
@@ -1364,7 +1365,8 @@ public class UiScreen extends Screen {
         if (!refreshes.isEmpty()) {
             List<UiInteractionState.Refresh> waiting = null;
             for (var refresh : refreshes) {
-                if (now < refresh.atNanos()) { if (waiting != null) waiting.add(refresh); continue; }
+                long due = refresh.atNanos() == UiInteractionState.Refresh.NEXT_FRAME ? lastPaint + frameNanos : refresh.atNanos();
+                if (now < due) { if (waiting != null) waiting.add(refresh); continue; }
                 if (waiting == null) { waiting = new ArrayList<>(); for (var earlier : refreshes) { if (earlier == refresh) break; waiting.add(earlier); } }
                 if (refresh.bounds() == null) requestFullRepaint();
                 else requestPartialRepaint(refresh.bounds().expandAndClamp(surfaceLayoutWidth, surfaceLayoutHeight, 2));

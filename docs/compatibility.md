@@ -54,6 +54,7 @@ in the changelog:
 
 | API | Since | Why |
 |---|---|---|
+| `UiTextEffect`, `UiCanvas.rays`, `UiContext.loop`, `pulse` | 1.0.0-beta.4 | New; the look of effects and how loops pace repaints may be tuned. |
 | `UiForm`, `UiContext.form` | 1.0.0-beta.4 | New; row kinds and their spacing may grow. |
 | `UiContext.keybind`, `colorPicker`, `stepper`, `UiKeyNames`, `UiColor` | 1.0.0-beta.4 | New controls; their default look and layout may be tuned. |
 | `UiContext.scrollHorizontal`, `variableList` | 1.0.0-beta.4 | New; which wheel and swipe gestures scroll which region may be refined. |

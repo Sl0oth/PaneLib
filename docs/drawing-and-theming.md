@@ -271,6 +271,48 @@ UiPath wedge = ui.canvas().path().arc(cx, cy, 100, -118, 56).arc(cx, cy, 50, -62
 PaneOS (open `runExamples`, then PaneOS) uses circular traffic lights, round calculator keys and
 circular Control Center buttons whose empty corners never take the pointer.
 
+## Game-style menus
+
+Arcade and sport menus lean on a few shapes and treatments that are awkward to hand-build. Each is
+one call. The demo's Skydrop lobby and Overdrive menu (`./gradlew :pane-demo:runExamples`) use all
+of them.
+
+```java
+// A leaning tab whose pointer target follows its slanted edges.
+ui.shapedButton("tab:shop", "Shop", "tab:shop", canvas.slantPath(x, 16, 118, 40, 14), true, (c, state) -> {
+    c.slantRect(state.hovered() ? 0x70FFFFFF : 0x30FFFFFF, x, 16, 118, 40, 14);
+    c.centeredText("SHOP", x + 59, 36, 15, 0xFFFFFFFF, Font.BOLD, family, UiTextEffect.lean(10));
+});
+
+// A panel with two corners cut off, and a title with a rim, a hard shadow and a lean.
+canvas.chamferRect(0xC40B1030, 32, 104, 300, 150, 0, 14, 0, 14);
+var title = UiTextEffect.outline(0xFF0B1030, 3).withShadow(0x90040824, 0, 3).withLean(10);
+canvas.text("ITEM SHOP", 32, 100, 40, 0xFFFFFFFF, Font.BOLD, family, title);
+
+// A Play button that breathes, over a sunburst that turns.
+float turn = ui.loop(120_000, raysBounds) * 360;
+canvas.rays(0x14FFFFFF, 20, turn, centerX, centerY, raysBounds.x(), raysBounds.y(), raysBounds.width(), raysBounds.height());
+float glow = ui.pulse(1600, playBounds);
+```
+
+- `slantRect(color, x, y, w, h, slant)` fills a parallelogram inside its bounds; a positive slant
+  leans it right like italics. `chamferRect` cuts corners diagonally, all four or each by its own
+  amount. `slantPath` and `chamferPath` return the outline for a gradient, stroke, clip or
+  `shapedButton`.
+- `withSkew(degrees, pivotX, pivotY, painter)` leans everything drawn inside. Controls inside keep
+  upright pointer targets, so give a slanted button its `slantPath`.
+- `UiTextEffect` combines `outline`, `shadow`, `gradient` and `lean`. Effect text keeps the advance
+  of plain text, so `textWidth` still measures it. It is meant for titles and short labels.
+- `rays(color, count, degrees, centerX, centerY, x, y, w, h)` draws a sunburst clipped to its bounds.
+- `fitTextSize(value, maxWidth, size, style, family)` returns the size at which a name fits.
+- `ui.loop(periodMillis, bounds)` climbs from 0 to 1 and starts again; `ui.pulse` swells from 0 to 1
+  and back. While a paint calls one, `bounds` repaints once per displayed frame, so keep the bounds
+  tight. With motion off both stay at 0 and the screen is idle. Screens only.
+- `UiDocument.builder(...).labelTooltips(false)` stops buttons that draw their own label from also
+  raising it as a tooltip.
+- A registered font draws only the characters it contains. Draw arrows and symbols with `UiIcon` or
+  a `UiSymbol` instead of typing them.
+
 ## Liquid glass
 
 `canvas.liquidGlass(x, y, width, height, radius, UiGlass)` turns a rounded rectangle into glass over
