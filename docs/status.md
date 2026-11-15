@@ -50,7 +50,7 @@ removed on October 22 so the demo module holds only the three examples above and
 
 ## Implemented in current source
 
-- Retained screens and input-free gameplay HUDs, with cached textures and bounded quality settings.
+- Retained screens and gameplay HUDs, with cached textures and bounded quality settings.
 - Custom Java drawing, bundled fonts, images with fit/sampling options, procedural textures,
   shadows, gradients, clipping, and transforms.
 - Restylable controls, custom control painters, menus, dialogs, toasts, and configurable input/
@@ -78,12 +78,14 @@ add check counts from different runs together and treat them as one test of the 
 ## Limits to consider before adopting
 
 - The public Maven beta is available; a final 1.0 API compatibility guarantee is not established.
-- Minecraft narrator descriptions and IME composition are on the 1.0.0-beta.3 branch, not in a release yet; real IME keyboards are not yet tested by hand.
+- Narration and IME composition are tested with the events Minecraft delivers; real IME keyboards
+  and a real narrator voice are not yet tested by hand.
 - Native Minecraft text currently supports single-line labels, not editable or wrapped native-font
   paragraphs. There is no complete built-in vanilla widget theme.
-- HUDs do not receive control input; use a `UiScreen` for interactive UI.
-- Affine groups support drawing/buttons, not rotated/scaled editors, sliders, scroll containers,
-  or native slots. Document scaling and translation have separate supported paths.
+- HUDs take the mouse only with `setInteractive`, and then only for buttons, toggles, checkboxes,
+  steppers and sliders; text fields, dropdowns and key bindings need a `UiScreen`.
+- Affine groups support drawing, buttons, sliders and text inputs, not rotated/scaled scroll
+  containers or native slots. Document scaling and translation have separate supported paths.
 - Large popup lists, arbitrary native-layer composition, and cross-mod HUD conflicts need their
   documented constraints respected; a showcase does not prove every combination.
 - Real-client evidence is macOS ARM64 and one Windows 11 desktop (RTX 2080 SUPER). Linux GPU

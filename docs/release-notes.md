@@ -3,26 +3,29 @@
 Client-side Fabric UI library for Minecraft 26.2, Java 25, Fabric Loader 0.19.3+ and Fabric API.
 The runtime installs no standalone screen or hotkey; a consuming mod supplies those.
 
-This beta makes PaneLib faster, adds the narrator and input methods, and adds the pieces a scripting
-mod needed: read-only text views, a HUD editor and a list of the controls on screen.
+This beta makes common screens shorter to write, adds settings forms and new controls, lets HUDs take
+clicks, and follows high refresh rate displays.
 
-- Faster: large fills, strokes and images draw on several cores with exactly the same pixels. A full
-  PaneOS repaint went from about 33 ms to 13–18 ms on an RTX 2080 SUPER, and a click from 26 ms to 8–13.
-- Narrator: built-in controls describe themselves to Minecraft's narrator in its own words, including
-  their state, dialogs, toasts and list rows. `ui.narration` labels controls you paint yourself.
-- Input methods: focusing a text input turns Minecraft's IME on; Chinese, Japanese and Korean
-  composition draws at the caret, and a committed word undoes in one step.
-- Text views: `ui.textView` is read-only text that wraps, scrolls, selects and copies, with optional
-  line numbers, coloured runs (`UiRichText`), clickable links and `UiScrollFollow.WHEN_AT_END` for logs.
-- HUD editor: `UiHudEditor` is a ready-made screen where players drag HUDs into place. HUDs gained
-  offsets from their anchor, `setSize` and `setScalesWithGui`.
-- `UiScreen.controls()` lists the controls the last paint drew with their narrator label and bounds,
-  so tests and automation can find "the Save button" by its words.
-- Styled icon buttons and menu buttons, seven new icons, `showDialog` from code, and `requestFocus`
-  with a selection.
-- A screen can paint the world behind it (`worldSnapshot`), and the demo has an in-world Field kit.
+- One-call screens: `UiScreen.open("My mod", ui -> { ... })` builds and shows a screen.
+  `screen.onAction` and `screen.onChange` run a handler for one action or value, and
+  `screen.settings(file, defaults)` loads and saves a screen's values in a properties file.
+- Settings forms: `ui.form` lays out labelled rows and scrolls when they do not fit: toggles, sliders,
+  text, dropdowns, steppers, key bindings, colours and buttons.
+- New controls: `ui.keybind` (keys and, if you allow them, mouse buttons, named as Minecraft names
+  them), `ui.colorPicker` and `ui.stepper`.
+- New layouts: `ui.scrollHorizontal` scrolls sideways, and `ui.variableList` is a scrolling list whose
+  rows have different heights. Sliders and text inputs work inside rotated or scaled groups.
+- Clickable HUDs: `hud.setInteractive(true)` lets a HUD's buttons, toggles, checkboxes, steppers and
+  sliders take the mouse while chat is open.
+- High refresh rates: animation repaints once per displayed frame, where it used to stop near 48
+  frames a second on a 144 Hz display. `UiRenderSettings.withMaximumFrameRate` sets a ceiling.
+- Lighter: opening a screen paints once, showing a HUD fades on the GPU, and a surface no longer keeps
+  a second copy of its pixels, about 15 MB less for a 2560×1440 screen.
+- Themes: a `with...` method for every `UiTheme` token, `danger`, `success` and `warning` colours, and
+  document-wide button, input and menu styles.
 
-Everything from 1.0.0-beta.2 is included. See CHANGELOG.md for the full list and fixes.
+Everything from 1.0.0-beta.3 is included, and nothing public was removed: a mod built against
+1.0.0-beta.3 runs on this version. See CHANGELOG.md for the full list.
 
 The starter ZIP includes its exact runtime JAR, build wrapper, source, license and version descriptor.
 Unpack it, install Java 25, then use its README. Runtime, source and Javadoc JARs have different roles;
@@ -31,10 +34,11 @@ The demo JAR is a separate mod: install it next to the runtime and Fabric API; i
 title screen and H reopens it.
 The Maven ZIP is a candidate repository payload, not proof of public hosting or release publication.
 
-Real-client checks ran on macOS ARM64. The speed, narrator and IME work also ran on a Windows 11
-desktop; the text views, HUD editor and `controls()` were tested on macOS only. Linux desktop behavior,
-real IME keyboards and universal performance are not certified by these files. Existing tests cover
-bounded behaviors, not every modpack combination. See the candidate manifest for exact evidence.
+Real-client checks for this beta ran on macOS ARM64 only: 1,394 unit tests and 19 in-game fixtures.
+The Windows 11 desktop last ran the 1.0.0-beta.3 branch, so forms, the new controls, clickable HUDs
+and the refresh-rate change are not yet tested on Windows. Linux desktop behavior, real IME keyboards
+and universal performance are not certified by these files. Existing tests cover bounded behaviors,
+not every modpack combination. See the candidate manifest for exact evidence.
 
 Prepared locally only. Publication requires a separate release decision; never overwrite a published
 version with different bytes. Keep the existing submitted snapshot unchanged.

@@ -129,6 +129,17 @@ click 13.4 ms (was 25.8); Mac full repaint 16.8 ms (was 33.2), click 10.0 ms (wa
 Narration and input-method composition are tested with the events Minecraft delivers, not with a
 real screen reader voice or a real Chinese, Japanese or Korean keyboard.
 
+## 1.0.0-beta.4 (November 14, 2026)
+
+The 1.0.0-beta.4 source ran on the Mac only (macOS ARM64). The Windows 11 desktop was not reachable
+that day, so nothing in this beta has run on Windows yet.
+
+| Check | Mac | Windows |
+| --- | --- | --- |
+| Library unit tests | 1,394 passed | Not run |
+| 19 development fixtures, in one batch | All 19 passed, including the new `easeTest` (46 checks) for forms, key bindings, the colour picker, sideways scrolling and variable-height lists | Not run |
+| Public API compared with the published 1.0.0-beta.3 jar (`javap -protected`) | No public or protected type or member removed; `UiColor`, `UiForm` and `UiKeyNames` added | Same jar |
+
 Still to try by hand: moving between monitors with different DPI, a real IME keyboard, and listening to the narrator.
 macOS and Linux desktop/GPU combinations also need their own recorded runs; an automated build or
 Ubuntu Xvfb pass cannot substitute for them.

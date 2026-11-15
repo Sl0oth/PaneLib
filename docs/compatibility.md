@@ -54,6 +54,11 @@ in the changelog:
 
 | API | Since | Why |
 |---|---|---|
+| `UiForm`, `UiContext.form` | 1.0.0-beta.4 | New; row kinds and their spacing may grow. |
+| `UiContext.keybind`, `colorPicker`, `stepper`, `UiKeyNames`, `UiColor` | 1.0.0-beta.4 | New controls; their default look and layout may be tuned. |
+| `UiContext.scrollHorizontal`, `variableList` | 1.0.0-beta.4 | New; which wheel and swipe gestures scroll which region may be refined. |
+| `UiHud.setInteractive`, `onAction`, `onChange`, `value` | 1.0.0-beta.4 | New; which controls a HUD can hold may grow. |
+| `UiScreen.settings`, `saveSettings` | 1.0.0-beta.4 | New; the file format is a plain properties file and may gain types. |
 | `UiNarration`, `UiContext.narration` | 1.0.0-beta.3 | New; roles and wording may grow as more controls are narrated. |
 | `UiScreen.compositionText` | 1.0.0-beta.3 | Diagnostic view of input-method composition. |
 | `UiScreenOptions.Builder.worldSnapshot`, `UiContext.worldSnapshot`, `UiWorldSnapshot` | 1.0.0-beta.3 | New; when captures are taken, such as a live mode for multiplayer, may grow. |
