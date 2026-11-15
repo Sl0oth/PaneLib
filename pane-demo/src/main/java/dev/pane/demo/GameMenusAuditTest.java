@@ -54,17 +54,18 @@ final class GameMenusAuditTest {
                 case 26->{check(screen.stringValue("view","").equals("GARAGE"),"Enter opens the selection");capture(c,"overdrive-garage");screen.setValue("paint","#FF5A1F");click("team:ORANGE");}
                 case 27->{check(screen.stringValue("team","").equals("ORANGE"),"team colour switches");click("part:WHEELS");}
                 case 28->{click("pick:WHEELS:3");}
-                case 29->{check(screen.stringValue("pick:WHEELS","").equals("3"),"a wheel from the sideways strip equips");capture(c,"overdrive-garage-orange");screen.keyPressed(new KeyEvent(GLFW.GLFW_KEY_ESCAPE,0,0));}
-                case 30->{check(screen.stringValue("view","").equals("MENU"),"Escape returns to the main menu");click("menu:PLAY");}
-                case 31->{check(screen.stringValue("view","").equals("PLAY"),"clicking a menu row opens it");capture(c,"overdrive-play");click("playlist:1");}
-                case 32->{check(screen.numberValue("playlist",-1)==1,"a playlist card selects");click("queue");waitFor(1300);return;}
-                case 33->{check(screen.booleanValue("searching",false),"the queue starts");capture(c,"overdrive-searching");click("queue");}
-                case 34->{check(!screen.booleanValue("searching",true),"and cancels");screen.keyPressed(new KeyEvent(GLFW.GLFW_KEY_ESCAPE,0,0));}
-                case 35->{click("menu:SETTINGS");}
-                case 36->{check(screen.stringValue("view","").equals("SETTINGS"),"settings opens");capture(c,"overdrive-settings");click("menu-back");}
-                case 37->{click("menu:PROFILE");waitFor(1400);return;}
-                case 38->{capture(c,"overdrive-profile");c.getWindow().setWindowed(960,600);waitFor(1200);return;}
-                case 39->{capture(c,"overdrive-compact");check(screen.regionBounds("menu-back").isPresent(),"back stays reachable in a small window");}
+                case 29->{check(screen.stringValue("pick:WHEELS","").equals("3"),"a wheel from the sideways strip equips");capture(c,"overdrive-garage-orange");click("part:BOOST");paints=screen.paintCount();waitFor(700);return;}
+                                case 30->{check(screen.paintCount()>paints+10,"the boost burns while its tab is open: "+(screen.paintCount()-paints));capture(c,"overdrive-boost");screen.keyPressed(new KeyEvent(GLFW.GLFW_KEY_ESCAPE,0,0));}
+                case 31->{check(screen.stringValue("view","").equals("MENU"),"Escape returns to the main menu");click("menu:PLAY");}
+                case 32->{check(screen.stringValue("view","").equals("PLAY"),"clicking a menu row opens it");capture(c,"overdrive-play");click("playlist:1");}
+                case 33->{check(screen.numberValue("playlist",-1)==1,"a playlist card selects");click("queue");waitFor(1300);return;}
+                case 34->{check(screen.booleanValue("searching",false),"the queue starts");capture(c,"overdrive-searching");click("queue");}
+                case 35->{check(!screen.booleanValue("searching",true),"and cancels");screen.keyPressed(new KeyEvent(GLFW.GLFW_KEY_ESCAPE,0,0));}
+                case 36->{click("menu:SETTINGS");}
+                case 37->{check(screen.stringValue("view","").equals("SETTINGS"),"settings opens");capture(c,"overdrive-settings");click("menu-back");}
+                case 38->{click("menu:PROFILE");waitFor(1400);return;}
+                case 39->{capture(c,"overdrive-profile");c.getWindow().setWindowed(960,600);waitFor(1200);return;}
+                case 40->{capture(c,"overdrive-compact");check(screen.regionBounds("menu-back").isPresent(),"back stays reachable in a small window");}
                 default->{System.out.println("[MenuTest] "+checks+" checks");System.out.println("[MenuTest] complete "+(failed?"FAIL":"PASS"));done=true;c.stop();}
             }
             waitFor(450);

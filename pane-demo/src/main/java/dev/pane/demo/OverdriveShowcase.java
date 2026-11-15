@@ -12,7 +12,7 @@ import org.lwjgl.glfw.GLFW;
  */
 public final class OverdriveShowcase {
     private static final String FONT=ExampleFonts.FAMILY;
-    private static final int WHITE=0xFFFFFFFF, BG=0xFF070A12, PANEL=0xD4101826, LINE=0xFF2A3854, MUTED=0xFF8FA3C4, BLUE=0xFF2F8BFF, ORANGE=0xFFFF8A1F, GREEN=0xFF5BE38A;
+    private static final int WHITE=0xFFFFFFFF, BG=0xFF070A12, PANEL=0xB4101826, LINE=0xFF2A3854, MUTED=0xFF8FA3C4, BLUE=0xFF2F8BFF, ORANGE=0xFFFF8A1F, GREEN=0xFF5BE38A;
     static final String[] MENU={"PLAY","GARAGE","PROFILE","SETTINGS","QUIT"};
     private static final String[] PARTS={"PAINT","WHEELS","DECAL","BOOST"};
     private static final String[] PLAYLIST={"CASUAL","COMPETITIVE","EXTRA MODES"};
@@ -55,7 +55,7 @@ public final class OverdriveShowcase {
         void plain(String t,float x,float y,float z,int c){g.text(t,x,y,z,c,Font.PLAIN,FONT);}
         void lean(String t,float x,float y,float z,int c){g.text(t,x,y,z,c,Font.BOLD,FONT,UiTextEffect.lean(12));}
         void label(String t,float x,float y,int c){g.trackedText(t,x,y,10,c,Font.BOLD,FONT,1.8F);}
-        void panel(float x,float y,float w,float h){g.chamferRect(PANEL,x,y,w,h,12,0,12,0);g.chamferPath(x,y,w,h,12,0,12,0).stroke(LINE,1,false);g.fill(team,x+12,y,46,2);}
+        void panel(float x,float y,float w,float h){g.withClip(g.chamferPath(x,y,w,h,12,0,12,0),()->g.backdropBlur(9,x,y,w,h));g.chamferRect(PANEL,x,y,w,h,12,0,12,0);g.chamferPath(x,y,w,h,12,0,12,0).stroke(LINE,1,false);g.fill(team,x+12,y,46,2);}
         void keycap(String key,float x,float y,float w){g.chamferRect(0xFF18243A,x,y,w,22,4);g.chamferPath(x,y,w,22,4,4,4,4).stroke(LINE,1,false);g.centeredText(key,x+w/2,y+11,10,WHITE,Font.BOLD,FONT);}
         void back(String title){
             ui.shapedButton("menu-back","Back to the main menu","menu-back",g.chamferPath(40,34,44,44,10,0,10,0),true,(c,state)->{c.chamferRect(state.hovered()?team:0xFF18243A,40,34,44,44,10,0,10,0);UiIcon.ARROW_LEFT.draw(c,WHITE,50,44,24,2.4F);});
@@ -73,7 +73,10 @@ public final class OverdriveShowcase {
         g.gradientRect(BG,0x00070A12,90,0,300,d.w,180,0);
         for(int beam=0;beam<3;beam++){float x=520+beam*300;g.path().moveTo(x-12,0).lineTo(x+12,0).lineTo(x+190,470).lineTo(x-190,470).close().fillGradient(0x16FFFFFF,0x00FFFFFF,90);}
         g.slantRect(0xE60B101C,-140,0,560,d.h,150);g.slantRect(UiCanvas.alpha(d.team,200),414,0,10,d.h,150*10/560F+2);
-        switch(view){case "PLAY"->play(d);case "GARAGE"->garage(d);case "PROFILE"->profile(d);case "SETTINGS"->settings(d);default->menu(d);}
+        // Each view slides and fades in; an id that left the page starts its entrance again when it returns.
+        float enter=ui.animateFrom("enter:"+view,0,1,280,0,UiEasing.EASE_OUT,new UiRect(0,0,d.w,d.h));
+        g.withOpacity(.2F+.8F*enter,()->ui.withTranslation((1-enter)*56,0,moved->{D v=new D(moved);
+            switch(view){case "PLAY"->play(v);case "GARAGE"->garage(v);case "PROFILE"->profile(v);case "SETTINGS"->settings(v);default->menu(v);}}));
         g.fill(0xE6070A12,0,d.h-40,d.w,40);g.fill(LINE,0,d.h-40,d.w,1);
         float x=40;
         if(view.equals("MENU")){d.keycap(" ",x,d.h-31,24);d.keycap(" ",x+28,d.h-31,24);UiIcon.ARROW_DOWN.draw(g,WHITE,x+33,d.h-27,14,1.8F);float up=x+12;g.withRotation(180,up,d.h-20,()->UiIcon.ARROW_DOWN.draw(g,WHITE,up-7,d.h-27,14,1.8F));d.plain("Navigate",x+60,d.h-27,11,MUTED);d.keycap("ENTER",x+130,d.h-31,52);d.plain("Select",x+190,d.h-27,11,MUTED);x+=240;}
@@ -84,9 +87,16 @@ public final class OverdriveShowcase {
     /** The car, drawn in a 400 by 150 box at {@code scale}, standing on y = 128. */
     private static void car(D d,float x,float y,float scale){
         var g=d.g;var ui=d.ui;int paint=d.paint;int wheels=(int)ui.numberValue("pick:WHEELS",0),decal=(int)ui.numberValue("pick:DECAL",1),boost=BOOSTS[(int)ui.numberValue("pick:BOOST",0)%BOOSTS.length];
-        g.withTranslation(x,y,()->g.withScale(scale,scale,0,0,()->{
-            g.withScale(1,.16F,200,128,()->{for(int i=6;i>=1;i--)g.circle(0x16000000,200,128,150+i*14);});
-            for(int i=0;i<3;i++)g.path().moveTo(8,70+i*9).lineTo(-70-i*26,66+i*11).lineTo(8,76+i*9).close().fillGradient(UiCanvas.alpha(boost,0),UiCanvas.alpha(boost,150-i*30),0);
+        // The car drifts a little against the pointer, and its boost burns while the BOOST tab is open.
+        UiRect area=new UiRect(x-150*scale,y-10*scale,570*scale,170*scale);UiPointer pointer=ui.pointer(area.x(),area.y(),area.width(),area.height());
+        float drift=ui.animate("car-drift",pointer.inside()?(pointer.x()-(x+200*scale))/(285*scale)*-14:0,240,UiEasing.EASE_OUT,area);
+        boolean burning=ui.stringValue("view","MENU").equals("GARAGE")&&ui.stringValue("part","PAINT").equals("BOOST");
+        float burn=burning?ui.loop(700,new UiRect(x-150*scale,y+50*scale,170*scale,60*scale)):0;
+        g.withTranslation(x+drift,y,()->g.withScale(scale,scale,0,0,()->{
+            g.withScale(1,.16F,200,128,()->{for(int i=6;i>=1;i--)g.circle(0x16000000,200-drift*.5F,128,150+i*14);});
+            for(int i=0;i<3;i++){float reach=burning?1+.35F*(float)Math.sin((burn+i/3F)*Math.PI*2):1;
+                g.path().moveTo(8,70+i*9).lineTo(8-(78+i*26)*reach,66+i*11).lineTo(8,76+i*9).close().fillGradient(UiCanvas.alpha(boost,0),UiCanvas.alpha(boost,burning?230:150-i*30),0);}
+            if(burning)for(int k=0;k<14;k++){float phase=(burn+k/14F)%1;g.circle(UiCanvas.alpha(boost,(int)(220*(1-phase))),6-phase*130,82+(float)Math.sin(k*2.4F)*13,2.6F-phase*1.6F);}
             UiPath shell=body(g);shell.fillGradient(UiCanvas.lighten(paint,.22F),UiCanvas.darken(paint,.38F),90);
             g.withClip(body(g),()->{
                 int ink=UiCanvas.alpha(WHITE,210);
@@ -203,7 +213,7 @@ public final class OverdriveShowcase {
         d.panel(460,238,d.w-500,372);d.label("LAST TEN MATCHES",478,256,WHITE);
         for(int i=0;i<10;i++){int blue=(i*5+2)%6,orange=(i*3+1)%5;if(blue==orange)blue++;boolean won=blue>orange;float y=284+i*31;
             float grow=ui.animateFrom("match-bar"+i,0,1,500,i*45,UiEasing.EASE_OUT,new UiRect(476,y,d.w-530,26));
-            g.slantRect(0xFF18243A,478,y,d.w-536,24,8);g.slantRect(BLUE,560,y+4,blue*44*grow+8,16,6);g.slantRect(ORANGE,560+blue*44*grow+12,y+4,orange*44*grow+8,16,6);
+            g.slantRect(0xFF18243A,478,y,d.w-536,24,8);if(blue>0)g.slantRect(BLUE,560,y+4,blue*44*grow+8,16,6);if(orange>0)g.slantRect(ORANGE,560+(blue>0?blue*44*grow+12:0),y+4,orange*44*grow+8,16,6);
             d.text(won?"WIN":"LOSS",494,y+5,11,won?GREEN:0xFFFF6B77);d.text(blue+" – "+orange,d.w-130,y+5,12,WHITE);}
     }
 
