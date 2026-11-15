@@ -76,6 +76,9 @@ still took workarounds. Each gap they found is now one call:
   tooltip that repeats the label they already draw.
 - `numberValue` reads a number stored as text, such as the "3" a `selectable` choice writes. It used
   to return the fallback, so the choice never showed.
+- Text in a registered font no longer shows an empty box for a character the font lacks, such as an
+  arrow. Labels, titles, tracked text, rich text and effect text draw that character in the default
+  sans and measure it the same way. Text fields, text areas and text views are unchanged.
 - `UiKeyNames.name` no longer asks GLFW about a code that is not a key, such as a raw mouse button
   number passed where `UiKeyNames.mouse(button)` was meant.
 

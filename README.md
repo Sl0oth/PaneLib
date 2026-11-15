@@ -57,7 +57,7 @@ something changes and is otherwise one reused GPU texture, so idle screens cost 
 
 | Platform | Result |
 |---|---|
-| macOS (Apple silicon) | 1,394 unit tests and all 19 in-game tests pass on 1.0.0-beta.4, including narrator and IME ([details](docs/platform-testing.md)) |
+| macOS (Apple silicon) | 1,406 unit tests and all 20 in-game tests pass on 1.0.0-beta.4, including narrator and IME ([details](docs/platform-testing.md)) |
 | Windows 11 (RTX 2080 SUPER) | Last run on the 1.0.0-beta.3 branch: all 19 in-game tests passed at 100% display scale. The forms, new controls and clickable HUDs in 1.0.0-beta.4 have not been run on Windows yet |
 | Linux | Builds and unit tests pass in CI; not yet tested in game |
 

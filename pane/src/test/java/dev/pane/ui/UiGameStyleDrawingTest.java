@@ -160,6 +160,31 @@ class UiGameStyleDrawingTest {
         assertEquals(9, UiContext.number(null, 9));
     }
 
+    @Test void charactersARegisteredFontLacksAreDrawnInTheDefaultSans() throws Exception {
+        var file = java.nio.file.Path.of("..", "pane-demo", "src", "main", "resources", "assets", "pane_demo", "fonts", "Roboto-Variable.ttf");
+        org.junit.jupiter.api.Assumptions.assumeTrue(java.nio.file.Files.exists(file), "the demo font is in this checkout");
+        assertTrue(UiCanvas.registerFont("fallback-test", java.nio.file.Files.newInputStream(file)));
+        String arrow = "\u2191";
+        Font roboto = Font.createFont(Font.TRUETYPE_FONT, file.toFile());
+        org.junit.jupiter.api.Assumptions.assumeFalse(roboto.canDisplay(0x2191), "the font lacks the arrow");
+        paint(c -> c.text(arrow, 40, 20, 60, WHITE, Font.PLAIN, UiCanvas.SANS));
+        int[] sans = image.getRGB(0, 0, 200, 120, null, 0, 200);
+        assertTrue(count() > 100, "the system draws an arrow");
+        paint(c -> c.text(arrow, 40, 20, 60, WHITE, Font.PLAIN, "fallback-test"));
+        // The line box is the registered font's, so the arrow may sit a little higher or lower.
+        int sansInk = 0; for (int p : sans) if (p >>> 24 > 200) sansInk++;
+        assertEquals(sansInk, count(), "the same arrow, not an empty box");
+        paint(c -> {
+            float a = c.textWidth("A", 30, Font.PLAIN, "fallback-test"), up = c.textWidth(arrow, 30, Font.PLAIN, UiCanvas.SANS);
+            assertEquals(a + up + a, c.textWidth("A" + arrow + "A", 30, Font.PLAIN, "fallback-test"), 2F, "each stretch measures in the font that draws it");
+            assertEquals(a * 3, c.textWidth("AAA", 30, Font.PLAIN, "fallback-test"), 2F);
+            assertEquals(a + up + 4, c.trackedTextWidth("A" + arrow, 30, Font.PLAIN, "fallback-test", 4), 2F);
+            c.centeredText(arrow + " Up", 100, 60, 20, WHITE, Font.BOLD, "fallback-test");
+            c.text(arrow + " Up", 20, 80, 20, WHITE, Font.BOLD, "fallback-test", UiTextEffect.outline(BLUE, 2).withLean(10));
+        });
+        assertTrue(count() > 200);
+    }
+
     @Test void longTextShrinksToFit() {
         paint(c -> {
             float wide = c.textWidth("A very long player name", 20, Font.BOLD, UiCanvas.SANS);

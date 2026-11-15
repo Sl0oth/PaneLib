@@ -310,8 +310,9 @@ float glow = ui.pulse(1600, playBounds);
   tight. With motion off both stay at 0 and the screen is idle. Screens only.
 - `UiDocument.builder(...).labelTooltips(false)` stops buttons that draw their own label from also
   raising it as a tooltip.
-- A registered font draws only the characters it contains. Draw arrows and symbols with `UiIcon` or
-  a `UiSymbol` instead of typing them.
+- A character a registered font lacks, such as an arrow, is drawn in the default sans in labels,
+  titles, tracked text, rich text and effect text, and measured the same way. Text fields, text
+  areas and text views still draw only what their font contains.
 
 ## Liquid glass
 

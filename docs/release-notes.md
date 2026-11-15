@@ -21,6 +21,9 @@ clicks, and follows high refresh rate displays.
   frames a second on a 144 Hz display. `UiRenderSettings.withMaximumFrameRate` sets a ceiling.
 - Lighter: opening a screen paints once, showing a HUD fades on the GPU, and a surface no longer keeps
   a second copy of its pixels, about 15 MB less for a 2560×1440 screen.
+- Game-style menus: slanted and cut-corner shapes, `withSkew`, `UiTextEffect` for outlined, shadowed
+  and leaning display text, `rays`, and `ui.loop` and `ui.pulse` for animation that never ends. The demo
+  adds two menus built with them, Skydrop and Overdrive.
 - Themes: a `with...` method for every `UiTheme` token, `danger`, `success` and `warning` colours, and
   document-wide button, input and menu styles.
 
@@ -34,7 +37,7 @@ The demo JAR is a separate mod: install it next to the runtime and Fabric API; i
 title screen and H reopens it.
 The Maven ZIP is a candidate repository payload, not proof of public hosting or release publication.
 
-Real-client checks for this beta ran on macOS ARM64 only: 1,394 unit tests and 19 in-game fixtures.
+Real-client checks for this beta ran on macOS ARM64 only: 1,406 unit tests and 20 in-game fixtures.
 The Windows 11 desktop last ran the 1.0.0-beta.3 branch, so forms, the new controls, clickable HUDs
 and the refresh-rate change are not yet tested on Windows. Linux desktop behavior, real IME keyboards
 and universal performance are not certified by these files. Existing tests cover bounded behaviors,

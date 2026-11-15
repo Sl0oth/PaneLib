@@ -109,7 +109,10 @@ public final class SkydropShowcase {
         UiIcon.PEOPLE.draw(g,WHITE,d.w-150,26,20,1.8F);d.text("3",d.w-124,27,15,WHITE);
         ui.paintedButton("settings","Settings","settings",d.w-92,18,36,36,8,true,(c,state)->{c.chamferRect(state.hovered()||d.on("settings")?0xFF2A3BB0:0xC00B1030,d.w-92,18,36,36,8);UiIcon.SETTINGS.draw(c,WHITE,d.w-84,26,20,1.8F);});
         ui.paintedButton("back","Back","back",d.w-48,18,36,36,8,true,(c,state)->{c.chamferRect(state.hovered()?0xFFB5303A:0xC00B1030,d.w-48,18,36,36,8);UiIcon.CLOSE.draw(c,WHITE,d.w-40,26,20,2);});
-        switch(tab){case "LOBBY"->lobby(d);case "PASS"->pass(d);case "LOCKER"->locker(d);case "SHOP"->shop(d);default->career(d);}
+        // Each tab slides and fades in; its entrance starts again whenever it returns to the page.
+        float enter=ui.animateFrom("enter:"+tab,0,1,260,0,UiEasing.EASE_OUT,new UiRect(0,90,d.w,d.h-136));
+        g.withOpacity(.15F+.85F*enter,()->ui.withTranslation(0,(1-enter)*26,moved->{D v=new D(moved);
+            switch(tab){case "LOBBY"->lobby(v);case "PASS"->pass(v);case "LOCKER"->locker(v);case "SHOP"->shop(v);default->career(v);}}));
         g.gradientRect(0x00080D33,0xD0080D33,90,0,d.h-46,d.w,46,0);
         d.keycap("Q",32,d.h-32);d.keycap("E",60,d.h-32);d.plain("Switch tab",92,d.h-28,12,MUTED);d.keycap("ESC",176,d.h-32);d.plain("Back",220,d.h-28,12,MUTED);
         d.plain("PANELIB UI SHOWCASE — NOT A REAL GAME, NOTHING IS BOUGHT OR SOLD",d.w-470,d.h-28,12,MUTED);
@@ -179,9 +182,10 @@ public final class SkydropShowcase {
             c.withSkew(10,rx+160,614,()->c.centeredText(queued?"CANCEL":"PLAY",rx+160,queued?606:614,queued?30:42,queued?WHITE:INK,Font.BOLD,FONT,
                 queued?UiTextEffect.outline(INK,2.5F):UiTextEffect.shadow(0x50FFFFFF,0,2)));
             if(queued){long seconds=(System.currentTimeMillis()-(long)ui.numberValue("queue-start",0))/1000;
-                c.centeredText(String.format("FINDING MATCH  %d:%02d",seconds/60,seconds%60),rx+160,634,12,WHITE,Font.BOLD,FONT);}
+                c.centeredText(String.format("FINDING MATCH  %d:%02d",seconds/60,seconds%60),rx+172,634,12,WHITE,Font.BOLD,FONT);
+                c.path().arc(rx+78,634,8,ui.loop(900,play)*360,250).stroke(WHITE,2.5F,true);}
+            else{float sweep=ui.loop(2600,play);if(sweep<.45F)c.withClip(c.slantPath(rx,576,320,76,18),()->c.slantRect(0x55FFFFFF,rx-90+sweep/.45F*460,576,70,76,18));}
         });
-        if(queued)ui.refreshAfter(1000,play);
     }
 
     private static void pass(D d){
@@ -239,7 +243,9 @@ public final class SkydropShowcase {
     private static void card(D d,Item item,float x,float y,float w,float h){
         var ui=d.ui;boolean owned=d.on("owned:"+item.id());int color=RARITY[item.rarity()];boolean big=w>240;
         float lift=ui.animate("card:"+item.id(),ui.hovered("buy:"+item.id()),140,UiEasing.EASE_OUT,new UiRect(x-10,y-10,w+20,h+20));
-        ui.withTransform(UiTransform.identity().scale(1+lift*.035F),x+w/2,y+h/2,group->{var c=group.canvas();
+        // A card leans a little toward the pointer while it is over it.
+        UiPointer pointer=ui.pointer(x,y,w,h);float tilt=ui.animate("tilt:"+item.id(),pointer.inside()?(pointer.x()-x-w/2)/(w/2)*2.2F:0,160,UiEasing.EASE_OUT,new UiRect(x-14,y-14,w+28,h+28));
+        ui.withTransform(UiTransform.identity().scale(1+lift*.035F).rotate(tilt),x+w/2,y+h/2,group->{var c=group.canvas();
             c.shadow(0x70040824,14,0,6+lift*4,x,y,w,h,4);c.chamferRect(lift>0?UiCanvas.mix(INK,WHITE,lift):INK,x-3,y-3,w+6,h+6,16,0,16,0);
             c.withClip(c.chamferPath(x,y,w,h,14,0,14,0),()->{c.radialRect(UiCanvas.lighten(color,.25F),UiCanvas.darken(color,.62F),x+w/2,y+h*.4F,Math.max(w,h)*.7F,x,y,w,h,0);
                 c.rays(0x16FFFFFF,14,item.rarity()*11,x+w/2,y+h*.42F,x,y,w,h);c.gradientRect(0x00000000,0xD0040824,90,x,y+h*.62F,w,h*.38F,0);});

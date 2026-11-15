@@ -136,8 +136,8 @@ that day, so nothing in this beta has run on Windows yet.
 
 | Check | Mac | Windows |
 | --- | --- | --- |
-| Library unit tests | 1,394 passed | Not run |
-| 19 development fixtures, in one batch | All 19 passed, including the new `easeTest` (46 checks) for forms, key bindings, the colour picker, sideways scrolling and variable-height lists | Not run |
+| Library unit tests | 1,406 passed | Not run |
+| 20 development fixtures, in one batch | All 20 passed, including the new `easeTest` (46 checks) for forms, key bindings, the colour picker, sideways scrolling and variable-height lists, and `menuTest` (36 checks) for the Skydrop and Overdrive menus | Not run |
 | Public API compared with the published 1.0.0-beta.3 jar (`javap -protected`) | No public or protected type or member removed; `UiColor`, `UiForm` and `UiKeyNames` added | Same jar |
 
 Still to try by hand: moving between monitors with different DPI, a real IME keyboard, and listening to the narrator.

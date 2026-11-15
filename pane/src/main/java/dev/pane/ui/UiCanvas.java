@@ -1091,9 +1091,8 @@ public final class UiCanvas {
     public void text(String value, float x, float top, float size, int color, int style, String family) {
         if (value == null || value.isEmpty()) return;
         Font font = font(size, style, family);
-        graphics.setFont(font);
         graphics.setColor(awtColor(color));
-        graphics.drawString(value, x, top + graphics.getFontMetrics(font).getAscent());
+        drawRuns(value, x, top + graphics.getFontMetrics(font).getAscent(), font, size, style, family);
     }
 
     /**
@@ -1104,17 +1103,14 @@ public final class UiCanvas {
                             String family, float tracking) {
         if (value == null || value.isEmpty()) return;
         Font font = font(size, style, family);
-        graphics.setFont(font);
         graphics.setColor(awtColor(color));
-        FontMetrics metrics = graphics.getFontMetrics(font);
-        float baseline = top + metrics.getAscent();
+        float baseline = top + graphics.getFontMetrics(font).getAscent();
         float cursor = x;
         var boundaries = UiTextBoundary.index(value);
         for (int start = 0; start < value.length();) {
             int end = boundaries.next(start);
             String glyph = value.substring(start, end);
-            graphics.drawString(glyph, cursor, baseline);
-            cursor += metrics.stringWidth(glyph) + tracking;
+            cursor += drawRuns(glyph, cursor, baseline, font, size, style, family) + tracking;
             start = end;
         }
     }
@@ -1129,11 +1125,10 @@ public final class UiCanvas {
                              int style, String family) {
         if (value == null || value.isEmpty()) return;
         Font font = font(size, style, family);
-        graphics.setFont(font);
         FontMetrics metrics = graphics.getFontMetrics(font);
         graphics.setColor(awtColor(color));
-        graphics.drawString(value, centerX - metrics.stringWidth(value) / 2F,
-            centerY + (metrics.getAscent() - metrics.getDescent()) / 2F);
+        drawRuns(value, centerX - runsWidth(value, font, size, style, family) / 2F,
+            centerY + (metrics.getAscent() - metrics.getDescent()) / 2F, font, size, style, family);
     }
 
     /**
@@ -1147,7 +1142,7 @@ public final class UiCanvas {
         if (effect == null) { text(value, x, top, size, color, style, family); return; }
         if (value == null || value.isEmpty()) return;
         Font font = font(size, style, family);
-        effectText(value, x, top + graphics.getFontMetrics(font).getAscent(), font, color, effect);
+        effectText(value, x, top + graphics.getFontMetrics(font).getAscent(), font, size, style, family, color, effect);
     }
 
     /** Draws effect text centred on a point; see {@link #text(String, float, float, float, int, int, String, UiTextEffect)}. */
@@ -1157,12 +1152,24 @@ public final class UiCanvas {
         if (value == null || value.isEmpty()) return;
         Font font = font(size, style, family);
         FontMetrics metrics = graphics.getFontMetrics(font);
-        effectText(value, centerX - metrics.stringWidth(value) / 2F,
-            centerY + (metrics.getAscent() - metrics.getDescent()) / 2F, font, color, effect);
+        effectText(value, centerX - runsWidth(value, font, size, style, family) / 2F,
+            centerY + (metrics.getAscent() - metrics.getDescent()) / 2F, font, size, style, family, color, effect);
     }
 
-    private void effectText(String value, float x, float baseline, Font font, int color, UiTextEffect effect) {
-        Shape upright = font.createGlyphVector(graphics.getFontRenderContext(), value).getOutline(x, baseline);
+    private void effectText(String value, float x, float baseline, Font font, float size, int style, String family,
+                            int color, UiTextEffect effect) {
+        Shape upright;
+        List<TextRun> runs = runs(value, font, size, style, family);
+        if (runs == null) upright = font.createGlyphVector(graphics.getFontRenderContext(), value).getOutline(x, baseline);
+        else {
+            Path2D.Float joined = new Path2D.Float();
+            float cursor = x;
+            for (TextRun run : runs) {
+                joined.append(run.font().createGlyphVector(graphics.getFontRenderContext(), run.text()).getOutline(cursor, baseline), false);
+                cursor += graphics.getFontMetrics(run.font()).stringWidth(run.text());
+            }
+            upright = joined;
+        }
         Shape glyphs = upright;
         if (effect.lean != 0) {
             // Sheared about the baseline, so the foot of every letter stays where plain text puts it.
@@ -1187,7 +1194,7 @@ public final class UiCanvas {
         if (effect.gradient != null) {
             FontMetrics metrics = graphics.getFontMetrics(font);
             graphics.setPaint(linearPaint(color, effect.gradient, 90, x, baseline - metrics.getAscent(),
-                Math.max(1, metrics.stringWidth(value)), metrics.getAscent() + metrics.getDescent()));
+                Math.max(1, runsWidth(value, font, size, style, family)), metrics.getAscent() + metrics.getDescent()));
         } else graphics.setColor(awtColor(color));
         graphics.fill(glyphs);
         graphics.setPaint(awtColor(0xFF000000));
@@ -1222,7 +1229,71 @@ public final class UiCanvas {
      * {@link #SANS}. {@code null} text measures as zero.
      */
     public float textWidth(String value, float size, int style, String family) {
-        return graphics.getFontMetrics(font(size, style, family)).stringWidth(value == null ? "" : value);
+        return runsWidth(value == null ? "" : value, font(size, style, family), size, style, family);
+    }
+
+    /** One stretch of text and the font that draws it. */
+    private record TextRun(String text, Font font) { }
+
+    private static boolean lacks(Font font, int codePoint) {
+        return !(Character.isWhitespace(codePoint) || Character.isISOControl(codePoint) || codePoint == 0x200D
+            || codePoint >= 0xFE00 && codePoint <= 0xFE0F || font.canDisplay(codePoint));
+    }
+
+    /**
+     * Splits text drawn in a registered font into stretches that font can draw and stretches it
+     * cannot, which go to the default sans and through it to the system's fonts. Null when one font
+     * draws it all, which is always so for system families: they fall back by themselves.
+     */
+    private static List<TextRun> runs(String value, Font primary, float size, int style, String family) {
+        if (family == null || family.isEmpty() || !REGISTERED_FONTS.containsKey(family)) return null;
+        int first = -1;
+        for (int i = 0; i < value.length(); i += Character.charCount(value.codePointAt(i)))
+            if (lacks(primary, value.codePointAt(i))) { first = i; break; }
+        if (first < 0) return null;
+        Font spare = font(size, style, SANS);
+        List<TextRun> runs = new ArrayList<>();
+        int start = 0;
+        boolean spared = first == 0;
+        for (int i = first; i < value.length();) {
+            int codePoint = value.codePointAt(i);
+            boolean neutral = Character.isWhitespace(codePoint) || Character.isISOControl(codePoint) || codePoint == 0x200D
+                || codePoint >= 0xFE00 && codePoint <= 0xFE0F;
+            boolean needs = neutral ? spared : !primary.canDisplay(codePoint);
+            if (needs != spared) {
+                if (i > start) runs.add(new TextRun(value.substring(start, i), spared ? spare : primary));
+                start = i;
+                spared = needs;
+            }
+            i += Character.charCount(codePoint);
+        }
+        runs.add(new TextRun(value.substring(start), spared ? spare : primary));
+        return runs;
+    }
+
+    /** Draws text in the current colour, switching font for characters the family lacks; returns its advance. */
+    private float drawRuns(String value, float x, float baseline, Font font, float size, int style, String family) {
+        List<TextRun> runs = runs(value, font, size, style, family);
+        if (runs == null) {
+            graphics.setFont(font);
+            graphics.drawString(value, x, baseline);
+            return graphics.getFontMetrics(font).stringWidth(value);
+        }
+        float cursor = x;
+        for (TextRun run : runs) {
+            graphics.setFont(run.font());
+            graphics.drawString(run.text(), cursor, baseline);
+            cursor += graphics.getFontMetrics(run.font()).stringWidth(run.text());
+        }
+        return cursor - x;
+    }
+
+    private float runsWidth(String value, Font font, float size, int style, String family) {
+        List<TextRun> runs = runs(value, font, size, style, family);
+        if (runs == null) return graphics.getFontMetrics(font).stringWidth(value);
+        float width = 0;
+        for (TextRun run : runs) width += graphics.getFontMetrics(run.font()).stringWidth(run.text());
+        return width;
     }
 
     UiShapedText shapeText(String value,float size,int style,String family,UiTextLayoutCache cache) {
@@ -1307,12 +1378,12 @@ public final class UiCanvas {
     /** Advance of {@link #trackedText}: each grapheme is measured exactly as it is drawn. */
     public float trackedTextWidth(String value, float size, int style, String family, float tracking) {
         if (value == null || value.isEmpty()) return 0;
-        FontMetrics metrics = graphics.getFontMetrics(font(size, style, family));
+        Font font = font(size, style, family);
         var boundaries = UiTextBoundary.index(value);
         float width = -tracking;
         for (int start = 0; start < value.length();) {
             int end = boundaries.next(start);
-            width += metrics.stringWidth(value.substring(start, end)) + tracking;
+            width += runsWidth(value.substring(start, end), font, size, style, family) + tracking;
             start = end;
         }
         return width;
@@ -1423,13 +1494,11 @@ public final class UiCanvas {
         int style = (span.bold() ? Font.BOLD : Font.PLAIN) | (span.italic() ? Font.ITALIC : Font.PLAIN);
         Font font = font(size, style, family);
         FontMetrics metrics = graphics.getFontMetrics(font);
-        float width = metrics.stringWidth(text);
         int color = span.color() == null ? fallbackColor
             : (fallbackColor & 0xFF000000) | (span.color() & 0x00FFFFFF);
         float baseline = top + metrics.getAscent();
-        graphics.setFont(font);
         graphics.setColor(awtColor(color));
-        graphics.drawString(text, x, baseline);
+        float width = drawRuns(text, x, baseline, font, size, style, family);
         float stroke = Math.max(.65F, size / 14F);
         graphics.setStroke(new BasicStroke(stroke));
         if (span.underlined()) {
@@ -1445,7 +1514,7 @@ public final class UiCanvas {
 
     private float formattedSpanWidth(String text, UiRichText.Span span, float size, String family) {
         int style = (span.bold() ? Font.BOLD : Font.PLAIN) | (span.italic() ? Font.ITALIC : Font.PLAIN);
-        return graphics.getFontMetrics(font(size, style, family)).stringWidth(text);
+        return runsWidth(text, font(size, style, family), size, style, family);
     }
 
     private static UiRichText.Span copySpan(UiRichText.Span span, String text) {
