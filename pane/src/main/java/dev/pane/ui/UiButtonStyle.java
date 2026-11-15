@@ -1,6 +1,10 @@
 package dev.pane.ui;
 
-/** Optional per-button paint overrides. Unset values inherit sensible theme defaults. */
+/**
+ * Optional per-button paint overrides. Unset values inherit sensible theme defaults.
+ * This is the fully custom recipe; {@link UiContext.ButtonStyle} instead picks one of Pane's four
+ * built-in looks. Set one for a whole document with {@link UiDocument.Builder#buttonStyle}.
+ */
 public final class UiButtonStyle {
     private final Integer background, hoverBackground, pressedBackground, border, text, focus, shadow;
     private final Float radius, borderWidth, textSize, shadowSpread, shadowOffsetX, shadowOffsetY;

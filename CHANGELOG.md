@@ -1,5 +1,71 @@
 # Changelog
 
+## 1.0.0-beta.4 — settings forms, new controls, clickable HUDs and high refresh rates
+
+### Faster and lighter
+
+- Animation follows the display's refresh rate. Repaints used to wait a fixed 16 ms, which on a
+  144 Hz monitor let through only every third frame, about 48 frames a second. Hover fades,
+  `animate`, smooth scrolling, toasts and HUD content now repaint once per displayed frame.
+  `UiRenderSettings.withMaximumFrameRate(60)` sets a ceiling, kept to a whole number of display
+  frames so capped motion stays even; `lowMemory()` caps at 60.
+- Opening a screen or switching page paints once instead of on every frame of the 180–210 ms
+  transition, unless the page reads `ui.motion()` or `ui.animating()`.
+- Showing and hiding a HUD fades its finished texture on the GPU. The 220 ms fade used to paint and
+  upload the whole HUD every frame.
+- A surface no longer keeps a native copy of its pixels between its raster and its GPU texture.
+  Uploads go through one shared 4 MB buffer in bands, which saves the surface's size again in memory:
+  about 15 MB for a 2560×1440 screen, and the same share for every popup, toast, tooltip, HUD and
+  GPU layer surface.
+
+### Easier
+
+- `UiScreen.open("My mod", ui -> { ... })` builds and shows a one-page screen in one call;
+  `UiScreen.of(title, painter)` builds it without showing it, and `screen.open()` shows any screen.
+- `screen.onAction("save", owner -> ...)` runs a handler for one action, in place of matching
+  strings in an event handler. `UiScreen.create(document, options)` makes a screen that only uses these.
+- `screen.onChange("volume", owner -> ...)` runs a handler when a control changes that value.
+- `screen.settings(file, Map.of("name", "Player", "hints", true, "volume", 50))` loads saved values
+  from a properties file, and `screen.saveSettings()` writes them back.
+- Shorter control calls: `ui.button(id, label, action, x, y, width, height)` needs no style,
+  `button`, `textField` and `dropdown` take a `UiRect` such as a layout cell, and `toggle`,
+  `checkbox`, `slider`, `textField` and `dropdown` have forms where one string is both id and state key.
+- `UiPage.of(id, label, painter)` for pages without an icon or their own accent.
+
+### New controls and layouts
+
+- `ui.form(id, bounds, form -> ...)` lays out labelled settings rows and scrolls when they do not fit:
+  `form.section`, `note`, `toggle`, `slider`, `text`, `dropdown`, `stepper`, `keybind`, `color`,
+  `button`, and `row(height)` for anything else. Each control's id is its state key, so
+  `screen.settings` saves a whole form.
+- `ui.keybind` takes the next key pressed as its value (Escape unbinds, as in Minecraft's controls),
+  and with `mouseButtons` a clicked mouse button too. `UiKeyNames.name(code)` names it as Minecraft's
+  controls do, in the player's language and keyboard layout, and `UiKeyNames.isDown(code)` tells
+  whether it is held.
+- `ui.colorPicker` has hue, saturation, brightness and optional opacity sliders with a hex field. The
+  colour is stored as hex text; read it with `colorValue`, or hear it change with
+  `screen.onChange(key, ...)`. `UiColor` converts hex text and HSV.
+- `ui.stepper` is a number with minus and plus buttons.
+- `ui.scrollHorizontal` scrolls sideways, for carousels, wide tables and timelines. Keyboard focus
+  reveals controls scrolled off either side, and it nests with vertical scrolling. Shift with the
+  wheel scrolls sideways on every platform.
+- `ui.variableList` is a scrolling list whose rows have different heights; only rows in view paint,
+  and Tab walks through every row.
+- `hud.setInteractive(true)` lets a HUD's buttons, toggles, checkboxes, steppers and sliders take the
+  mouse while chat is open, with `hud.onAction(action, handler)`, `hud.onChange(listener)` and
+  `hud.value(key)`. HUDs take no input unless this is on.
+- Sliders, text fields and text areas work inside `withTransform` groups: a tilted or scaled card
+  can hold them, and drags and clicks are mapped into the group. They used to throw there.
+
+### More to customise
+
+- `UiTheme` has a `with...` method for every token, and `withRadii`, so a theme is the dark or light
+  one with a few changes. Themes gain `danger`, `success` and `warning` colours for painters; older
+  constructors still work.
+- `UiDocument.Builder.buttonStyle`, `inputStyle` and `menuStyle` style every control drawn without a
+  style of its own, so a design system is set once.
+- Danger buttons take their colours from the theme's `danger` once a theme sets it.
+
 ## 1.0.0-beta.3 — speed, the narrator, input methods and text views
 
 ### Faster

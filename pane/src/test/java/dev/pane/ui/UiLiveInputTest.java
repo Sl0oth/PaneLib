@@ -84,8 +84,9 @@ class UiLiveInputTest {
         }));
         assertTrue(hits.isEmpty(), "no pointer targets while presented");
         assertTrue(inputs.isEmpty(), "no text input while presented");
-        assertThrows(IllegalArgumentException.class, () -> paint(ui -> ui.withTransform(UiTransform.identity().scale(.9F), 0, 0,
-            group -> group.textField("field", "text", "Type", 20, 20, 160, 30, "hello", 64))), "withTransform still refuses editors");
+        paint(ui -> ui.withTransform(UiTransform.identity().scale(.9F), 0, 0,
+            group -> group.textField("field", "text", "Type", 20, 20, 160, 30, "hello", 64)));
+        assertEquals(1, inputs.size(), "withTransform takes text input");
     }
 
     @Test

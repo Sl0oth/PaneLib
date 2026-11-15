@@ -36,6 +36,114 @@ UiScreen.create(document, nativeOverlay, (screen, event) -> {
 });
 ```
 
+To handle one action without matching strings, register it on the screen. The handler runs after
+the event handler, on the client thread. `onChange` does the same for a value a control changed:
+
+```java
+screen.onAction("save", owner -> save(owner.stringValue("name", "Player")));
+screen.onChange("volume", owner -> setVolume(owner.numberValue("volume", 50)));
+```
+
+Most controls have a short form where one string is both id and state key, and `button`,
+`textField` and `dropdown` accept a `UiRect`, such as a cell from a layout:
+
+```java
+UiLayout column = ui.column(ui.content().inset(24)).gap(10);
+ui.textField("name", "Display name", column.next(30), "Player");
+ui.toggle("hints", x, y, true);
+ui.slider("volume", x, y + 40, 240, 0, 100, 50);
+ui.button("save", "Save", "save", column.next(32));
+```
+
+A button drawn without a style is a rounded neutral button, or the document's button style when
+it sets one.
+
+### Saved settings
+
+`screen.settings(file, defaults)` loads values from a properties file before the screen opens, and
+`screen.saveSettings()` writes the current ones back. Each default is a string, a boolean or a
+number and gives its key's type; numbers load as doubles. The screen holds a draft until you save,
+so closing without saving discards the edits.
+
+```java
+screen.settings(configDir.resolve("my-mod.properties"),
+        Map.of("name", "Player", "hints", true, "volume", 50))
+    .onAction("save", owner -> owner.toast(new UiToast("saved", owner.saveSettings() ? "Saved" : "Could not save", "")));
+```
+
+### Settings forms
+
+`ui.form` lays out one labelled row per setting and scrolls when the rows are taller than its
+bounds. With `UiScreen.open` and `settings`, a whole config screen is this:
+
+```java
+UiScreen.of("My mod", ui -> {
+    ui.canvas().fill(ui.theme().background(), 0, 0, ui.width(), ui.height());
+    ui.form("settings", ui.content().inset(24), form -> form
+        .section("General")
+        .toggle("Show hints", "hints", true)
+        .slider("Volume", "volume", 0, 100, 50)
+        .text("Display name", "name", "Name", "Player")
+        .dropdown("Mode", "mode", "normal", List.of(
+            new UiSelectOption("normal", "Normal"), new UiSelectOption("compact", "Compact")))
+        .stepper("Columns", "columns", 1, 9, 1, 3)
+        .keybind("Open menu", "open-key", GLFW.GLFW_KEY_H)
+        .color("Accent", "accent", 0xFF58A6FF, false)
+        .note("Changes apply when you save.")
+        .button("Save", "save"));
+}).settings(file, Map.of("hints", true, "volume", 50, "name", "Player", "mode", "normal",
+        "columns", 3, "open-key", GLFW.GLFW_KEY_H, "accent", "#58A6FF"))
+    .onAction("save", UiScreen::saveSettings)
+    .open();
+```
+
+The rows lambda runs twice on each paint, once to measure and once to draw, so it should only
+describe rows. For a row the form does not have, `form.row(height)` reserves a full-width rectangle;
+draw into it with `form.ui()` when `form.painting()` is true.
+
+The controls also work on their own:
+
+```java
+int key = ui.keybind("open-key", x, y, 132, 28, GLFW.GLFW_KEY_H);      // GLFW code, or UiKeyNames.UNBOUND
+int tint = ui.colorPicker("accent", x, y, 240, 0xFF58A6FF, false);       // UiContext.colorPickerHeight(false) tall
+double columns = ui.stepper("columns", x, y, 132, 1, 9, 1, 3);
+```
+
+A key binding listens after a click and stores the next key pressed; Escape while listening unbinds
+it, as in Minecraft's own controls. Pass `true` as a last argument (`ui.keybind(..., true)` or
+`form.keybind(label, key, fallback, true)`) and a mouse button clicked while it listens is bound
+too, stored as `UiKeyNames.mouse(button)`. `UiKeyNames.name(code)` names a key or button the way
+Minecraft's controls do, in the player's language and keyboard layout, and
+`UiKeyNames.isDown(code)` tells whether it is held:
+
+```java
+ClientTickEvents.END_CLIENT_TICK.register(client -> {
+    if (UiKeyNames.isDown(openKey)) openMenu();
+});
+```
+
+A colour is stored as hex text such as `#58A6FF`, so it saves with `settings` and can be typed or
+pasted; read it with `screen.colorValue(key, fallback)`, and `screen.onChange(key, ...)` runs when
+the sliders or the hex field change it. `UiColor.hex` and `UiColor.hsv` convert colours in your own
+code.
+
+### Sideways scrolling and rows of different heights
+
+```java
+ui.scrollHorizontal("gallery", new UiRect(x, y, 400, 120), cards.size() * 130, strip -> {
+    for (int i = 0; i < cards.size(); i++) drawCard(strip, cards.get(i), x + i * 130, y);
+});
+
+ui.variableList("chat", viewport, messages.size(), i -> messages.get(i).height(), 6, (row, item) ->
+    drawMessage(row, messages.get(item.index()), item.bounds()));
+```
+
+The wheel scrolls a sideways region when the pointer is over it and no vertical region is; a
+trackpad's sideways swipe, or Shift with the wheel, always does. Nest it with `ui.scroll` to move
+both ways. `variableList` asks for every row's height on each paint, so return cached measurements.
+It paints the rows in view and one past each edge, so Tab walks through the whole list, and it
+paints with the page; `virtualList` remains the faster choice when every row is the same height.
+
 ### Scroll position API
 
 Use `screen.scrollTo("settings", offset)` to move an ordinary or virtual scroll viewport. Offsets are layout units, clamped to the content extent. A request before first paint is clamped when the viewport registers. Worker calls are marshalled to the client thread. Read `screen.scrollSnapshot("settings")` for displayed and target offsets.

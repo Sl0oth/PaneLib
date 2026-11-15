@@ -27,6 +27,11 @@ final class UiInteractionState {
         Transition(boolean shown) { this.shown = shown; }
     }
 
+    /** The document's styles for controls drawn without one; null means Pane's own. */
+    UiButtonStyle buttonStyle;
+    UiInputStyle inputStyle;
+    UiMenuStyle menuStyle;
+
     /** Pointer, drag and timer requests; affine child contexts share the parent's instance. */
     Live live = new Live();
 
@@ -41,6 +46,8 @@ final class UiInteractionState {
         final Map<String, UiRect> dragBounds = new HashMap<>();
         /** The drag area key being dragged, set by the screen before each paint, and whether it has moved. */
         String draggingKey;
+        /** The key binding waiting for a key press, set by the screen before each paint. */
+        String capturingKey;
         boolean dragMoved;
         /** State key prefixes that only affect a region of the page, with that region. */
         final Map<String, UiRect> scopes = new HashMap<>();
@@ -50,6 +57,11 @@ final class UiInteractionState {
         final Set<String> interactionReads = new HashSet<>();
         /** A painter read the shared interaction progress, so any control's hover or press may change pixels. */
         boolean interactionMotionRead;
+        /** A painter read the page transition, so the page repaints for as long as it runs. */
+        boolean motionRead;
+
+        /** State keys a control changed from other values this paint, such as a colour from its sliders. */
+        final List<String> valueChanges = new ArrayList<>();
 
         void requestRefresh(long atNanos, UiRect bounds) { refreshes.add(new Refresh(atNanos, bounds)); }
 
@@ -59,7 +71,7 @@ final class UiInteractionState {
         final Map<String, UiInputTypography> typography = new HashMap<>();
 
         void clear() {
-            pointerAreas.clear(); dragBounds.clear(); refreshes.clear(); scopes.clear(); interactionReads.clear(); interactionMotionRead = false;
+            pointerAreas.clear(); dragBounds.clear(); refreshes.clear(); scopes.clear(); interactionReads.clear(); interactionMotionRead = false; motionRead = false; valueChanges.clear();
             narrations.clear(); namedNarrations.clear(); typography.clear();
         }
     }
@@ -85,15 +97,18 @@ final class UiInteractionState {
         UiRect reachable = bounds;
         for (int i = chain.size() - 1; i >= 0; i--) {
             var ancestor = chain.get(i);
+            boolean across = ancestor.region.horizontal();
             UiRect viewport = ancestor.region.viewport();
-            float top = viewport.y() - (float) ancestor.offset;
-            if (reachable.right() <= viewport.x() || reachable.x() >= viewport.right()
-                    || reachable.y() < top || reachable.bottom() > top + ancestor.region.contentHeight()) return;
-            double delta = reachable.y() < viewport.y() ? reachable.y() - viewport.y()
-                : reachable.bottom() > viewport.bottom() ? reachable.bottom() - viewport.bottom() : 0;
-            if (reachable.height() > viewport.height()) delta = reachable.y() - viewport.y();
+            float contentStart = start(viewport, across) - (float) ancestor.offset;
+            boolean beside = across ? reachable.bottom() <= viewport.y() || reachable.y() >= viewport.bottom()
+                : reachable.right() <= viewport.x() || reachable.x() >= viewport.right();
+            if (beside || start(reachable, across) < contentStart
+                    || end(reachable, across) > contentStart + ancestor.region.contentHeight()) return;
+            double delta = start(reachable, across) < start(viewport, across) ? start(reachable, across) - start(viewport, across)
+                : end(reachable, across) > end(viewport, across) ? end(reachable, across) - end(viewport, across) : 0;
+            if (size(reachable, across) > size(viewport, across)) delta = start(reachable, across) - start(viewport, across);
             double next = Math.clamp(ancestor.offset + delta, 0, ancestor.region.maxOffset());
-            reachable = reachable.translate(0, (float) (ancestor.offset - next));
+            reachable = move(reachable, across, (float) (ancestor.offset - next));
         }
         targets.put(hit.id(), new Target(new UiHitRegion(hit.id(), hit.action(), bounds.x(), bounds.y(),
             bounds.width(), bounds.height(), hit.trackX(), hit.trackWidth()), chain));
@@ -110,31 +125,38 @@ final class UiInteractionState {
         Target target = targets.get(id);
         if (target == null) return Set.of();
         UiRect bounds = new UiRect(target.hit.x(), target.hit.y(), target.hit.width(), target.hit.height());
-        float shifted = 0;
-        for (var ancestor : target.ancestors) shifted += (float) (ancestor.offset - offsets.getOrDefault(ancestor.region.id(), 0D));
-        bounds = bounds.translate(0, shifted);
+        for (var ancestor : target.ancestors)
+            bounds = move(bounds, ancestor.region.horizontal(), (float) (ancestor.offset - offsets.getOrDefault(ancestor.region.id(), 0D)));
         Set<String> changed = new HashSet<>();
         for (int i = target.ancestors.size() - 1; i >= 0; i--) {
             UiScrollRegion scroll = target.ancestors.get(i).region;
-            float parentShift = 0;
+            boolean across = scroll.horizontal();
+            UiRect viewport = scroll.viewport();
             for (int j = 0; j < i; j++) {
                 var ancestor = target.ancestors.get(j);
-                parentShift += (float) (ancestor.offset - offsets.getOrDefault(ancestor.region.id(), 0D));
+                viewport = move(viewport, ancestor.region.horizontal(), (float) (ancestor.offset - offsets.getOrDefault(ancestor.region.id(), 0D)));
             }
-            UiRect viewport = scroll.viewport().translate(0, parentShift);
             double old = offsets.getOrDefault(scroll.id(), 0D);
             // Include the outside focus stroke and antialiasing when the viewport has room.
-            float padding = Math.min(4, Math.max(0, (viewport.height() - bounds.height()) / 2));
-            double delta = bounds.y() - padding < viewport.y() ? bounds.y() - padding - viewport.y()
-                : bounds.bottom() + padding > viewport.bottom() ? bounds.bottom() + padding - viewport.bottom() : 0;
-            if (bounds.height() > viewport.height()) delta = bounds.y() - viewport.y();
+            float padding = Math.min(4, Math.max(0, (size(viewport, across) - size(bounds, across)) / 2));
+            double delta = start(bounds, across) - padding < start(viewport, across) ? start(bounds, across) - padding - start(viewport, across)
+                : end(bounds, across) + padding > end(viewport, across) ? end(bounds, across) + padding - end(viewport, across) : 0;
+            if (size(bounds, across) > size(viewport, across)) delta = start(bounds, across) - start(viewport, across);
             double next = Math.clamp(old + delta, 0, scroll.maxOffset());
             if (next != old) {
                 scrollEnds.navigate(scroll.id(), next);
                 offsets.put(scroll.id(), next); changed.add(scroll.id());
-                bounds = bounds.translate(0, (float) (old - next));
+                bounds = move(bounds, across, (float) (old - next));
             }
         }
         return changed;
+    }
+
+    /** A rectangle's start, end and size along a scroll axis, and the rectangle moved along it. */
+    private static float start(UiRect rect, boolean across) { return across ? rect.x() : rect.y(); }
+    private static float end(UiRect rect, boolean across) { return across ? rect.right() : rect.bottom(); }
+    private static float size(UiRect rect, boolean across) { return across ? rect.width() : rect.height(); }
+    private static UiRect move(UiRect rect, boolean across, float distance) {
+        return across ? rect.translate(distance, 0) : rect.translate(0, distance);
     }
 }

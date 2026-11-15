@@ -71,7 +71,8 @@ replace. See [HUD ownership and lifecycle](huds-and-composable-motion.md).
 
 - Vanilla widgets do not automatically convert to PaneLib controls. Move a screen's layout and
   event handling deliberately; keep unrelated vanilla screens as they are.
-- HUD widgets are input-free. Use a `UiScreen` for clickable inventory/configuration interfaces.
+- HUD widgets take no input unless `setInteractive(true)` is on, which covers buttons, toggles and
+  sliders while chat is open. Use a `UiScreen` for clickable inventory/configuration interfaces.
 - Native overlays are composited with reserved slots; they are not arbitrary Java2D layers.
   Use the public helpers for clipping, opacity, and pixel/GUI conversions.
 - Minecraft narrator semantics and IME text composition are not complete. Do not promise those

@@ -9,7 +9,10 @@ import java.util.function.BiConsumer;
 /** Drawing, state, hit testing, and native-overlay registration for one page paint. */
 public final class UiContext {
     static final String INTERNAL_ACTION_PREFIX = "\u0000pane:";
-    /** Colour role of a default button: the accent, a raised neutral, no background, or a destructive red. */
+    /**
+     * Colour role of a default button: the accent, a raised neutral, no background, or a destructive red.
+     * This picks one of Pane's four built-in looks; {@link UiButtonStyle} is the separate, fully custom recipe.
+     */
     public enum ButtonStyle {
         /** Filled with the page accent. */
         PRIMARY,
@@ -33,6 +36,11 @@ public final class UiContext {
     }
 
     private static final UiButtonStyle DEFAULT_BUTTON_STYLE = UiButtonStyle.builder().build();
+
+    /** The document's style for a control drawn without one, or Pane's own. */
+    private UiButtonStyle buttonStyle() { return interactions.buttonStyle == null ? DEFAULT_BUTTON_STYLE : interactions.buttonStyle; }
+    private UiInputStyle inputStyle() { return interactions.inputStyle == null ? UiInputStyle.defaults() : interactions.inputStyle; }
+    private UiMenuStyle menuStyle() { return interactions.menuStyle == null ? UiMenuStyle.defaults() : interactions.menuStyle; }
 
     private UiInteractionState interactions = new UiInteractionState();
     private UiRect focusClip;
@@ -168,9 +176,13 @@ public final class UiContext {
     /**
      * Eased 0..1 progress of the current <em>page</em> transition, or 1 when none is running.
      * Use this for entrance motion. It deliberately does not restart on hover, so pointing at
-     * a control cannot replay a page-level animation.
+     * a control cannot replay a page-level animation. A page that never reads it is painted once
+     * when it opens, rather than on every frame of the transition.
      */
-    public float motion() { return motion; }
+    public float motion() {
+        interactions.live.motionRead = true;
+        return motion;
+    }
 
     /**
      * Eased 0..1 progress of the current hover or press transition. Use this for control-level
@@ -183,7 +195,10 @@ public final class UiContext {
     }
 
     /** True while a finite animation is still scheduling repaints. */
-    public boolean animating() { return animating || animationClock != null && animationClock.active(); }
+    public boolean animating() {
+        if (animating) interactions.live.motionRead = true;
+        return animating || animationClock != null && animationClock.active();
+    }
 
     /** How many times this screen has rasterized its surface. A diagnostic, not a frame count. */
     public int paintCount() { return paintCount; }
@@ -259,8 +274,9 @@ public final class UiContext {
     }
 
     /**
-     * Transforms a drawing/button group and its exact hit polygons. Text editors, sliders,
-     * scroll viewports and native overlays belong outside affine groups; use withTranslation there.
+     * Transforms a group and its exact hit polygons. Buttons, sliders, text fields and text areas work
+     * inside, with the pointer mapped into the group. Scroll viewports and native overlays belong
+     * outside affine groups; use withTranslation there.
      * Compose with withLayer for one group opacity rather than per-operation opacity.
      */
     public void withTransform(UiTransform transform, float pivotX, float pivotY, Consumer<UiContext> painter) {
@@ -291,7 +307,12 @@ public final class UiContext {
         UiContext child = new UiContext(canvas, theme, width, height, accent, content, hoveredId, pressedId,
             motion, interactionMotion, animating, paintCount, state, hits, natives, covers, bounds, scrolls,
             inputs, tips, textInput, nextMenus, nextDialogs, animationClock, nativeScale, null);
+        // The group keeps its own keyboard targets, which are mapped onto the page below, and shares the rest.
+        child.interactions = new UiInteractionState(interactions.offsets, interactions.editors, interactions.textLayouts, interactions.scrollEnds);
         child.interactions.live = interactions.live;
+        child.interactions.buttonStyle = interactions.buttonStyle;
+        child.interactions.inputStyle = interactions.inputStyle;
+        child.interactions.menuStyle = interactions.menuStyle;
         child.documentMatrix = java.awt.geom.AffineTransform.getTranslateInstance(offsetX, offsetY);
         child.documentMatrix.concatenate(transform.matrix(pivotX, pivotY));
         if (documentMatrix != null) child.documentMatrix.preConcatenate(documentMatrix);
@@ -309,9 +330,22 @@ public final class UiContext {
         // Bounds supplied inside the group are transformed back to document coordinates.
         for (var entry : bounds.entrySet()) animationBounds.put(entry.getKey(), transformedRect(matrix, entry.getValue()));
         if (!interactive) return;
-        if (!inputs.isEmpty() || !scrolls.isEmpty() || !natives.isEmpty() || !covers.isEmpty()
-                || hits.stream().anyMatch(hit -> hit.action().startsWith(INTERNAL_ACTION_PREFIX + "slider:")))
-            throw new IllegalArgumentException("Affine groups support drawing/buttons; keep editors, sliders, scrolls and native slots outside, or use withPresentation");
+        if (!scrolls.isEmpty() || !natives.isEmpty() || !covers.isEmpty())
+            throw new IllegalArgumentException("Affine groups support drawing, buttons, sliders and text inputs; keep scrolls and native slots outside, or use withPresentation");
+        java.awt.geom.AffineTransform inverse;
+        try { inverse = matrix.createInverse(); }
+        catch (java.awt.geom.NoninvertibleTransformException flat) { inverse = null; }
+        for (UiInputRegion input : inputs) {
+            if (inverse == null) continue;
+            UiRect box = transformedRect(matrix, input.bounds());
+            var registered = new UiInputRegion(input.id(), input.key(), box, input.maxLength(), input.multiline(),
+                input.caretXs(), input.caretYs(), input.lines(), input.masked(), input.readOnly(), toLocal(input.toLocal(), inverse));
+            interactions.inputs.put(input.id(), registered);
+            UiRect clipped = inputClip == null ? box : intersect(box, inputClip);
+            if (clipped.width() > 0 && clipped.height() > 0) inputRegions.add(clipped.equals(box) ? registered
+                : new UiInputRegion(input.id(), input.key(), clipped, input.maxLength(), input.multiline(),
+                    input.caretXs(), input.caretYs(), input.lines(), input.masked(), input.readOnly(), registered.toLocal()));
+        }
         for (UiHitRegion hit : hits) {
             java.awt.Shape shape = hit.hitShape() == null
                 ? new java.awt.geom.Rectangle2D.Float(hit.x(), hit.y(), hit.width(), hit.height()) : hit.hitShape();
@@ -322,8 +356,12 @@ public final class UiContext {
             if (keyboardBox.width() > 0 && keyboardBox.height() > 0)
                 interactions.register(new UiHitRegion(hit.id(), hit.action(), keyboardBox.x(), keyboardBox.y(), keyboardBox.width(), keyboardBox.height()));
             if (inputClip != null) box = intersect(box, inputClip);
-            if (box.width() > 0 && box.height() > 0) hitRegions.add(new UiHitRegion(hit.id(), hit.action(),
-                box.x(), box.y(), box.width(), box.height(), box.x(), box.width(), shape));
+            boolean slider = inverse != null && hit.action().startsWith(INTERNAL_ACTION_PREFIX + "slider:");
+            // A slider keeps its track in the group's coordinates; the pointer is mapped into them.
+            if (box.width() > 0 && box.height() > 0) hitRegions.add(slider
+                ? new UiHitRegion(hit.id(), hit.action(), box.x(), box.y(), box.width(), box.height(),
+                    hit.trackX(), hit.trackWidth(), shape, toLocal(hit.toLocal(), inverse))
+                : new UiHitRegion(hit.id(), hit.action(), box.x(), box.y(), box.width(), box.height(), box.x(), box.width(), shape));
         }
         for (UiTooltip tip : tips) {
             UiRect anchor = transformedRect(matrix, tip.anchor());
@@ -337,6 +375,14 @@ public final class UiContext {
         }
         interactions.buttons.putAll(child.interactions.buttons);
         dialogs.addAll(nextDialogs);
+    }
+
+    /** Maps a point outside a group into the coordinates of something inside it, which may sit in a nested group. */
+    private static java.awt.geom.AffineTransform toLocal(java.awt.geom.AffineTransform inner, java.awt.geom.AffineTransform inverse) {
+        if (inner == null) return inverse;
+        var combined = new java.awt.geom.AffineTransform(inner);
+        combined.concatenate(inverse);
+        return combined;
     }
 
     private static UiRect transformedRect(java.awt.geom.AffineTransform matrix, UiRect source) {
@@ -828,6 +874,83 @@ public final class UiContext {
                 : new UiInputRegion(id, key, clipped, maxLength, multiline, movedXs, movedYs, movedLines, masked, readOnly));
     }
 
+    /**
+     * A scrolling list whose rows have different heights, such as chat messages or cards with wrapped
+     * text. {@code heightOf} gives each row's height from its index and is asked for every row on each
+     * paint, so keep it cheap (cache measured text). Only the rows in view, and one past each edge so
+     * Tab can walk on through the list, are painted. Unlike {@link #virtualList}, rows repaint with the
+     * page while scrolling.
+     */
+    public void variableList(String id, UiRect viewport, int itemCount, java.util.function.IntToDoubleFunction heightOf,
+                             float gap, BiConsumer<UiContext, UiVirtualItem> painter) {
+        java.util.Objects.requireNonNull(heightOf, "heightOf");
+        java.util.Objects.requireNonNull(painter, "painter");
+        if (id == null || id.isBlank() || viewport == null) return;
+        int count = Math.max(0, itemCount);
+        float spacing = Math.max(0, gap);
+        float[] tops = variableTops(count, heightOf, spacing);
+        float total = count == 0 ? 0 : tops[count] - spacing;
+        scroll(id, viewport, total, inner -> {
+            double offset = interactions.offsets.getOrDefault(id, 0D);
+            // One row past each edge is painted, clipped away, so Tab can reach its controls and scroll them in.
+            int first = Math.max(0, firstVariableRow(tops, count, spacing, offset) - 1), last = first;
+            while (last < count && (last <= first || tops[last - 1] < offset + viewport.height())) last++;
+            for (int index = first; index < last; index++) {
+                float height = tops[index + 1] - tops[index] - spacing;
+                painter.accept(inner, new UiVirtualItem(index, new UiRect(viewport.x(), viewport.y() + tops[index], viewport.width(), height)));
+            }
+        });
+    }
+
+    /** Where each row starts, with one more entry for where a row after the last would start. */
+    static float[] variableTops(int count, java.util.function.IntToDoubleFunction heightOf, float gap) {
+        float[] tops = new float[count + 1];
+        for (int index = 0; index < count; index++) {
+            double height = heightOf.applyAsDouble(index);
+            tops[index + 1] = tops[index] + (float) (Double.isFinite(height) ? Math.max(0, height) : 0) + gap;
+        }
+        return tops;
+    }
+
+    /** The first row whose bottom, not counting the gap after it, lies below {@code offset}. */
+    static int firstVariableRow(float[] tops, int count, float gap, double offset) {
+        int low = 0, high = count;
+        while (low < high) {
+            int middle = (low + high) >>> 1;
+            if (tops[middle + 1] - gap <= offset) low = middle + 1;
+            else high = middle;
+        }
+        return low;
+    }
+
+    /**
+     * A viewport that scrolls sideways over content {@code contentWidth} wide, for carousels, wide
+     * tables and timelines. The wheel scrolls it when the pointer is over it and no vertical scroll
+     * region is; a trackpad's sideways swipe, or Shift with the wheel on macOS, always does. Put a
+     * vertical {@link #scroll} inside it, or it inside one, to scroll both ways. Virtual lists inside
+     * it paint their visible rows with the page.
+     */
+    public void scrollHorizontal(String id, UiRect viewport, float contentWidth, Consumer<UiContext> painter) {
+        if (id == null || id.isBlank() || viewport == null || painter == null) return;
+        float maxOffset = Math.max(0, contentWidth - viewport.width());
+        float offset = (float) interactions.scrollEnds.resolve(id, interactions.offsets.getOrDefault(id, 0D), maxOffset, UiScrollFollow.NONE);
+        interactions.offsets.put(id, (double) offset);
+        UiRect actualViewport = viewport.translate(offsetX, offsetY);
+        UiRect visibleViewport = intersect(inputClip, actualViewport);
+        var region = new UiScrollRegion(id, actualViewport, contentWidth, visibleViewport, true);
+        scrollRegions.add(region);
+        UiContext scrolled = derive(canvas, new UiRect(viewport.x(), viewport.y(), contentWidth, viewport.height()),
+            offsetX - offset, offsetY, visibleViewport, null);
+        canvas.withClip(viewport.x(), viewport.y(), viewport.width(), viewport.height(), () ->
+            canvas.withTranslation(-offset, 0, () -> interactions.inScroll(region, () -> painter.accept(scrolled))));
+        if (maxOffset <= 0) return;
+        float track = Math.max(0, viewport.width() - 8);
+        float thumb = Math.min(track, Math.max(18, track * viewport.width() / Math.max(viewport.width(), contentWidth)));
+        float thumbX = viewport.x() + 4 + Math.max(0, track - thumb) * offset / maxOffset;
+        canvas.roundRect(UiCanvas.fade(theme.border(), .45F), viewport.x() + 4, viewport.bottom() - 4, track, 2, 1);
+        canvas.roundRect(UiCanvas.fade(theme.mutedText(), .65F), thumbX, viewport.bottom() - 4, thumb, 2, 1);
+    }
+
     private void drawScrollBar(UiRect viewport, float contentHeight, float offset) {
         float trackHeight = Math.max(0, viewport.height() - 8);
         float thumbHeight = Math.max(18, trackHeight * viewport.height() / Math.max(viewport.height(), contentHeight));
@@ -864,6 +987,25 @@ public final class UiContext {
         hit(id, action, x, y, width, height);
     }
 
+    /**
+     * A button in the document's button style, or a rounded neutral button when the document sets none.
+     * {@code action} is what {@link UiScreen#onAction} and the screen's event handler receive.
+     */
+    public void button(String id, String label, String action, float x, float y, float width, float height) {
+        if (interactions.buttonStyle != null) button(id, label, action, x, y, width, height, interactions.buttonStyle);
+        else button(id, label, action, x, y, width, height, ButtonStyle.SECONDARY, Shape.ROUNDED);
+    }
+
+    /** As {@link #button(String, String, String, float, float, float, float)}, filling {@code bounds}, such as a layout cell. */
+    public void button(String id, String label, String action, UiRect bounds) {
+        button(id, label, action, bounds.x(), bounds.y(), bounds.width(), bounds.height());
+    }
+
+    /** A rounded default button of colour role {@code style} filling {@code bounds}. */
+    public void button(String id, String label, String action, UiRect bounds, ButtonStyle style) {
+        button(id, label, action, bounds.x(), bounds.y(), bounds.width(), bounds.height(), style, Shape.ROUNDED);
+    }
+
     /** A completely restylable button for design systems that do not use Pane's defaults. */
     public void button(String id, String label, String action, float x, float y, float width, float height,
                        UiButtonStyle style) {
@@ -894,12 +1036,12 @@ public final class UiContext {
      * padding. A menu trigger adds room for its arrow; see {@link #menuButtonWidth}.
      */
     public float buttonWidth(String label, UiSymbol icon, UiButtonStyle style) {
-        return contentWidth(label, icon, false, style == null ? DEFAULT_BUTTON_STYLE : style);
+        return contentWidth(label, icon, false, style == null ? buttonStyle() : style);
     }
 
     /** The width a styled {@link #menuButton(String, String, UiSymbol, float, float, float, float, UiButtonStyle, boolean, List)} needs. */
     public float menuButtonWidth(String label, UiSymbol icon, UiButtonStyle style) {
-        return contentWidth(label, icon, true, style == null ? DEFAULT_BUTTON_STYLE : style);
+        return contentWidth(label, icon, true, style == null ? buttonStyle() : style);
     }
 
     private float contentWidth(String label, UiSymbol icon, boolean chevron, UiButtonStyle paint) {
@@ -924,7 +1066,7 @@ public final class UiContext {
 
     private void paintStyledButton(String id, String label, UiSymbol icon, boolean chevron, float x, float y,
                                    float width, float height, UiButtonStyle style, boolean enabled, boolean selector) {
-        UiButtonStyle paint = style == null ? DEFAULT_BUTTON_STYLE : style;
+        UiButtonStyle paint = style == null ? buttonStyle() : style;
         float shadowPadding = paint.shadowSpread() == null ? 4 : Math.max(4, paint.shadowSpread() + 4);
         UiRect repaintBounds = controlRepaintBounds(x, y, width, height, shadowPadding);
         float hover = animate("custom-button:" + id + ":hover", enabled && hovered(id), 120, UiEasing.PAPER, repaintBounds);
@@ -997,7 +1139,7 @@ public final class UiContext {
                            UiButtonStyle style, boolean enabled) {
         if (label == null || label.isBlank()) throw new IllegalArgumentException("Icon buttons need a label");
         paintStyledButton(id, "", null, false, x, y, size, size, style, enabled, false);
-        UiButtonStyle paint = style == null ? DEFAULT_BUTTON_STYLE : style;
+        UiButtonStyle paint = style == null ? buttonStyle() : style;
         int color = paint.text() == null ? theme.accentText() : paint.text();
         float is = Math.round(size * .42F);
         canvas.withOpacity(enabled ? 1 : .42F, () -> {
@@ -1026,6 +1168,9 @@ public final class UiContext {
         hit(id, action, x, y, size, size);
     }
 
+    /** A toggle whose id is its state key. */
+    public void toggle(String key, float x, float y, boolean fallback) { toggle(key, key, x, y, fallback); }
+
     /** A switch storing a boolean under {@code key}. It has no words of its own; give it a {@link #tooltip} or {@link #narration}. */
     public void toggle(String id, String key, float x, float y, boolean fallback) {
         // Seed the fallback just like text fields and dropdowns. Without this, a true fallback
@@ -1051,6 +1196,11 @@ public final class UiContext {
             enabled ? onStyle : offStyle, shape);
         describe(id, UiNarration.Role.TOGGLE, enabled ? onLabel : offLabel, onOff(enabled));
         internalHit(id, "toggle:" + key, x, y, width, height);
+    }
+
+    /** A checkbox whose id is its state key; returns whether it is checked. */
+    public boolean checkbox(String key, String label, float x, float y, float width, boolean fallback) {
+        return checkbox(key, key, label, x, y, width, fallback);
     }
 
     /** Checkbox with a native label, state binding, focus ring, and finite check animation. */
@@ -1155,6 +1305,11 @@ public final class UiContext {
         if (amount > 0) canvas.roundRect(accent, x, y, Math.max(height, width * amount), height, height / 2);
     }
 
+    /** A slider from {@code minimum} to {@code maximum} whose id is its state key; returns its value. */
+    public double slider(String key, float x, float y, float width, double minimum, double maximum, double fallback) {
+        return slider(key, key, x, y, width, minimum, maximum, fallback);
+    }
+
     /** A slider storing a value from 0 to 1 under {@code key}. */
     public void slider(String id, String key, float x, float y, float width, double fallback) {
         slider(id, key, x, y, width, 0, 1, fallback);
@@ -1209,6 +1364,190 @@ public final class UiContext {
             x - 8, y - 2, width + 16, 20, x, width);
     }
 
+    /**
+     * A number with a minus and a plus button that change it by {@code step} between {@code minimum}
+     * and {@code maximum}. The buttons' ids are {@code key + ":down"} and {@code key + ":up"}.
+     * Returns the stored value.
+     */
+    public double stepper(String key, float x, float y, float width, double minimum, double maximum, double step, double fallback) {
+        if (!Double.isFinite(minimum) || !Double.isFinite(maximum) || maximum <= minimum || !Double.isFinite(step) || step <= 0)
+            throw new IllegalArgumentException("A stepper needs maximum above minimum and a step above zero");
+        double current = numberValue(key, fallback);
+        double stored = Double.isFinite(current) ? Math.max(minimum, Math.min(maximum, current)) : minimum;
+        state.putIfAbsent(key, stored);
+        float height = 28, side = 28;
+        canvas.roundRect(theme.raisedSurface(), x, y, width, height, theme.smallRadius());
+        canvas.strokeRoundRect(theme.border(), .8F, x, y, width, height, theme.smallRadius());
+        String text = formatNumber(stored, step);
+        canvas.centeredText(text, x + width / 2, y + height / 2, 10, theme.text(), Font.PLAIN, theme.fontFamily());
+        stepButton(key + ":down", "\u2212", x, y, side, height, stored > minimum, key, -step, minimum, maximum);
+        stepButton(key + ":up", "+", x + width - side, y, side, height, stored < maximum, key, step, minimum, maximum);
+        describe(key + ":up", UiNarration.Role.BUTTON, "Increase", text);
+        describe(key + ":down", UiNarration.Role.BUTTON, "Decrease", text);
+        return stored;
+    }
+
+    private void stepButton(String id, String symbol, float x, float y, float width, float height, boolean enabled,
+                            String key, double delta, double minimum, double maximum) {
+        float hover = enabled ? animate("button:" + id + ":hover", hovered(id), 120, UiEasing.PAPER, controlRepaintBounds(x, y, width, height, 4)) : 0;
+        if (hover > 0) canvas.roundRect(UiCanvas.alpha(theme.text(), Math.round(22 * hover)), x + 3, y + 3, width - 6, height - 6, theme.smallRadius());
+        canvas.centeredText(symbol, x + width / 2, y + height / 2, 12, enabled ? theme.text() : UiCanvas.alpha(theme.mutedText(), 110), Font.BOLD, theme.fontFamily());
+        if (focused(id)) drawFocusRing(accent, x + 1, y + 1, width - 2, height - 2, theme.smallRadius());
+        if (enabled) internalHit(id, "step:" + delta + ":" + minimum + ":" + maximum + ":" + key, x, y, width, height);
+    }
+
+    /** A value without a trailing ".0" when its step is whole, otherwise with up to four decimals. */
+    static String formatNumber(double value, double step) {
+        if (step == Math.rint(step) && value == Math.rint(value) && Math.abs(value) < 1e15) return Long.toString((long) value);
+        String text = String.format(java.util.Locale.ROOT, "%.4f", value);
+        text = text.replaceAll("0+$", "");
+        return text.endsWith(".") ? text.substring(0, text.length() - 1) : text;
+    }
+
+    /**
+     * A button that shows a key and, once clicked, takes the next key pressed as its new value.
+     * The stored value is the GLFW key code; Escape while listening stores {@link UiKeyNames#UNBOUND}.
+     * Returns the stored code. Read it later with {@code (int) screen.numberValue(key, fallbackKey)}.
+     */
+    public int keybind(String key, float x, float y, float width, float height, int fallbackKey) {
+        return keybind(key, x, y, width, height, fallbackKey, false);
+    }
+
+    /**
+     * A key binding that, with {@code mouseButtons}, also takes a mouse button clicked while it
+     * listens. A button is stored as {@link UiKeyNames#mouse}; {@link UiKeyNames#isDown} reads either.
+     */
+    public int keybind(String key, float x, float y, float width, float height, int fallbackKey, boolean mouseButtons) {
+        state.putIfAbsent(key, fallbackKey);
+        int code = (int) numberValue(key, fallbackKey);
+        boolean listening = key.equals(interactions.live.capturingKey);
+        float hover = animate("button:" + key + ":hover", hovered(key), 120, UiEasing.PAPER, controlRepaintBounds(x, y, width, height, 4));
+        int fill = UiCanvas.mix(theme.raisedSurface(), 0xFFFFFFFF, .08F * hover);
+        canvas.roundRect(listening ? UiCanvas.mix(theme.raisedSurface(), accent, .25F) : fill, x, y, width, height, theme.smallRadius());
+        canvas.strokeRoundRect(listening ? accent : theme.border(), listening ? 1.2F : .8F, x, y, width, height, theme.smallRadius());
+        String label = listening ? mouseButtons ? "Press a key or button\u2026" : "Press a key\u2026" : UiKeyNames.name(code);
+        label = canvas.ellipsize(label, width - 12, 9, Font.BOLD, theme.fontFamily());
+        canvas.centeredText(label, x + width / 2, y + height / 2, 9,
+            code == UiKeyNames.UNBOUND && !listening ? theme.mutedText() : theme.text(), Font.BOLD, theme.fontFamily());
+        if (focused(key)) drawFocusRing(accent, x - 2, y - 2, width + 4, height + 4, theme.smallRadius() + 2);
+        describe(key, UiNarration.Role.BUTTON, "Key binding", listening ? "press a key" : UiKeyNames.name(code));
+        internalHit(key, (mouseButtons ? "mousebind:" : "keybind:") + key, x, y, width, height);
+        return code;
+    }
+
+    /** The colour stored under {@code key} by {@link #colorPicker} or as hex text, or {@code fallback}. */
+    public int colorValue(String key, int fallback) {
+        return UiColor.hex(stringValue(key, null), fallback);
+    }
+
+    /** Height of a {@link #colorPicker}, with or without its opacity slider. */
+    public static float colorPickerHeight(boolean opacity) { return (opacity ? 4 : 3) * 24 + 34; }
+
+    /**
+     * A colour picker: hue, saturation and brightness sliders, an optional opacity slider, and a hex
+     * field beside a swatch. The colour is stored under {@code key} as hex text such as {@code #58A6FF},
+     * so it saves with {@link UiScreen#settings} and can be typed or pasted. The sliders keep their
+     * positions under {@code key + ":hue"}, {@code ":saturation"}, {@code ":brightness"} and
+     * {@code ":opacity"}. Returns the colour; it is {@link #colorPickerHeight} tall.
+     */
+    public int colorPicker(String key, float x, float y, float width, int fallback, boolean opacity) {
+        int chosen = opacity ? fallback : fallback | 0xFF000000;
+        state.putIfAbsent(key, UiColor.hex(chosen));
+        String hueKey = key + ":hue", saturationKey = key + ":saturation", brightnessKey = key + ":brightness", opacityKey = key + ":opacity";
+        String syncedKey = key + ":synced", slidersKey = key + ":sliders";
+        Integer typed = UiColor.parse(stringValue(key, null));
+        Integer synced = UiColor.parse(stringValue(syncedKey, null));
+        int color = typed != null ? typed : synced != null ? synced : chosen;
+        if (!opacity) color |= 0xFF000000;
+        String sliders = numberValue(hueKey, -1) + "," + numberValue(saturationKey, -1) + "," + numberValue(brightnessKey, -1) + "," + numberValue(opacityKey, -1);
+        if (synced == null || typed != null && color != synced) {
+            // First paint, or the hex text or a caller changed the colour: move the sliders to it.
+            float[] hsv = UiColor.toHsv(color);
+            // A grey has no hue and black no saturation; keep where those sliders were.
+            if (hsv[1] > 0 || !(state.get(hueKey) instanceof Number)) state.put(hueKey, (double) hsv[0]);
+            if (hsv[2] > 0 || !(state.get(saturationKey) instanceof Number)) state.put(saturationKey, (double) hsv[1]);
+            state.put(brightnessKey, (double) hsv[2]);
+            state.put(opacityKey, (color >>> 24) / 255D);
+            state.put(syncedKey, UiColor.hex(color));
+            state.put(slidersKey, numberValue(hueKey, 0) + "," + numberValue(saturationKey, 0) + "," + numberValue(brightnessKey, 0) + "," + numberValue(opacityKey, 1));
+        } else if (!sliders.equals(stringValue(slidersKey, ""))) {
+            // A slider moved: the colour follows it.
+            color = UiColor.hsv((float) numberValue(hueKey, 0), (float) numberValue(saturationKey, 0), (float) numberValue(brightnessKey, 0),
+                opacity ? (float) numberValue(opacityKey, 1) : 1);
+            state.put(key, UiColor.hex(color));
+            state.put(syncedKey, UiColor.hex(color));
+            state.put(slidersKey, sliders);
+            interactions.live.valueChanges.add(key);
+        }
+        float hue = (float) numberValue(hueKey, 0), saturation = (float) numberValue(saturationKey, 0), brightness = (float) numberValue(brightnessKey, 0);
+        int opaque = color | 0xFF000000, shown = color;
+        float row = y;
+        colorSlider(hueKey, hueKey, x, row, width, 0, 360, (track, w) -> {
+            for (int i = 0; i < 6; i++) canvas.gradientRect(UiColor.hsv(i * 60, 1, 1, 1), UiColor.hsv(i * 60 + 60, 1, 1, 1), 0,
+                track.x() + w / 6 * i - (i == 0 ? 0 : .5F), track.y(), w / 6 + (i == 0 ? 0 : .5F), track.height(), 0);
+        });
+        row += 24;
+        colorSlider(saturationKey, saturationKey, x, row, width, 0, 1, (track, w) ->
+            canvas.gradientRect(UiColor.hsv(hue, 0, brightness, 1), UiColor.hsv(hue, 1, brightness, 1), 0, track.x(), track.y(), w, track.height(), 0));
+        row += 24;
+        colorSlider(brightnessKey, brightnessKey, x, row, width, 0, 1, (track, w) ->
+            canvas.gradientRect(0xFF000000, UiColor.hsv(hue, saturation, 1, 1), 0, track.x(), track.y(), w, track.height(), 0));
+        row += 24;
+        if (opacity) {
+            colorSlider(opacityKey, opacityKey, x, row, width, 0, 1, (track, w) ->
+                canvas.gradientRect(opaque & 0xFFFFFF, opaque, 0, track.x(), track.y(), w, track.height(), 0));
+            row += 24;
+        }
+        canvas.roundRect(shown, x, row + 2, 30, 30, theme.smallRadius());
+        canvas.strokeRoundRect(theme.border(), .8F, x, row + 2, 30, 30, theme.smallRadius());
+        textField(key, key, opacity ? "#AARRGGBB" : "#RRGGBB", x + 38, row + 2, Math.max(40, width - 38), 30, UiColor.hex(color), 9);
+        return color;
+    }
+
+    private void colorSlider(String id, String key, float x, float y, float width, double minimum, double maximum,
+                             BiConsumer<UiRect, Float> track) {
+        paintedSlider(id, key, x, y, width, 18, minimum, maximum, minimum, (paint, slider) -> {
+            UiRect bar = new UiRect(x, y + 4, width, 10);
+            paint.withRoundedClip(bar.x(), bar.y(), bar.width(), bar.height(), 5, () -> track.accept(bar, width));
+            paint.strokeRoundRect(theme.border(), .8F, bar.x(), bar.y(), bar.width(), bar.height(), 5);
+            // The knob stays inside the track's ends.
+            float knob = x + 7 + (width - 14) * slider.position();
+            paint.circle(0xFFFFFFFF, knob, y + 9, slider.pressed() ? 7.5F : 6.5F);
+            paint.strokeCircle(0x66000000, 1, knob, y + 9, slider.pressed() ? 7.5F : 6.5F);
+        });
+    }
+
+    /**
+     * Lays out labelled settings rows in {@code bounds}, scrolling when they do not fit:
+     * {@code ui.form("settings", bounds, form -> { form.toggle("Show hints", "hints", true); ... })}.
+     * {@code rows} runs twice per paint, once to measure and once to draw, so it must only describe rows.
+     */
+    public void form(String id, UiRect bounds, Consumer<UiForm> rows) {
+        java.util.Objects.requireNonNull(rows, "rows");
+        if (id == null || id.isBlank() || bounds == null) return;
+        var measure = new UiForm(this, false, bounds.x(), bounds.y(), bounds.width());
+        rows.accept(measure);
+        if (measure.height() <= bounds.height()) {
+            rows.accept(new UiForm(this, true, bounds.x(), bounds.y(), bounds.width()));
+            return;
+        }
+        // Leave room for the scroll bar beside the controls; wrapped notes are measured at that width.
+        float width = bounds.width() - 10;
+        var narrow = new UiForm(this, false, bounds.x(), bounds.y(), width);
+        rows.accept(narrow);
+        scroll(id, bounds, narrow.height(), inner -> rows.accept(new UiForm(inner, true, bounds.x(), bounds.y(), width)));
+    }
+
+    /** A single-line text field whose id is its state key; returns its text. */
+    public String textField(String key, String placeholder, float x, float y, float width, String fallback) {
+        return textField(key, key, placeholder, x, y, width, fallback);
+    }
+
+    /** A single-line text field whose id is its state key, filling {@code bounds}; returns its text. */
+    public String textField(String key, String placeholder, UiRect bounds, String fallback) {
+        return textField(key, key, placeholder, bounds.x(), bounds.y(), bounds.width(), bounds.height(), fallback, 256);
+    }
+
     /** A native, keyboard-editable single-line text field. */
     public String textField(String id, String key, String placeholder, float x, float y, float width,
                             String fallback) {
@@ -1227,7 +1566,7 @@ public final class UiContext {
      */
     public void menuButton(String id, String label, float x, float y, float width, float height,
                            ButtonStyle style, Shape shape, List<UiMenuItem> items) {
-        menuButton(id, label, x, y, width, height, style, shape, items, UiMenuStyle.defaults());
+        menuButton(id, label, x, y, width, height, style, shape, items, menuStyle());
     }
 
     /** Menu trigger with an independently styled popup. */
@@ -1251,7 +1590,7 @@ public final class UiContext {
      */
     public void menuButton(String id, String label, UiSymbol icon, float x, float y, float width, float height,
                            UiButtonStyle triggerStyle, boolean enabled, List<UiMenuItem> items) {
-        menuButton(id, label, icon, x, y, width, height, triggerStyle, enabled, items, UiMenuStyle.defaults());
+        menuButton(id, label, icon, x, y, width, height, triggerStyle, enabled, items, menuStyle());
     }
 
     /** {@link #menuButton(String, String, UiSymbol, float, float, float, float, UiButtonStyle, boolean, List)} with a styled popup. */
@@ -1301,19 +1640,24 @@ public final class UiContext {
         if (anchor.width() > 0 && anchor.height() > 0) menus.add(new UiMenu(id, anchor, items, selectedItemId, menuStyle));
     }
 
+    /** A dropdown whose id is its state key, filling {@code bounds}; returns the selected value. */
+    public String dropdown(String key, UiRect bounds, String fallback, List<UiSelectOption> options) {
+        return dropdown(key, key, bounds.x(), bounds.y(), bounds.width(), bounds.height(), fallback, options);
+    }
+
     /**
      * Paints a native single-value selector. Choosing an option writes {@code key}, emits a
      * normal {@code value} event, and closes the popup.
      */
     public String dropdown(String id, String key, float x, float y, float width, float height,
                            String fallback, List<UiSelectOption> options) {
-        return dropdown(id, key, x, y, width, height, fallback, options, UiMenuStyle.defaults());
+        return dropdown(id, key, x, y, width, height, fallback, options, menuStyle());
     }
 
     /** Single-value selector with independently styled popup rows. */
     public String dropdown(String id, String key, float x, float y, float width, float height,
                            String fallback, List<UiSelectOption> options, UiMenuStyle menuStyle) {
-        return dropdown(id, key, x, y, width, height, fallback, options, DEFAULT_BUTTON_STYLE, true, menuStyle);
+        return dropdown(id, key, x, y, width, height, fallback, options, buttonStyle(), true, menuStyle);
     }
 
     /** Styled selected-value trigger. Unset colors/font inherit the selector's theme defaults. */
@@ -1415,25 +1759,25 @@ public final class UiContext {
     /** A native, keyboard-editable single-line text field with an explicit height and limit. */
     public String textField(String id, String key, String placeholder, float x, float y, float width, float height,
                             String fallback, int maxLength) {
-        return paintTextField(id, key, placeholder, x, y, width, height, fallback, maxLength, false, UiInputStyle.defaults());
+        return paintTextField(id, key, placeholder, x, y, width, height, fallback, maxLength, false, inputStyle());
     }
 
     /** Password field with the same native editing behavior but masked paint output. */
     public String passwordField(String id, String key, String placeholder, float x, float y, float width,
                                 String fallback) {
-        return paintTextField(id, key, placeholder, x, y, width, 30, fallback, 256, true, UiInputStyle.defaults());
+        return paintTextField(id, key, placeholder, x, y, width, 30, fallback, 256, true, inputStyle());
     }
 
     /** Password field with the default height and an explicit user-insertion length limit. */
     public String passwordField(String id, String key, String placeholder, float x, float y, float width,
                                 String fallback, int maxLength) {
-        return paintTextField(id, key, placeholder, x, y, width, 30, fallback, maxLength, true, UiInputStyle.defaults());
+        return paintTextField(id, key, placeholder, x, y, width, 30, fallback, maxLength, true, inputStyle());
     }
 
     /** Password field with an explicit height and user-insertion length limit. */
     public String passwordField(String id, String key, String placeholder, float x, float y, float width,
                                 float height, String fallback, int maxLength) {
-        return paintTextField(id, key, placeholder, x, y, width, height, fallback, maxLength, true, UiInputStyle.defaults());
+        return paintTextField(id, key, placeholder, x, y, width, height, fallback, maxLength, true, inputStyle());
     }
 
     /** Explicit typography shared by paint, caret, selection, clipping, and pointer placement. */
@@ -1568,7 +1912,7 @@ public final class UiContext {
      * Existing programmatic/fallback values are not truncated. */
     public String textArea(String id, String key, String placeholder, float x, float y, float width,
                            float height, String fallback, int maxLength) {
-        return textArea(id, key, placeholder, x, y, width, height, fallback, maxLength, UiInputStyle.defaults());
+        return textArea(id, key, placeholder, x, y, width, height, fallback, maxLength, inputStyle());
     }
 
     /** Multiline input with retained wheel browsing and caret reveal on editing/navigation. */
@@ -1616,7 +1960,7 @@ public final class UiContext {
 
     /** {@link #textView(String, String, float, float, float, float, UiInputStyle, boolean)} in the default style, without line numbers. */
     public void textView(String id, String text, float x, float y, float width, float height) {
-        textView(id, text, x, y, width, height, UiInputStyle.defaults(), false);
+        textView(id, text, x, y, width, height, inputStyle(), false);
     }
 
     private String paintTextArea(String id, String key, String placeholder, float x, float y, float width,
@@ -1879,7 +2223,7 @@ public final class UiContext {
         float radius = radius(shape, height);
         int border = switch (style) {
             case PRIMARY -> UiCanvas.mix(accent, 0xFFFFFFFF, .15F);
-            case DANGER -> 0xFF7B3439;
+            case DANGER -> stockDanger() ? 0xFF7B3439 : UiCanvas.mix(theme.surface(), theme.danger(), .5F);
             default -> theme.border();
         };
         int fill = UiCanvas.mix(fill(style), 0xFFFFFFFF, (style == ButtonStyle.GHOST ? .05F : .08F) * hoverAmount);
@@ -1904,13 +2248,17 @@ public final class UiContext {
             case PRIMARY -> accent;
             case SECONDARY -> theme.raisedSurface();
             case GHOST -> UiCanvas.alpha(theme.background(), 0);
-            case DANGER -> 0xFF3A1D20;
+            case DANGER -> stockDanger() ? 0xFF3A1D20 : UiCanvas.mix(theme.surface(), theme.danger(), .22F);
         };
     }
 
     private int foreground(ButtonStyle style) {
-        return style == ButtonStyle.PRIMARY ? theme.accentText() : style == ButtonStyle.DANGER ? 0xFFFFB9BD : theme.text();
+        return style == ButtonStyle.PRIMARY ? theme.accentText()
+            : style == ButtonStyle.DANGER ? stockDanger() ? 0xFFFFB9BD : UiCanvas.mix(theme.danger(), theme.text(), .45F) : theme.text();
     }
+
+    /** A theme that never set its danger colour keeps the reds danger buttons always had. */
+    private boolean stockDanger() { return theme.danger() == 0xFFF2666D; }
 
     /**
      * Opens {@code items} at the pointer when the control already painted with {@code targetId} is

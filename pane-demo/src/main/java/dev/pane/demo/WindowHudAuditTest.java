@@ -32,7 +32,7 @@ final class WindowHudAuditTest {
     private UiScreen gallery;
     private TitleScreen parent;
     private int stage, checks, windowWidth, windowHeight;
-    private long deadline, frames, pendingWait;
+    private long deadline, frames, pendingWait, fadePaints;
     private boolean failed, done;
     private String pendingClick;
     private Runnable pendingNext;
@@ -45,6 +45,9 @@ final class WindowHudAuditTest {
                 original.extractRenderState(graphics, delta);
             });
     }
+
+    private UiHud probe;
+    private int pings, changes;
 
     void tick(Minecraft c) {
         if (done || System.nanoTime() < deadline || c.gui.overlay() != null) return;
@@ -143,25 +146,39 @@ final class WindowHudAuditTest {
                     check(belt().snapshot().hasSurface() && belt().snapshot().frames() > frames, "Wayfarer HUD draws in the world");
                     check(noneDrew(WATCHED), "it hides exactly the vanilla elements it replaces");
                     capture(c, "world-hud-on");
+                    fadePaints = belt().snapshot().paints();
+                    belt().setVisible(false);
+                    advance(700);
+                }
+                case 17 -> {
+                    check(belt().snapshot().paints() == fadePaints, "hiding a HUD fades it without repainting, painted "
+                        + (belt().snapshot().paints() - fadePaints));
+                    check(!belt().snapshot().hasSurface(), "a hidden HUD frees its surface once faded out");
+                    belt().setVisible(true);
+                    advance(700);
+                }
+                case 18 -> {
+                    check(belt().snapshot().hasSurface() && belt().snapshot().paints() - fadePaints == 1,
+                        "showing a HUD again paints it once, painted " + (belt().snapshot().paints() - fadePaints));
                     toggleKey();
                     advance(900);
                 }
-                case 17 -> { mark(); advance(1000); }
-                case 18 -> {
+                case 19 -> { mark(); advance(1000); }
+                case 20 -> {
                     check(ExampleHudController.wayfarer().huds().stream().noneMatch(h -> h.snapshot().hasSurface()), "J toggles every HUD surface off");
                     check(allDrew(WATCHED), "toggled off, vanilla HUD comes back");
                     capture(c, "world-hud-off");
                     toggleKey();
                     advance(900);
                 }
-                case 19 -> {
+                case 21 -> {
                     check(belt().enabled(), "J toggles the HUD back on");
                     c.options.guiScale().set(2);
                     c.resizeGui();
                     advance(1500);
                 }
-                case 20 -> { mark(); frames = belt().snapshot().frames(); advance(1000); }
-                case 21 -> {
+                case 22 -> { mark(); frames = belt().snapshot().frames(); advance(1000); }
+                case 23 -> {
                     var bounds = belt().snapshot().bounds();
                     check(belt().snapshot().frames() > frames && bounds != null && bounds.x() >= 0 && bounds.y() >= 0
                         && bounds.right() <= window.getGuiScaledWidth() + 1 && bounds.bottom() <= window.getGuiScaledHeight() + 1,
@@ -173,20 +190,64 @@ final class WindowHudAuditTest {
                     c.gui.hud.toggle();
                     advance(600);
                 }
-                case 22 -> { mark(); frames = belt().snapshot().frames(); advance(800); }
-                case 23 -> {
+                case 24 -> { mark(); frames = belt().snapshot().frames(); advance(800); }
+                case 25 -> {
                     check(c.gui.hud.isHidden() && belt().snapshot().frames() == frames && noneDrew(WATCHED), "F1 hides the PaneLib HUD with vanilla's");
                     c.gui.hud.toggle();
                     advance(600);
                 }
-                case 24 -> { frames = belt().snapshot().frames(); advance(800); }
-                case 25 -> {
+                case 26 -> { frames = belt().snapshot().frames(); advance(800); }
+                case 27 -> {
                     check(belt().snapshot().frames() > frames, "showing the GUI again resumes the HUD");
                     ExampleHudController.select("none");
                     advance(900);
                 }
-                case 26 -> { mark(); advance(1000); }
-                case 27 -> {
+                case 28 -> {
+                    probe = new UiHud(160, 60, UiTheme.dark(), ui -> {
+                        ui.canvas().roundRect(ui.theme().surface(), 0, 0, 160, 60, 8);
+                        ui.button("ping", "Ping", "ping", 8, 8, 70, 22);
+                        ui.toggle("on", 100, 10, false);
+                        ui.slider("level", 8, 38, 140, 0, 100, 0);
+                    }).setInteractive(true).onAction("ping", () -> pings++).onChange((key, value) -> changes++);
+                    probe.attach(Identifier.fromNamespaceAndPath("pane_demo", "input_probe"));
+                    advance(700);
+                }
+                case 29 -> {
+                    check(probe.snapshot().frames() > 0 && probe.interactive(), "an interactive HUD draws in the world");
+                    clickProbe(c, 43, 19, true, true);
+                    check(pings == 0, "with the cursor captured the HUD takes no clicks");
+                    c.gui.setScreen(new net.minecraft.client.gui.screens.ChatScreen("", false));
+                    advance(700);
+                }
+                case 30 -> {
+                    long before = probe.snapshot().frames();
+                    check(c.gui.screen() instanceof net.minecraft.client.gui.screens.ChatScreen, "chat is open");
+                    clickProbe(c, 43, 19, true, true);
+                    check(pings == 1, "a real click on a HUD button runs its action while chat is open, ran " + pings);
+                    clickProbe(c, 115, 19, true, true);
+                    check(Boolean.TRUE.equals(probe.value("on")) && changes == 1, "a HUD toggle flips and reports its value");
+                    check(c.gui.screen() instanceof net.minecraft.client.gui.screens.ChatScreen, "the clicks did not close chat");
+                    clickProbe(c, 20, 47, true, false);
+                    moveProbe(c, 140, 47);
+                    frames = before;
+                    advance(600);
+                }
+                case 31 -> {
+                    check(probe.snapshot().frames() > frames, "the HUD stays drawn under chat");
+                    double level = probe.value("level") instanceof Number number ? number.doubleValue() : -1;
+                    check(level > 80, "a held HUD slider follows the pointer, at " + level);
+                    clickProbe(c, 140, 47, false, true);
+                    int paints = (int) probe.snapshot().paints();
+                    probe.setInteractive(false);
+                    clickProbe(c, 43, 19, true, true);
+                    check(pings == 1 && !probe.interactive(), "turning input off stops the HUD taking clicks");
+                    check(paints > 3, "hover and press repainted the HUD, " + paints + " paints");
+                    c.gui.setScreen(null);
+                    probe.close();
+                    advance(500);
+                }
+                case 32 -> { mark(); advance(1000); }
+                case 33 -> {
                     check(allDrew(WATCHED), "removing the HUD restores vanilla");
                     c.disconnect(new TitleScreen(), false);
                     advance(800);
@@ -259,6 +320,26 @@ final class WindowHudAuditTest {
         move.setAccessible(true);
         move.invoke(c.mouseHandler, window.handle(), r.centerX() / gallery.layoutScale() * window.getScreenWidth() / window.getGuiScaledWidth(),
             r.centerY() / gallery.layoutScale() * window.getScreenHeight() / window.getGuiScaledHeight());
+    }
+
+    /** Presses and/or releases the real left button at a point given in the probe HUD's own points. */
+    private void clickProbe(Minecraft c, float localX, float localY, boolean press, boolean release) throws Exception {
+        moveProbe(c, localX, localY);
+        Method button = MouseHandler.class.getDeclaredMethod("onButton", long.class, MouseButtonInfo.class, int.class);
+        button.setAccessible(true);
+        var left = new MouseButtonInfo(GLFW.GLFW_MOUSE_BUTTON_LEFT, 0);
+        if (press) button.invoke(c.mouseHandler, c.getWindow().handle(), left, GLFW.GLFW_PRESS);
+        if (release) button.invoke(c.mouseHandler, c.getWindow().handle(), left, GLFW.GLFW_RELEASE);
+    }
+
+    private void moveProbe(Minecraft c, float localX, float localY) throws Exception {
+        var bounds = probe.snapshot().bounds();
+        var window = c.getWindow();
+        double guiX = bounds.x() + localX * bounds.width() / probe.width(), guiY = bounds.y() + localY * bounds.height() / probe.height();
+        Method move = MouseHandler.class.getDeclaredMethod("onMove", long.class, double.class, double.class);
+        move.setAccessible(true);
+        move.invoke(c.mouseHandler, window.handle(), guiX * window.getScreenWidth() / window.getGuiScaledWidth(),
+            guiY * window.getScreenHeight() / window.getGuiScaledHeight());
     }
 
     private UiHud belt() { return ExampleHudController.wayfarer().belt(); }

@@ -5,6 +5,35 @@ imports, a Fabric client entrypoint, opening the screen, H to reopen, and settin
 It runs against the **packaged library JAR**, without the demo module or PaneLib source on its classpath.
 Use [installation](installation.md) first if you are adding PaneLib to an existing Fabric mod.
 
+## The shortest screen
+
+One call builds a one-page screen and shows it. Escape returns to whatever was open before.
+
+```java
+UiScreen.open("My mod", ui -> {
+    ui.canvas().fill(ui.theme().background(), 0, 0, ui.width(), ui.height());
+    ui.canvas().textMedium("Hello, PaneLib", 24, 24, 24, ui.theme().text());
+    ui.toggle("hints", 24, 70, true);
+    ui.button("save", "Save", "save", 24, 110, 88, 32);
+}).onAction("save", screen -> System.out.println("Hints: " + screen.booleanValue("hints", true)));
+```
+
+Call it on the client thread, from a key binding or a menu button. `onAction` runs your code when
+a control with that action is used. Use `UiScreen.of(...)` to build the same screen without showing
+it yet, and `screen.open()` to show it. To keep values between sessions, name them with their
+defaults and save when you choose:
+
+```java
+UiScreen screen = UiScreen.of("My mod", painter)
+    .settings(configDir.resolve("my-mod.properties"), Map.of("hints", true, "volume", 50))
+    .onAction("save", UiScreen::saveSettings)
+    .open();
+```
+
+`settings` loads the file straight away; a missing file, a missing key or a value of the wrong type
+gives the default. The rest of this page covers documents, which add pages, a shell, your own
+theme and the other options.
+
 ## The parts you own
 
 - A `UiDocument` holds your theme, scaling policy, pages, and optional shell.

@@ -11,4 +11,9 @@ public record UiPage(String id, String navigationLabel, String navigationIcon, i
         navigationIcon = navigationIcon == null ? "" : navigationIcon;
         if (painter == null) throw new IllegalArgumentException("A page needs a painter");
     }
+
+    /** A page with no navigation icon and the default blue accent, for documents that do not style pages apart. */
+    public static UiPage of(String id, String navigationLabel, UiPainter painter) {
+        return new UiPage(id, navigationLabel, "", 0xFF58A6FF, painter);
+    }
 }

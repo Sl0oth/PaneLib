@@ -17,7 +17,6 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 /** Toast stacks in their own cropped texture, so fades and expiry never repaint the page. */
 final class UiToastOverlay {
     static final String DISMISS_PREFIX = "toast-dismiss:";
-    private static final long FRAME_NANOS = 16_000_000L;
     private static final UiToastStyle NO_STYLE = UiToastStyle.builder().build();
 
     private record Active(UiToast toast, long shownAt) {
@@ -65,8 +64,8 @@ final class UiToastOverlay {
     }
 
     /** Marks a repaint at most once per frame while any toast's fade differs from what is painted. */
-    void refreshFades(long now, long fadeNanos) {
-        if (now - lastPaint < FRAME_NANOS) return;
+    void refreshFades(long now, long frameNanos, long fadeNanos) {
+        if (now - lastPaint < frameNanos) return;
         for (Active toast : toasts) {
             // Compare with the last painted opacity, not just the current animation window.
             // This paints the final fully opaque frame even if a slow frame skips the boundary.
@@ -127,7 +126,7 @@ final class UiToastOverlay {
     void render(GuiGraphicsExtractor extractor, GpuSampler sampler, float layoutScale) {
         if (toasts.isEmpty() || surface == null || layoutBounds == null) return;
         extractor.nextStratum();
-        extractor.blit(surface.texture.getTextureView(), sampler,
+        extractor.blit(surface.view(), sampler,
             Math.round(layoutBounds.x() / layoutScale), Math.round(layoutBounds.y() / layoutScale),
             Math.round(layoutBounds.right() / layoutScale), Math.round(layoutBounds.bottom() / layoutScale), 0, 1, 0, 1);
     }

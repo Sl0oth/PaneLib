@@ -58,14 +58,32 @@ or a responsive card title.
 ## Themes
 
 `UiTheme` supplies the defaults used by built-in controls. It does not restrict custom painting.
-Create a complete theme with the record constructor or derive common changes:
+Start from the dark or light theme and change what differs. Every token has a `with...` method:
 
 ```java
-UiTheme theme = UiTheme.light()
+UiTheme theme = UiTheme.dark()
+    .withBackground(0xFF14161A)
+    .withSurface(0xFF1C1F24)
     .withAccent(0xFF1BD96A)
+    .withRadii(4, 8, 12)
     .withDensity(.95F)
-    .withMotionScale(1)
     .withFontFamily("my-font");
+```
+
+`theme.danger()`, `theme.success()` and `theme.warning()` are status colours for your own painting,
+with `withDanger` and the rest to change them.
+
+To restyle every control at once, give the document its styles. Controls drawn without a style of
+their own use them; a style passed to a control still wins:
+
+```java
+UiDocument.builder("My mod")
+    .theme(theme)
+    .buttonStyle(paperButton)      // buttons and dropdown triggers
+    .inputStyle(UiInputStyle.defaults().font("my-font", 11, Font.PLAIN))
+    .menuStyle(myMenuStyle)
+    .page(home)
+    .build();
 ```
 
 For a one-off button, `UiButtonStyle` overrides every visual part without creating another theme:

@@ -27,7 +27,7 @@ final class UiTooltipOverlay {
         }
         if (surface == null || bounds == null) return false;
         graphics.nextStratum();
-        graphics.blit(surface.texture.getTextureView(), sampler,
+        graphics.blit(surface.view(), sampler,
             Math.round(bounds.x() / layoutScale), Math.round(bounds.y() / layoutScale),
             Math.round(bounds.right() / layoutScale), Math.round(bounds.bottom() / layoutScale), 0, 1, 0, 1);
         return true;

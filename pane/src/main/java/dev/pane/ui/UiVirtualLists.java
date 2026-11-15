@@ -30,6 +30,8 @@ final class UiVirtualLists {
 
     /** Live screen state for one row paint, including a fresh animation clock. */
     interface RowState { UiVirtualListRequest.DynamicState at(long now); }
+    /** A row read the page transition since the screen last cleared this. */
+    boolean motionRead;
 
     private final Map<String, Double> offsets;
     private final RowState rowState;
@@ -153,6 +155,7 @@ final class UiVirtualLists {
             UiAnimationClock rowClock = dynamic.animationClock();
             layer.request.paintRow(canvas, row.index, dynamic,
                 new UiVirtualListRequest.RowOutput(hits, nativeRows, nativeOverlayRows, scrolls, inputs, tips, rowMenus, rowDialogs, rowButtons, rowNarrations));
+            if (layer.request.motionRead) motionRead = true;
             row.customAnimating = rowClock.active();
             row.animationIds=rowClock.usedIds();
         } finally {
@@ -249,6 +252,13 @@ final class UiVirtualLists {
         return interactionsChanged;
     }
 
+    /** A page-to-local mapping after the page content moved down by {@code shiftY}. */
+    private static java.awt.geom.AffineTransform shifted(java.awt.geom.AffineTransform toLocal, float shiftY) {
+        if (toLocal == null) return null;
+        var moved = new java.awt.geom.AffineTransform(toLocal);
+        moved.translate(0, -shiftY);
+        return moved;
+    }
     static UiRect rowGuiRect(UiVirtualListRequest request, int index, float layoutScale) {
         return new UiRect(
             request.viewport.x() / layoutScale,
@@ -503,11 +513,18 @@ final class UiVirtualLists {
                     if (moved.width() <= 0 || moved.height() <= 0) continue;
                     nextHits.add(new UiHitRegion(hit.id(), hit.action(), moved.x(), moved.y(), moved.width(), moved.height(),
                         hit.trackX(), hit.trackWidth(), hit.hitShape() == null ? null
-                            : java.awt.geom.AffineTransform.getTranslateInstance(0, shiftY).createTransformedShape(hit.hitShape())));
+                            : java.awt.geom.AffineTransform.getTranslateInstance(0, shiftY).createTransformedShape(hit.hitShape()),
+                        shifted(hit.toLocal(), shiftY)));
                 }
                 for (UiInputRegion input : row.inputs) {
                     UiRect moved = input.bounds().translate(0, shiftY).intersection(clip);
                     if (moved.width() <= 0 || moved.height() <= 0) continue;
+                    if (input.toLocal() != null) {
+                        // Carets inside a rotated or scaled group stay in its coordinates; only the mapping moves.
+                        nextInputs.add(new UiInputRegion(input.id(), input.key(), moved, input.maxLength(), input.multiline(),
+                            input.caretXs(), input.caretYs(), input.lines(), input.masked(), input.readOnly(), shifted(input.toLocal(), shiftY)));
+                        continue;
+                    }
                     float[] ys = input.caretYs();
                     for (int i = 0; i < ys.length; i++) ys[i] += shiftY;
                     nextInputs.add(new UiInputRegion(input.id(), input.key(), moved, input.maxLength(),

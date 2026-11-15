@@ -9,7 +9,13 @@ package dev.pane.ui;
  * still be mapped against the track, not the padded rectangle.
  */
 record UiHitRegion(String id, String action, float x, float y, float width, float height,
-                   float trackX, float trackWidth, java.awt.Shape hitShape) {
+                   float trackX, float trackWidth, java.awt.Shape hitShape, java.awt.geom.AffineTransform toLocal) {
+
+    /** A region whose track is in the same coordinates as its bounds. */
+    UiHitRegion(String id, String action, float x, float y, float width, float height,
+                float trackX, float trackWidth, java.awt.Shape hitShape) {
+        this(id, action, x, y, width, height, trackX, trackWidth, hitShape, null);
+    }
 
     UiHitRegion(String id, String action, float x, float y, float width, float height,
                 float trackX, float trackWidth) {
@@ -25,9 +31,13 @@ record UiHitRegion(String id, String action, float x, float y, float width, floa
             && (hitShape == null || hitShape.contains(mouseX, mouseY));
     }
 
-    /** Fraction of the value track at the given layout-space x, clamped to 0..1. */
-    double fractionAt(double mouseX) {
+    /**
+     * Fraction of the value track at a layout-space point, clamped to 0..1. Inside a rotated or scaled
+     * group the track is in the group's own coordinates and {@code toLocal} maps the point into them.
+     */
+    double fractionAt(double mouseX, double mouseY) {
         if (trackWidth <= 0) return 0;
+        if (toLocal != null) mouseX = toLocal.transform(new java.awt.geom.Point2D.Double(mouseX, mouseY), null).getX();
         return Math.max(0, Math.min(1, (mouseX - trackX) / trackWidth));
     }
 }

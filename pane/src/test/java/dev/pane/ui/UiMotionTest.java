@@ -55,7 +55,7 @@ final class UiMotionTest {
             assertFalse(hit.contains(hit.x() + .1, hit.y() + .1));
             assertEquals(0xFFFFFFFF, image.getRGB(40, 35));
             assertThrows(IllegalArgumentException.class, () -> ui.withTransform(UiTransform.identity(), 0, 0,
-                group -> group.textField("field", "name", "Name", 0, 0, 30, 20, "", 10)));
+                group -> group.scroll("list", new UiRect(0, 0, 30, 20), 100, inner -> { })));
         } finally { graphics.dispose(); }
     }
 }

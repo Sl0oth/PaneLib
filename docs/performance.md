@@ -28,6 +28,21 @@ produce a wide transfer. Virtual-row atlases have their own bounded upload path.
 own bounded repaint regions. An unbounded `animate` overload remains available when a change
 really affects the full page.
 
+## Frame rate
+
+Animation repaints once per displayed frame, so a 144 Hz monitor animates at 144 frames a second.
+To spend less on animation, set a ceiling; it is kept to a whole number of display frames, so 60 on
+a 144 Hz display repaints every third frame:
+
+```java
+UiDocument.builder("My mod").renderSettings(UiRenderSettings.balanced().withMaximumFrameRate(60));
+hud.setRenderSettings(UiRenderSettings.hud().withMaximumFrameRate(30));
+```
+
+Opening a screen or switching page paints once. The page is repainted through the 180–210 ms
+transition only when its painter reads `ui.motion()` or `ui.animating()`. A HUD's show and hide
+fade costs no painting at all.
+
 ## Measurement notes
 
 - Compare cold and warm opens separately. Record open-stage times and p95/p99 frame time, not

@@ -2,7 +2,13 @@ package dev.pane.ui;
 
 /** A text input registered during a page paint, including exact painted caret positions. */
 record UiInputRegion(String id, String key, UiRect bounds, int maxLength, boolean multiline,
-                     float[] caretXs, float[] caretYs, java.util.List<UiTextLine> lines, boolean masked, boolean readOnly) {
+                     float[] caretXs, float[] caretYs, java.util.List<UiTextLine> lines, boolean masked, boolean readOnly,
+                     java.awt.geom.AffineTransform toLocal) {
+    /** An input whose carets are in the same coordinates as its bounds. */
+    UiInputRegion(String id, String key, UiRect bounds, int maxLength, boolean multiline,
+                  float[] caretXs, float[] caretYs, java.util.List<UiTextLine> lines, boolean masked, boolean readOnly) {
+        this(id, key, bounds, maxLength, multiline, caretXs, caretYs, lines, masked, readOnly, null);
+    }
     UiInputRegion(String id, String key, UiRect bounds, int maxLength, boolean multiline,
                   float[] caretXs, float[] caretYs, java.util.List<UiTextLine> lines, boolean masked) {
         this(id, key, bounds, maxLength, multiline, caretXs, caretYs, lines, masked, false);
@@ -73,7 +79,24 @@ record UiInputRegion(String id, String key, UiRect bounds, int maxLength, boolea
         }
         return new Caret(best, best == line.end());
     }
+    /**
+     * A page point in the coordinates the carets are in. They differ inside a rotated or scaled group,
+     * where {@code bounds} is the box the group covers on the page.
+     */
+    java.awt.geom.Point2D.Float local(float x, float y) {
+        var point = new java.awt.geom.Point2D.Float(x, y);
+        if (toLocal != null) toLocal.transform(point, point);
+        return point;
+    }
+    /** A point in caret coordinates on the page. */
+    java.awt.geom.Point2D.Float page(float x, float y) {
+        var point = new java.awt.geom.Point2D.Float(x, y);
+        if (toLocal != null) try { toLocal.inverseTransform(point, point); }
+            catch (java.awt.geom.NoninvertibleTransformException flat) { return new java.awt.geom.Point2D.Float(bounds.centerX(), bounds.centerY()); }
+        return point;
+    }
     Caret caretPositionAt(float x, float y) {
+        if (toLocal != null) { var point = local(x, y); x = point.x; y = point.y; }
         if (lines.isEmpty()) return new Caret(caretAt(x, y), false);
         UiTextLine best = lines.getFirst();
         for (UiTextLine line : lines) if (Math.abs(line.y() - y) < Math.abs(best.y() - y)) best = line;

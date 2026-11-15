@@ -26,7 +26,7 @@ public final class PixelTransferBenchmark {
             long[] times = new long[ROUNDS], allocated = new long[ROUNDS];
             for (int sample=-ROUNDS;sample<ROUNDS;sample++) {
                 long bytes=allocations?memory.getThreadAllocatedBytes(thread):0, start=System.nanoTime();
-                for (int repeat=0;repeat<BATCH;repeat++) UiPixelTransfer.copy(source,target,stride,x,y,width,height);
+                for (int repeat=0;repeat<BATCH;repeat++) UiPixelTransfer.pack(source,stride,x,y,width,height,target);
                 long duration=System.nanoTime()-start;
                 if (sample>=0) {
                     times[sample]=duration/BATCH;

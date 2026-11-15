@@ -5,8 +5,6 @@ import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.textures.FilterMode;
 import com.mojang.blaze3d.textures.GpuSampler;
 import java.awt.Graphics2D;
-import java.nio.ByteBuffer;
-import java.nio.ByteOrder;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -49,7 +47,8 @@ import org.lwjgl.glfw.GLFW;
  * </ul>
  */
 public class UiScreen extends Screen {
-    private static final long FRAME_NANOS = 16_000_000L;
+    /** Wait between animation repaints; follows the display and the document's frame-rate ceiling. */
+    private long frameNanos = 16_000_000L;
     private static final int VIRTUAL_ATLAS_GUTTER = 1;
     private static final String MENU_PREFIX = "menu:";
 
@@ -66,6 +65,10 @@ public class UiScreen extends Screen {
     private final UiDocument document;
     private final NativeOverlayRenderer nativeOverlay;
     private final UiEventListener eventListener;
+    private final Map<String, java.util.function.Consumer<UiScreen>> actionHandlers = new HashMap<>();
+    private final Map<String, java.util.function.Consumer<UiScreen>> changeHandlers = new HashMap<>();
+    private java.nio.file.Path settingsFile;
+    private List<String> settingsKeys = List.of();
     private final UiScreenOptions options;
     private final Map<String, Object> state = new HashMap<>();
     private final Map<String, UiAnimationClock.State> animations = new HashMap<>();
@@ -181,6 +184,9 @@ public class UiScreen extends Screen {
     private UiHitRegion draggingSlider;
     /** Drag area being moved, with the pointer and stored offsets at the press. */
     private String draggingKey, draggingId;
+    /** State key of the key binding waiting for a key press, or null. */
+    private String capturingKey;
+    private boolean capturingMouse;
     private float dragStartX, dragStartY;
     private double dragOriginX, dragOriginY;
     /** What the drag moves as last painted, with the offsets it was painted at; null repaints the page. */
@@ -225,6 +231,8 @@ public class UiScreen extends Screen {
     // restart the entrance animation, so the whole page appeared to jump on mouse-over.
     private long transitionStart;
     private long transitionEnd;
+    /** Whether the latest paint read the page transition; unknown, so assumed, until the first paint. */
+    private boolean transitionRead = true;
     private long interactionStart;
     private long interactionEnd;
     private UiRect interactionRepaintBounds;
@@ -236,7 +244,6 @@ public class UiScreen extends Screen {
     private long lastPaintDurationNanos;
     private int lastUploadPixelCount;
     /** Packed rows of the latest narrow partial upload, reused between paints. */
-    private ByteBuffer uploadScratch;
     private int mouseX;
     private int mouseY;
     private float layoutScale = 1;
@@ -309,11 +316,20 @@ public class UiScreen extends Screen {
         super(Component.literal(document.title()));
         this.document = Objects.requireNonNull(document, "document");
         this.nativeOverlay = nativeOverlay == null ? NativeOverlayRenderer.NONE : nativeOverlay;
-        this.eventListener = handler == null ? (eventListener == null ? UiEventListener.NONE : eventListener)
+        UiEventListener listener = handler == null ? (eventListener == null ? UiEventListener.NONE : eventListener)
             : (kind, key, value) -> handler.onEvent(this, new UiEvent(UiEventType.fromWire(kind), key, value));
+        this.eventListener = (kind, key, value) -> {
+            listener.onEvent(kind, key, value);
+            var handlers = "action".equals(kind) ? actionHandlers : "value".equals(kind) ? changeHandlers : null;
+            var chosen = handlers == null ? null : handlers.get(key);
+            if (chosen != null) chosen.accept(this);
+        };
         this.options = options == null ? UiScreenOptions.defaults() : options;
         createdAtNanos = System.nanoTime();
         pageId = document.initialPageId();
+        interactions.buttonStyle = document.buttonStyle().orElse(null);
+        interactions.inputStyle = document.inputStyle();
+        interactions.menuStyle = document.menuStyle();
     }
 
     /** Creates a screen with a typed event callback. */
@@ -335,9 +351,101 @@ public class UiScreen extends Screen {
         return new UiScreen(document, overlay, UiEventListener.NONE, options, handler);
     }
 
+    /** Creates a screen with no native overlay whose actions are handled through {@link #onAction}. */
+    public static UiScreen create(UiDocument document, UiScreenOptions options) {
+        return new UiScreen(document, NativeOverlayRenderer.NONE, UiEventListener.NONE, options);
+    }
+
     /** Creates an owner-aware screen with default lifecycle options. */
     public static UiScreen create(UiDocument document, NativeOverlayRenderer overlay, UiScreenEventHandler handler) {
         return create(document, overlay, handler, UiScreenOptions.defaults());
+    }
+
+    /**
+     * A one-page screen with the dark theme and no chrome, whose Escape returns to the screen open now.
+     * It is the short way to a screen: {@code UiScreen.of("My mod", ui -> { ... }).onAction("save", s -> save()).open()}.
+     * Build a {@link UiDocument} instead for several pages, a shell, another theme or other options.
+     */
+    public static UiScreen of(String title, UiPainter painter) {
+        return of(title, UiTheme.dark(), painter);
+    }
+
+    /** As {@link #of(String, UiPainter)} with {@code theme}; the page accent is the theme's. */
+    public static UiScreen of(String title, UiTheme theme, UiPainter painter) {
+        UiTheme chosen = theme == null ? UiTheme.dark() : theme;
+        var document = UiDocument.builder(title).theme(chosen)
+            .page(new UiPage("main", title, "", chosen.accent(), painter)).build();
+        Minecraft client = Minecraft.getInstance();
+        Screen current = client == null ? null : client.gui.screen();
+        return new UiScreen(document, NativeOverlayRenderer.NONE, UiEventListener.NONE,
+            UiScreenOptions.builder().parent(current).build());
+    }
+
+    /** Builds the screen of {@link #of(String, UiPainter)} and shows it. Call on the client thread. */
+    public static UiScreen open(String title, UiPainter painter) {
+        return of(title, painter).open();
+    }
+
+    /** Shows this screen and returns it. Call on the client thread. */
+    public UiScreen open() {
+        Minecraft.getInstance().gui.setScreen(this);
+        return this;
+    }
+
+    /**
+     * Runs {@code handler} with this screen whenever a control's {@code action} runs, such as the action
+     * of a clicked button. It runs after the screen's event handler, on the client thread, and replaces an
+     * earlier handler for the same action; null removes it. Returns this screen.
+     */
+    public UiScreen onAction(String action, java.util.function.Consumer<UiScreen> handler) {
+        Objects.requireNonNull(action, "action");
+        if (handler == null) actionHandlers.remove(action);
+        else actionHandlers.put(action, handler);
+        return this;
+    }
+
+    /**
+     * Runs {@code handler} with this screen whenever a control changes the value stored under
+     * {@code key}: a toggle flipped, a slider moved, text typed, a colour picked. Read the new value
+     * from the screen, as in {@code screen.onChange("volume", s -> setVolume(s.numberValue("volume", 50)))}.
+     * Values set from code with {@link #setValue} do not run it; null removes it. Returns this screen.
+     */
+    public UiScreen onChange(String key, java.util.function.Consumer<UiScreen> handler) {
+        Objects.requireNonNull(key, "key");
+        if (handler == null) changeHandlers.remove(key);
+        else changeHandlers.put(key, handler);
+        return this;
+    }
+
+    /**
+     * Loads this screen's saved values from {@code file} and remembers the file for {@link #saveSettings()}.
+     * {@code defaults} names every saved state key with its default, which also gives its type: a string,
+     * a boolean or a number. A missing file or key, or a value of the wrong type, loads the default.
+     * Call before the screen opens, on the client thread. Returns this screen.
+     */
+    public UiScreen settings(java.nio.file.Path file, Map<String, ?> defaults) {
+        Objects.requireNonNull(file, "file");
+        UiSettingsFile.requireSupported(Objects.requireNonNull(defaults, "defaults"));
+        settingsFile = file;
+        settingsKeys = List.copyOf(defaults.keySet());
+        UiSettingsFile.load(file, defaults).forEach(this::setValue);
+        return this;
+    }
+
+    /**
+     * Writes the current value of every key given to {@link #settings} to its file. Returns false, leaving
+     * the last saved file as it was, when the file cannot be written or no settings file was set.
+     */
+    public boolean saveSettings() {
+        if (settingsFile == null) return false;
+        var values = new LinkedHashMap<String, Object>();
+        for (String key : settingsKeys) values.put(key, state.get(key));
+        try {
+            UiSettingsFile.save(settingsFile, values, document.title());
+            return true;
+        } catch (java.io.IOException | RuntimeException failed) {
+            return false;
+        }
     }
 
     /** The document this screen shows. */
@@ -452,7 +560,7 @@ public class UiScreen extends Screen {
         if (region == null) return editorScrollSnapshot(id);
         double offset = scrollOffset(id);
         UiScrollPhysics.Motion motion = scrollMotions.get(id);
-        return Optional.of(new UiScrollSnapshot(id, region.viewport(), region.contentHeight(), offset, motion == null ? offset : motion.target()));
+        return Optional.of(new UiScrollSnapshot(id, region.viewport(), region.contentHeight(), offset, motion == null ? offset : motion.target(), region.horizontal()));
     }
     /**
      * Sets an internal scroll offset in layout units without emitting a consumer VALUE event.
@@ -673,6 +781,11 @@ public class UiScreen extends Screen {
         return state.get(key) instanceof String text ? text : fallback;
     }
 
+    /** The colour stored under {@code key} by a colour picker or as hex text such as {@code #58A6FF}, or {@code fallback}. */
+    public int colorValue(String key, int fallback) {
+        return UiColor.hex(stringValue(key, null), fallback);
+    }
+
     /**
      * Updates state on the client thread. Equal immutable scalar values avoid a repaint.
      * Mutable objects still notify the painter even when the same instance is supplied.
@@ -763,6 +876,11 @@ public class UiScreen extends Screen {
             float x = input.caretX(textCursor, textUpstream);
             float[] ys = input.caretYs();
             float centerY = input.multiline() && textCursor < ys.length && ys[textCursor] != 0 ? ys[textCursor] : input.bounds().centerY();
+            if (input.toLocal() != null) {
+                // Inside a rotated or scaled group the composition sits upright at the caret's place on the page.
+                var caret = input.page(x, input.multiline() && textCursor < ys.length ? ys[textCursor] : input.local(input.bounds().centerX(), input.bounds().centerY()).y);
+                x = caret.x; centerY = caret.y;
+            }
             x = Math.max(0, Math.min(x, surfaceLayoutWidth - width));
             return new UiRect(x, centerY - height / 2, width, height);
         } finally { graphics.dispose(); }
@@ -994,6 +1112,7 @@ public class UiScreen extends Screen {
         if (id == null || id.equals(pageId) || document.page(id) == null) return;
         interactions.scrollEnds.cancelPending();
         pageId = id;
+        capturingKey = null;
         interactionEnd = 0;
         interactionPaintsBase = false;
         interactionRepaintBounds = null;
@@ -1208,24 +1327,27 @@ public class UiScreen extends Screen {
         // focus; follow the cursor here too, as vanilla widgets hover beneath it in an unfocused window.
         if (this.mouseX != mouseX || this.mouseY != mouseY) mouseMoved(mouseX, mouseY);
         long now = System.nanoTime();
+        frameNanos = UiFrameRate.intervalNanos(document.renderSettings().maximumFrameRate(), now);
         dialogBlurScratch.releaseIfIdle(now);
         if (transitionEnd > 0) {
+            // A page that never reads its transition looks the same on every frame of it.
+            boolean read = transitionRead || virtual.motionRead;
             if (now < transitionEnd) {
-                if (now - lastPaint >= FRAME_NANOS) requestFullRepaint();
+                if (read && now - lastPaint >= frameNanos) requestFullRepaint();
             } else {
                 transitionEnd = 0;
-                requestFullRepaint();
+                if (read) requestFullRepaint();
             }
         }
         if (interactionEnd > 0) {
             if (now < interactionEnd) {
                 if (!animatedVirtualRows.isEmpty()) {
-                    if (now - lastVirtualAnimationPaint >= FRAME_NANOS) {
+                    if (now - lastVirtualAnimationPaint >= frameNanos) {
                         virtual.markDirty(animatedVirtualRows);
                         lastVirtualAnimationPaint = now;
                     }
                 }
-                if (interactionPaintsBase && now - lastPaint >= FRAME_NANOS) requestInteractionRepaint();
+                if (interactionPaintsBase && now - lastPaint >= frameNanos) requestInteractionRepaint();
             } else {
                 interactionEnd = 0;
                 if (!animatedVirtualRows.isEmpty()) {
@@ -1238,7 +1360,7 @@ public class UiScreen extends Screen {
                 interactionRepaintBounds = null;interactionPaintsBase=false;
             }
         }
-        if (customAnimationsActive && now - lastPaint >= FRAME_NANOS) requestCustomAnimationRepaint();
+        if (customAnimationsActive && now - lastPaint >= frameNanos) requestCustomAnimationRepaint();
         if (!refreshes.isEmpty()) {
             List<UiInteractionState.Refresh> waiting = null;
             for (var refresh : refreshes) {
@@ -1249,7 +1371,7 @@ public class UiScreen extends Screen {
             }
             if (waiting != null) refreshes = waiting;
         }
-        if (virtual.active && now - lastCustomVirtualAnimationPaint >= FRAME_NANOS) {
+        if (virtual.active && now - lastCustomVirtualAnimationPaint >= frameNanos) {
             boolean any = false;
             for (UiVirtualLists.Layer layer : virtual.layers.values()) for (UiVirtualLists.Row row : layer.rows.values()) {
                 if (row.customAnimating) { row.dirty = true; any = true; }
@@ -1262,9 +1384,9 @@ public class UiScreen extends Screen {
         }
         if (!toastOverlay.isEmpty()) {
             pruneToasts(now);
-            toastOverlay.refreshFades(now, scaledDuration(document.toastSettings().fadeMillis()));
+            toastOverlay.refreshFades(now, frameNanos, scaledDuration(document.toastSettings().fadeMillis()));
         }
-        if (!scrollMotions.isEmpty() && (dirty || now - lastPaint >= FRAME_NANOS)) updateScrollMotions(now);
+        if (!scrollMotions.isEmpty() && (dirty || now - lastPaint >= frameNanos)) updateScrollMotions(now);
         boolean repainting = dirty;
         if (repainting) {
             boolean active = transitionEnd > now || interactionEnd > now || customAnimationsActive
@@ -1277,7 +1399,7 @@ public class UiScreen extends Screen {
             return;
         }
         long compositeStarted = System.nanoTime();
-        graphics.blit(surface.texture.getTextureView(), surfaceSampler, 0, 0, width, height, 0, 1, 0, 1);
+        graphics.blit(surface.view(), surfaceSampler, 0, 0, width, height, 0, 1, 0, 1);
         if (virtual.active && !virtual.layers.isEmpty()) {
             graphics.nextStratum();
             if (virtual.render(graphics, now, null, layoutScale)) refreshVirtualInteractions();
@@ -1360,7 +1482,7 @@ public class UiScreen extends Screen {
             int bottom = (int) guiBounds.bottom();
             if (right <= x || bottom <= y) continue;
             graphics.enableScissor(x, y, right, bottom);
-            graphics.blit(surface.texture.getTextureView(), surfaceSampler, 0, 0, width, height, 0, 1, 0, 1);
+            graphics.blit(surface.view(), surfaceSampler, 0, 0, width, height, 0, 1, 0, 1);
             graphics.disableScissor();
         }
     }
@@ -1435,6 +1557,20 @@ public class UiScreen extends Screen {
         float layoutX = (float) (event.x() * scale);
         float layoutY = (float) (event.y() * scale);
         UiHitRegion region = regionAt(layoutX, layoutY);
+        if (capturingKey != null) {
+            String key = capturingKey;
+            capturingKey = null;
+            repaintForKey(key);
+            if (capturingMouse) {
+                // As in Minecraft's own controls, a click while listening binds that mouse button.
+                int code = UiKeyNames.mouse(event.button());
+                Object previous = state.put(key, code);
+                if (!Objects.equals(previous, code)) eventListener.onEvent("value", key, Integer.toString(code));
+                return true;
+            }
+            // A click ends listening for a key; on the binding itself that is all it does.
+            if (region != null && region.id().equals(key)) return true;
+        }
         if(openMenuId==null&&region!=null) {
             UiEditorViewport editor=interactions.editors.get(region.id());
             if(editor!=null&&editor.stale)return true;
@@ -1493,7 +1629,7 @@ public class UiScreen extends Screen {
         pressedId = region.id();
         if (internalBody(region.action()).startsWith("slider:")) {
             draggingSlider = region;
-            updateSlider(region, event.x() * scale);
+            updateSlider(region, event.x() * scale, event.y() * scale);
         }
         if (internalBody(region.action()).startsWith("drag:")) {
             draggingKey = UiValueKey.decode(internalBody(region.action()).substring(5));
@@ -1545,7 +1681,7 @@ public class UiScreen extends Screen {
         UiTextLinks.Link link = position.upstream() ? null : UiTextLinks.at(value, index);
         // The right half of a link's last character puts the caret after it; empty space past the
         // end of the line does too, so that only counts when the pointer is still over the text.
-        if (link == null && index > 0 && layoutX <= input.caretX(index, position.upstream()) + 1)
+        if (link == null && index > 0 && input.local((float) layoutX, (float) layoutY).x <= input.caretX(index, position.upstream()) + 1)
             link = UiTextLinks.at(value, index - 1);
         if (link == null) return false;
         Minecraft client = Minecraft.getInstance();
@@ -1581,7 +1717,7 @@ public class UiScreen extends Screen {
         if (draggingSlider != null) {
             if (event.button() != GLFW.GLFW_MOUSE_BUTTON_LEFT) return false;
             reconcileSliderDrag();
-            if (draggingSlider != null) updateSlider(draggingSlider, event.x() * scale);
+            if (draggingSlider != null) updateSlider(draggingSlider, event.x() * scale, event.y() * scale);
             return true;
         }
         if (draggingTextInput != null) {
@@ -1629,15 +1765,29 @@ public class UiScreen extends Screen {
             if(editor.scroll(vertical))repaintTextInput(input);
             return true;
         }
-        UiScrollRegion region = scrollAt(mouseX * scale, mouseY * scale);
-        if (region == null || region.maxOffset() <= 0 || vertical == 0) return !focusScopes.isEmpty();
+        // A sideways swipe goes to the nearest sideways region. The wheel goes to the nearest vertical
+        // region, and to a sideways one only when no vertical region is under the pointer.
+        UiScrollRegion region = null;
+        double amount = vertical;
+        // Shift turns the wheel sideways. macOS already reports it that way; Windows and Linux do not.
+        if (shiftTurnsWheel(horizontal, vertical, shiftHeld())) {
+            region = scrollAt(mouseX * scale, mouseY * scale, true);
+        } else if (horizontal != 0 && Math.abs(horizontal) >= Math.abs(vertical)) {
+            region = scrollAt(mouseX * scale, mouseY * scale, true);
+            if (region != null) amount = horizontal;
+        }
+        if (region == null) {
+            region = scrollAt(mouseX * scale, mouseY * scale, false);
+            if (region == null) region = scrollAt(mouseX * scale, mouseY * scale, true);
+        }
+        if (region == null || region.maxOffset() <= 0 || amount == 0) return !focusScopes.isEmpty();
         String key = region.id();
         long now = System.nanoTime();
         double displayed = scrollOffset(key);
         UiScrollPhysics.Motion active = scrollMotions.get(region.id());
         double previousTarget = active == null ? displayed : active.target();
         UiScrollSettings settings = document.scrollSettings();
-        double next = Math.max(0, Math.min(region.maxOffset(), previousTarget - vertical * settings.step()));
+        double next = Math.max(0, Math.min(region.maxOffset(), previousTarget - amount * settings.step()));
         if (next == previousTarget) return false;
         interactions.scrollEnds.navigate(key, next);
         long duration = scaledDuration(settings.smoothingMillis());
@@ -1670,6 +1820,16 @@ public class UiScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        if (capturingKey != null) {
+            // As in Minecraft's own controls, Escape leaves the binding without a key.
+            int code = event.key() == GLFW.GLFW_KEY_ESCAPE ? UiKeyNames.UNBOUND : event.key();
+            String key = capturingKey;
+            capturingKey = null;
+            Object previous = state.put(key, code);
+            repaintForKey(key);
+            if (!Objects.equals(previous, code)) eventListener.onEvent("value", key, Integer.toString(code));
+            return true;
+        }
         if (event.key() == GLFW.GLFW_KEY_ESCAPE && openDialogId != null) {
             closeDialog(true);
             return true;
@@ -1799,6 +1959,25 @@ public class UiScreen extends Screen {
             eventListener.onEvent("action", itemAction, "");
             return;
         }
+        if (action.startsWith("keybind:") || action.startsWith("mousebind:")) {
+            capturingMouse = action.startsWith("mousebind:");
+            capturingKey = action.substring(action.indexOf(':') + 1);
+            repaintForKey(capturingKey);
+            return;
+        }
+        if (action.startsWith("step:")) {
+            String[] parts = action.substring("step:".length()).split(":", 4);
+            double delta = Double.parseDouble(parts[0]), minimum = Double.parseDouble(parts[1]), maximum = Double.parseDouble(parts[2]);
+            String key = parts[3];
+            double current = state.get(key) instanceof Number n && Double.isFinite(n.doubleValue()) ? n.doubleValue() : minimum;
+            // Whole steps of the step size from the minimum, so repeated clicks never drift.
+            double step = Math.abs(delta);
+            double next = Math.clamp(minimum + Math.rint((current + delta - minimum) / step) * step, minimum, maximum);
+            Object previous = state.put(key, next);
+            repaintForKey(key);
+            if (!Objects.equals(previous, next)) eventListener.onEvent("value", key, Double.toString(next));
+            return;
+        }
         if (action.startsWith("page:")) {
             showPage(action.substring("page:".length()));
             return;
@@ -1871,9 +2050,22 @@ public class UiScreen extends Screen {
         } else draggingSlider = current;
     }
 
-    private void updateSlider(UiHitRegion region, double mouseX) {
+    /** Whether a plain vertical wheel step should scroll sideways because Shift is held. */
+    static boolean shiftTurnsWheel(double horizontal, double vertical, boolean shift) {
+        return shift && horizontal == 0 && vertical != 0;
+    }
+
+    private static boolean shiftHeld() {
+        try {
+            var window = Minecraft.getInstance().getWindow();
+            return com.mojang.blaze3d.platform.InputConstants.isKeyDown(window, GLFW.GLFW_KEY_LEFT_SHIFT)
+                || com.mojang.blaze3d.platform.InputConstants.isKeyDown(window, GLFW.GLFW_KEY_RIGHT_SHIFT);
+        } catch (RuntimeException unknown) { return false; }
+    }
+
+    private void updateSlider(UiHitRegion region, double mouseX, double mouseY) {
         SliderRange range = SliderRange.from(region);
-        setSliderValue(range, range.minimum() + region.fractionAt(mouseX) * (range.maximum() - range.minimum()));
+        setSliderValue(range, range.minimum() + region.fractionAt(mouseX, mouseY) * (range.maximum() - range.minimum()));
     }
 
     private void setSliderValue(SliderRange range, double value) {
@@ -2355,10 +2547,11 @@ public class UiScreen extends Screen {
         return value.replace("\r\n", "\n").replace('\r', '\n').replace('\t', ' ');
     }
 
-    private UiScrollRegion scrollAt(double x, double y) {
+    /** The innermost scroll region under a point that scrolls along the asked axis. */
+    private UiScrollRegion scrollAt(double x, double y, boolean horizontal) {
         for (int i = scrollRegions.size() - 1; i >= 0; i--) {
             UiScrollRegion region = scrollRegions.get(i);
-            if (focusAllowed(region.id()) && region.contains(x, y)) return region;
+            if (region.horizontal() == horizontal && focusAllowed(region.id()) && region.contains(x, y)) return region;
         }
         return null;
     }
@@ -2400,6 +2593,8 @@ public class UiScreen extends Screen {
     private void startTransition(int milliseconds) {
         long duration = scaledDuration(milliseconds);
         requestFullRepaint();
+        transitionRead = true;
+        virtual.motionRead = false;
         if (duration <= 0) {
             transitionEnd = 0;
             return;
@@ -2614,6 +2809,7 @@ public class UiScreen extends Screen {
             canvas.backdropReads = new ArrayList<>();
             canvas.glassCache = glassCache;
             interactions.live.draggingKey = draggingKey;
+            interactions.live.capturingKey = capturingKey;
             interactions.live.dragMoved = dragMoved;
             List<UiHitRegion> nextHits = new ArrayList<>();
             Map<String, NativeBounds> nextNativeBounds = new LinkedHashMap<>();
@@ -2663,6 +2859,7 @@ public class UiScreen extends Screen {
             narrations = Map.copyOf(described);
             // Reading the shared interaction progress ties every control's hover and press to the page.
             interactionPainted = live.interactionMotionRead ? null : Set.copyOf(live.interactionReads);
+            if (transitionEnd != 0) transitionRead = live.motionRead;
             if (draggingKey != null) {
                 double x = numberValue(draggingKey + ":x", 0), y = numberValue(draggingKey + ":y", 0);
                 UiRect painted = live.dragBounds.get(draggingId);
@@ -2731,6 +2928,9 @@ public class UiScreen extends Screen {
             graphics.dispose();
         }
         if (openDialogId == null) dialogBlurScratch.clear();
+        // A colour its sliders changed is announced under its own key, once the page is consistent again.
+        if (!interactions.live.valueChanges.isEmpty())
+            for (String key : List.copyOf(interactions.live.valueChanges)) eventListener.onEvent("value", key, stringValue(key, ""));
         lastRasterNanos = System.nanoTime() - paintStarted;
         long uploadStarted = System.nanoTime();
         if (partial) upload(pixelRegion);
@@ -2941,7 +3141,7 @@ public class UiScreen extends Screen {
             graphics.fill(0, 0, width, height, popupBackdrop);
             graphics.nextStratum();
         }
-        graphics.blit(popupSurface.texture.getTextureView(), surfaceSampler,
+        graphics.blit(popupSurface.view(), surfaceSampler,
             Math.round(popupLayoutBounds.x() / layoutScale), Math.round(popupLayoutBounds.y() / layoutScale),
             Math.round(popupLayoutBounds.right() / layoutScale), Math.round(popupLayoutBounds.bottom() / layoutScale),
             0, 1, 0, 1);
@@ -3010,33 +3210,14 @@ public class UiScreen extends Screen {
 
     private void upload() {
         if (surface == null) return;
-        surface.upload();
-        lastUploadPixelCount = surfaceWidth * surfaceHeight;
+        lastUploadPixelCount = surface.upload();
     }
 
     private void upload(PixelRect region) {
         if (surface == null || region.width() <= 0 || region.height() <= 0) return;
-        var bytes = surface.texture.getPixels().getPixelBytes().order(ByteOrder.nativeOrder());
-        UiPixelTransfer.copy(surface.pixels, bytes.asIntBuffer(), surfaceWidth,
-            region.x(), region.y(), region.width(), region.height());
-        // A one-pixel guard on every side is copied from the unchanged native backing; it never
-        // rerasterizes neighbouring content. Narrow regions upload just their rectangle, packed
-        // row after row; regions spanning most of the width upload whole scanlines as they lie.
-        int left = Math.max(0, region.x() - 1), right = Math.min(surfaceWidth, region.x() + region.width() + 1);
-        int top = Math.max(0, region.y() - 1), bottom = Math.min(surfaceHeight, region.bottom() + 1);
-        var encoder = RenderSystem.getDevice().createCommandEncoder();
-        if ((right - left) * 4 >= surfaceWidth * 3) {
-            ByteBuffer band = bytes.slice(top * surfaceWidth * 4, (bottom - top) * surfaceWidth * 4);
-            encoder.writeToTexture(surface.texture.getTexture(), band, 0, 0, 0, top, surfaceWidth, bottom - top);
-            lastUploadPixelCount = surfaceWidth * (bottom - top);
-            return;
-        }
-        int width = right - left, height = bottom - top, size = width * height * 4;
-        if (uploadScratch == null || uploadScratch.capacity() < size)
-            uploadScratch = ByteBuffer.allocateDirect(Math.max(size, uploadScratch == null ? 0 : uploadScratch.capacity() * 3 / 2)).order(ByteOrder.nativeOrder());
-        UiPixelTransfer.pack(bytes, surfaceWidth, left, top, width, height, uploadScratch);
-        encoder.writeToTexture(surface.texture.getTexture(), uploadScratch.slice(0, size), 0, 0, left, top, width, height);
-        lastUploadPixelCount = width * height;
+        // A one-pixel guard on every side is sent again from the raster as it stands; it never
+        // rerasterizes neighbouring content.
+        lastUploadPixelCount = surface.upload(region.x() - 1, region.y() - 1, region.width() + 2, region.height() + 2);
     }
 
     /**

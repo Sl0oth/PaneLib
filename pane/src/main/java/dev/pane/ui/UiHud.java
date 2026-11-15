@@ -12,9 +12,10 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.resources.Identifier;
 
 /**
- * Retained, input-free in-game HUD. Attach once on the client thread; update values only when
- * their displayed representation changes. World changes release textures and clear world values.
- * No screen, mouse listener, or key listener is installed by this class.
+ * Retained in-game HUD. Attach once on the client thread; update values only when their displayed
+ * representation changes. World changes release textures and clear world values. A HUD takes no
+ * input unless {@link #setInteractive} turns it on; then its buttons, toggles and sliders work while
+ * the chat screen has freed the cursor.
  */
 public final class UiHud implements AutoCloseable {
     private long minecraftTextureRevision = UiCanvas.minecraftTextureRevision();
@@ -33,7 +34,6 @@ public final class UiHud implements AutoCloseable {
     private int nativeItemCount, nativeEntityCount;
     private final Map<String, Object> values = new HashMap<>();
     private final Map<String, UiAnimationClock.State> animations = new HashMap<>();
-    private final UiLayer opacityLayer = new UiLayer();
     private Set<Identifier> replacedVanillaElements = Set.of();
     private final UiHudPlacementResolver placement = new UiHudPlacementResolver();
     private UiRenderSettings renderSettings = UiRenderSettings.hud(), measuredSettings;
@@ -45,6 +45,10 @@ public final class UiHud implements AutoCloseable {
     private long frames, paints, uploadedPixels, allocations, lastPaint, lastRasterNanos, lastUploadNanos;
     private long totalRasterNanos, totalUploadNanos, maximumRasterNanos;
     private UiRect lastBounds = new UiRect(0, 0, 0, 0);
+    private java.util.function.Predicate<net.minecraft.client.gui.screens.Screen> interactiveOn;
+    private final UiHudInput input = new UiHudInput();
+    private final Map<String, Runnable> actionHandlers = new HashMap<>();
+    private java.util.function.BiConsumer<String, Object> onChange;
 
     /** A HUD {@code width} by {@code height} UI points painted by {@code painter}, without native Minecraft content. */
     public UiHud(int width, int height, UiTheme theme, UiPainter painter) {
@@ -79,6 +83,64 @@ public final class UiHud implements AutoCloseable {
         if (closed) return;
         if (!Objects.equals(values.put(key, value), value)) dirty = true;
     }
+    /** The value stored under {@code key} by {@link #setValue} or by a control, or null. */
+    public Object value(String key) { return values.get(key); }
+
+    /**
+     * Lets the HUD's buttons, toggles, checkboxes, steppers and sliders take the mouse while the chat
+     * screen is open, the way players reach HUD widgets in other mods; the HUD stays drawn there.
+     * Clicks that land on a control do not reach chat. Text fields, dropdowns and key bindings need a
+     * {@link UiScreen}.
+     */
+    public UiHud setInteractive(boolean value) {
+        return setInteractive(value ? screen -> screen instanceof net.minecraft.client.gui.screens.ChatScreen : null);
+    }
+    /** Takes the mouse on the screens {@code screens} accepts, such as your own overlay screen; null takes none. */
+    public UiHud setInteractive(java.util.function.Predicate<net.minecraft.client.gui.screens.Screen> screens) {
+        requireClientThread();
+        interactiveOn = screens;
+        if (screens == null && input.clear()) dirty = true;
+        return this;
+    }
+    /** Whether {@link #setInteractive} is on. */
+    public boolean interactive() { return interactiveOn != null; }
+    /** Runs {@code handler} when a button or hit region with this action is clicked on an interactive HUD. */
+    public UiHud onAction(String action, Runnable handler) {
+        requireClientThread();
+        actionHandlers.put(Objects.requireNonNull(action, "action"), Objects.requireNonNull(handler, "handler"));
+        return this;
+    }
+    /** Receives the key and new value whenever a control on an interactive HUD changes one. */
+    public UiHud onChange(java.util.function.BiConsumer<String, Object> listener) {
+        requireClientThread();
+        onChange = listener;
+        return this;
+    }
+
+    private boolean takesInput(Minecraft client) {
+        var screen = client.gui.screen();
+        return interactiveOn != null && screen != null && visible && surface != null && interactiveOn.test(screen);
+    }
+    /** A GUI-pixel point in the HUD's own points, from where it was last drawn. */
+    private float localX(double guiX) { return (float) ((guiX - lastBounds.x()) * width / Math.max(1e-3F, lastBounds.width())); }
+    private float localY(double guiY) { return (float) ((guiY - lastBounds.y()) * height / Math.max(1e-3F, lastBounds.height())); }
+
+    private void handle(UiHudInput.Result result) {
+        if (result.repaint()) dirty = true;
+        if (result.changedKey() != null && onChange != null) onChange.accept(result.changedKey(), values.get(result.changedKey()));
+        if (result.action() != null) {
+            Runnable handler = actionHandlers.get(result.action());
+            if (handler != null) handler.run();
+        }
+    }
+    /** A mouse press or release on a screen, in GUI pixels; returns whether this HUD took it. */
+    boolean mouse(Minecraft client, double guiX, double guiY, int button, boolean down) {
+        if (closed || button != 0 || !eligible(client) || !takesInput(client)) return false;
+        var result = down ? input.press(localX(guiX), localY(guiY), values) : input.release(localX(guiX), localY(guiY), values);
+        handle(result);
+        return result.consumed();
+    }
+
     /** Repaints on the next frame. */
     public void invalidate() { requireClientThread(); if (!closed) dirty = true; }
     /** Whether the HUD is shown when enabled. */
@@ -117,7 +179,8 @@ public final class UiHud implements AutoCloseable {
 
     private boolean eligible(Minecraft client) {
         return !closed && enabled && id != null && client.level != null && client.player != null
-            && !client.gui.hud.isHidden() && (showOnScreens || client.gui.screen() == null);
+            && !client.gui.hud.isHidden() && (showOnScreens || client.gui.screen() == null
+                || interactiveOn != null && interactiveOn.test(client.gui.screen()));
     }
     private boolean replacementActive() {
         if (!eligible(Minecraft.getInstance())) return false;
@@ -269,7 +332,13 @@ public final class UiHud implements AutoCloseable {
             dirty = true; allocations++;
         }
         raster=nextRaster;measuredSettings=renderSettings;
-        if (dirty || ((animating || opacity != lastOpacity) && now - lastPaint >= 16_000_000L)) paint(now, opacity);
+        // The pointer is read once a frame: hover follows it and a held slider follows a drag.
+        if (takesInput(client)) handle(input.move(localX(client.mouseHandler.getScaledXPos(client.getWindow())),
+            localY(client.mouseHandler.getScaledYPos(client.getWindow())), values));
+        else if (input.clear()) dirty = true;
+        // Showing and hiding fades the finished texture on the GPU; only changed content repaints.
+        if (dirty || (animating && now - lastPaint >= UiFrameRate.intervalNanos(renderSettings.maximumFrameRate(), now))) paint(now);
+        lastOpacity = opacity;
         float x = Math.max(0, Math.min(graphics.guiWidth() - target.width(), clock.value("\0hud:x", target.x(), 320, UiEasing.SPRING)));
         float y = Math.max(0, Math.min(graphics.guiHeight() - target.height(), clock.value("\0hud:y", target.y(), 320, UiEasing.SPRING)));
         presentationAnimating = clock.active();
@@ -278,7 +347,9 @@ public final class UiHud implements AutoCloseable {
         graphics.pose().pushMatrix();
         graphics.pose().translate(x, y + (1 - opacity) * 6 / pointsPerGui);
         graphics.pose().scale(target.width() / width, target.height() / height);
-        graphics.blit(surface.texture.getTextureView(), sampler, 0, 0, width, height, 0, 1, 0, 1);
+        ((dev.pane.mixin.GuiGraphicsBlitInvoker) graphics).panelib$innerBlit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED,
+            surface.view(), sampler, 0, 0, width, height, 0, 1, 0, 1,
+            Math.round(Math.max(0, Math.min(1, opacity)) * 255) << 24 | 0xFFFFFF);
         graphics.pose().popMatrix();
         if (nativeOverlay != NativeOverlayRenderer.NONE && !nativeSlots.isEmpty()) {
             double guiScale = client.getWindow().getGuiScale();
@@ -299,24 +370,24 @@ public final class UiHud implements AutoCloseable {
         }
     }
 
-    private void paint(long now, float opacity) {
+    private void paint(long now) {
         long started = System.nanoTime();
         surface.clear();
         var image = surface.image;
         var graphics = image.createGraphics();
         var clock = new UiAnimationClock(animations, now, motionScale);
         var nextSlots = new LinkedHashMap<String, NativeBounds>();
+        var hits = new ArrayList<UiHitRegion>();
         try {
             graphics.scale(image.getWidth()/(double)width, image.getHeight()/(double)height);
             UiCanvas canvas = new UiCanvas(graphics, image);
-            canvas.withLayer(opacityLayer, opacity, new UiRect(0, 0, width, height), layer -> {
-                var context = new UiContext(layer, theme, width, height, theme.accent(), new UiRect(0, 0, width, height),
-                    null, null, 1, 1, false, (int) paints, values, new ArrayList<>(), nextSlots,
-                    new LinkedHashMap<>(), new HashMap<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>(),
-                    new UiTextInputState(null, 0, 0), new ArrayList<>(), new ArrayList<>(), clock, 1, null);
-                painter.paint(context);
-            });
+            var context = new UiContext(canvas, theme, width, height, theme.accent(), new UiRect(0, 0, width, height),
+                input.hovered(), input.pressed(), 1, 1, false, (int) paints, values, hits, nextSlots,
+                new LinkedHashMap<>(), new HashMap<>(), new ArrayList<>(), new ArrayList<>(), new ArrayList<>(),
+                new UiTextInputState(null, 0, 0), new ArrayList<>(), new ArrayList<>(), clock, 1, null);
+            painter.paint(context);
         } finally { graphics.dispose(); }
+        input.painted(hits);
         if(!nativeSlots.equals(nextSlots)) {
             nativeSlots.clear(); nativeSlots.putAll(nextSlots);nativePlacement.clear();
         }
@@ -327,15 +398,16 @@ public final class UiHud implements AutoCloseable {
         lastUploadNanos = System.nanoTime() - uploadStarted;
         totalRasterNanos += lastRasterNanos; totalUploadNanos += lastUploadNanos;
         maximumRasterNanos = Math.max(maximumRasterNanos, lastRasterNanos);
-        uploadedPixels += surface.pixels.length; paints++; lastPaint = now; lastOpacity = opacity; dirty = false;
+        uploadedPixels += surface.pixels.length; paints++; lastPaint = now; dirty = false;
     }
 
     private void worldChanged() {
+        input.clear();
         releaseSurface(); values.clear(); animations.clear(); animating = presentationAnimating = false; dirty = true;
     }
     private void releaseSurface() {
         if (surface != null) surface.close();
-        surface = null; nativeSlots.clear(); nativePlacement.clear(); nativeText.clear(); clearNativeCounts(); opacityLayer.clear(); lastOpacity = -1;
+        surface = null; nativeSlots.clear(); nativePlacement.clear(); nativeText.clear(); clearNativeCounts(); lastOpacity = -1;
         if(raster.pixelWidth()!=0)raster=new UiRasterQuality(width,height,0,0,raster.desiredScale(),0);
     }
     @Override public void close() {
@@ -357,6 +429,12 @@ public final class UiHud implements AutoCloseable {
         static final UiHudReplacements replacements = new UiHudReplacements(HudElementRegistry::replaceElement);
         static boolean installed;
         static Object world;
+        /** The HUD drawn last is on top, so it is asked first. */
+        static boolean mouse(Minecraft client, double x, double y, int button, boolean down) {
+            var ordered = new ArrayList<>(huds.values());
+            for (int i = ordered.size() - 1; i >= 0; i--) if (ordered.get(i).mouse(client, x, y, button, down)) return true;
+            return false;
+        }
         static void install() {
             if (installed) return;
             installed = true;
@@ -364,6 +442,12 @@ public final class UiHud implements AutoCloseable {
                 Identifier.fromNamespaceAndPath("panelib", "retained_huds"), (graphics, delta) -> {
                     for (UiHud hud : huds.values()) hud.extract(graphics);
                 });
+            net.fabricmc.fabric.api.client.screen.v1.ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+                net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents.allowMouseClick(screen).register((shown, event) ->
+                    !mouse(client, event.x(), event.y(), event.button(), true));
+                net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents.allowMouseRelease(screen).register((shown, event) ->
+                    !mouse(client, event.x(), event.y(), event.button(), false));
+            });
             ClientTickEvents.END_CLIENT_TICK.register(client -> {
                 for (UiHud hud : huds.values()) {
                     if (!hud.eligible(client)) hud.clearNativeCounts();

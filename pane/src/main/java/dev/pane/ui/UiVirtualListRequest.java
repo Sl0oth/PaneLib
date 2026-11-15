@@ -59,6 +59,9 @@ final class UiVirtualListRequest {
         this.scrollOffsets = scrollOffsets;
     }
 
+    /** A row read the page transition; the screen keeps repainting while it runs. */
+    boolean motionRead;
+
     float stride() { return rowHeight + gap; }
 
     float maxOffset() { return Math.max(0, contentHeight - viewport.height()); }
@@ -76,6 +79,9 @@ final class UiVirtualListRequest {
         UiRect rawBounds = new UiRect(viewport.x() - offsetX,
             viewport.y() - offsetY + index * stride(), viewport.width(), rowHeight);
         UiInteractionState rowInteractions = new UiInteractionState(scrollOffsets,editorOwner.editors,editorOwner.textLayouts,editorOwner.scrollEnds);
+        rowInteractions.buttonStyle = editorOwner.buttonStyle;
+        rowInteractions.inputStyle = editorOwner.inputStyle;
+        rowInteractions.menuStyle = editorOwner.menuStyle;
         UiContext row = new UiContext(canvas, theme, width, height, accent, content,
             dynamic.hoveredId(), dynamic.pressedId(), dynamic.motion(), dynamic.interactionMotion(),
             dynamic.animating(), dynamic.paintCount(), state, output.hits(), output.nativeBounds(), output.nativeOverlayLayers(), null,
@@ -84,6 +90,7 @@ final class UiVirtualListRequest {
             offsetX, offsetY, null, null).withInteractions(rowInteractions);
         canvas.withTranslation(offsetX, offsetY,
             () -> painter.accept(row, new UiVirtualItem(index, rawBounds)));
+        motionRead |= rowInteractions.live.motionRead;
         output.buttons().putAll(rowInteractions.buttons);
         output.narrations().putAll(rowInteractions.live.narrations);
         output.narrations().putAll(rowInteractions.live.namedNarrations);

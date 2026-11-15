@@ -1,6 +1,6 @@
 # HUDs and composable motion
 
-PaneLib now has a reusable input-free HUD renderer, scalar timelines, delayed entrances, affine
+PaneLib now has a reusable HUD renderer (input-free unless you turn input on), scalar timelines, delayed entrances, affine
 button groups, and revision-based drawing caches. These extend the existing `animate`,
 `withTranslation`, `withLayer`, and `withOpacity` APIs.
 
@@ -37,9 +37,10 @@ opacity. The fluent `scale` helper is uniform; its constructor accepts separate 
 regions become exact transformed polygons, so an empty corner of the axis-aligned bounding box
 cannot activate the rotated control. Keyboard focus stays with the stable control ID.
 
-Editors, sliders, scroll viewports, and native item/entity slots do **not** support affine groups;
-these registrations throw a clear exception. Keep them outside the group or use the existing
-`UiContext.withTranslation`. Tooltip/menu anchors use transformed bounding rectangles. A drawing
+Sliders, text fields and text areas work inside a group: a drag or click is mapped into the group, so
+a slider on a tilted card follows the pointer along its own track. Scroll viewports and native
+item/entity slots do **not** support affine groups; these registrations throw a clear exception.
+Keep them outside the group or use the existing `UiContext.withTranslation`. Tooltip/menu anchors use transformed bounding rectangles. A drawing
 group is not a modal input barrier. For true group opacity across overlapping primitives, combine
 with `withLayer`; transform opacity is multiplied per operation.
 
@@ -132,10 +133,27 @@ ClientTickEvents.END_CLIENT_TICK.register(client -> {
 });
 ```
 
-HUD painting reuses `UiContext` drawing, state reads, and motion. Controls can be painted, but no
-HUD input handlers exist: use a separate `UiScreen` for editing or actions. The library installs
-no key/mouse listeners and never calls `setScreen`. Host mods own data sampling, key bindings, and
-configuration. Equal values do not invalidate the retained surface. Treat complex HUD values as
+HUD painting reuses `UiContext` drawing, state reads, and motion. A HUD takes no input by default,
+and the library never calls `setScreen`. Host mods own data sampling, key bindings, and
+configuration.
+
+To let players click a HUD, turn input on. Its buttons, toggles, checkboxes, steppers and sliders
+then take the mouse while the chat screen is open, which is when the cursor is free and the HUD is
+still in view; the HUD stays drawn there, and a click on a control does not reach chat:
+
+```java
+UiHud music = new UiHud(160, 60, UiTheme.dark(), ui -> {
+    ui.button("skip", "Skip", "skip", 8, 8, 70, 22);
+    ui.toggle("muted", 100, 10, false);
+    ui.slider("volume", 8, 38, 140, 0, 100, 50);
+}).setInteractive(true)
+  .onAction("skip", player::skip)
+  .onChange((key, value) -> { if (key.equals("volume")) player.setVolume((double) value); });
+```
+
+`hud.value(key)` reads what a control stored. `setInteractive(screen -> screen instanceof MyOverlay)`
+chooses other screens than chat. Text fields, dropdowns and key bindings need a keyboard and popups,
+so they belong in a `UiScreen`. Equal values do not invalidate the retained surface. Treat complex HUD values as
 immutable snapshots (records or copied lists); mutating an object in place and setting it again
 can compare equal to the retained value. For a deliberately mutable external model, call
 `status.invalidate()` after changing it on the client thread.

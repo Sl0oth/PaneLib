@@ -19,6 +19,9 @@ public final class UiDocument {
     private final UiToastSettings toastSettings;
     private final UiRenderSettings renderSettings;
     private final UiScrollSettings scrollSettings;
+    private final UiButtonStyle buttonStyle;
+    private final UiInputStyle inputStyle;
+    private final UiMenuStyle menuStyle;
 
     private UiDocument(Builder builder) {
         title = builder.title;
@@ -34,6 +37,9 @@ public final class UiDocument {
         toastSettings = builder.toastSettings == null ? UiToastSettings.defaults() : builder.toastSettings;
         renderSettings = builder.renderSettings == null ? UiRenderSettings.balanced() : builder.renderSettings;
         scrollSettings = builder.scrollSettings == null ? UiScrollSettings.smooth() : builder.scrollSettings;
+        buttonStyle = builder.buttonStyle;
+        inputStyle = builder.inputStyle == null ? UiInputStyle.defaults() : builder.inputStyle;
+        menuStyle = builder.menuStyle == null ? UiMenuStyle.defaults() : builder.menuStyle;
         if (pages.isEmpty()) throw new IllegalStateException("A UI document needs at least one page");
         var pageIds = new java.util.HashSet<String>();
         for (UiPage page : pages) {
@@ -82,6 +88,15 @@ public final class UiDocument {
     /** Wheel/trackpad distance and finite smoothing duration. */
     public UiScrollSettings scrollSettings() { return scrollSettings; }
 
+    /** The style of buttons and dropdown triggers drawn without one, when the document sets it. */
+    public java.util.Optional<UiButtonStyle> buttonStyle() { return java.util.Optional.ofNullable(buttonStyle); }
+
+    /** The style of text fields, text areas and text views drawn without one. */
+    public UiInputStyle inputStyle() { return inputStyle; }
+
+    /** The style of menus and dropdown lists opened without one. */
+    public UiMenuStyle menuStyle() { return menuStyle; }
+
     /** The page with id {@code id}, or null. */
     public UiPage page(String id) {
         if (id == null) return null;
@@ -107,6 +122,9 @@ public final class UiDocument {
         private UiToastSettings toastSettings = UiToastSettings.defaults();
         private UiRenderSettings renderSettings = UiRenderSettings.balanced();
         private UiScrollSettings scrollSettings = UiScrollSettings.smooth();
+        private UiButtonStyle buttonStyle;
+        private UiInputStyle inputStyle;
+        private UiMenuStyle menuStyle;
 
         private Builder(String title) { this.title = title == null ? "Client UI" : title; }
 
@@ -165,6 +183,18 @@ public final class UiDocument {
             this.scrollSettings = scrollSettings == null ? UiScrollSettings.smooth() : scrollSettings;
             return this;
         }
+
+        /**
+         * Styles every button and dropdown trigger that is drawn without a style of its own, so a
+         * design system is set once here instead of passed to each control. Null restores Pane's look.
+         */
+        public Builder buttonStyle(UiButtonStyle buttonStyle) { this.buttonStyle = buttonStyle; return this; }
+
+        /** Styles every text field, text area and text view drawn without a style of its own. */
+        public Builder inputStyle(UiInputStyle inputStyle) { this.inputStyle = inputStyle; return this; }
+
+        /** Styles every menu and dropdown list opened without a style of its own. */
+        public Builder menuStyle(UiMenuStyle menuStyle) { this.menuStyle = menuStyle; return this; }
 
         /** The finished document. */
         public UiDocument build() { return new UiDocument(this); }

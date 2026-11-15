@@ -167,7 +167,7 @@ final class UiGpuLayers {
                 pose.scale(1 / layer.quality, 1 / layer.quality);
                 int alpha = Math.round(transform.opacity() * 255);
                 ((GuiGraphicsBlitInvoker) graphics).panelib$innerBlit(RenderPipelines.GUI_TEXTURED,
-                    layer.surface.texture.getTextureView(), sampler, 0, 0, layer.surface.image.getWidth(),
+                    layer.surface.view(), sampler, 0, 0, layer.surface.image.getWidth(),
                     layer.surface.image.getHeight(), 0, 1, 0, 1, alpha << 24 | 0xFFFFFF);
             } finally {
                 pose.popMatrix();
