@@ -129,15 +129,20 @@ click 13.4 ms (was 25.8); Mac full repaint 16.8 ms (was 33.2), click 10.0 ms (wa
 Narration and input-method composition are tested with the events Minecraft delivers, not with a
 real screen reader voice or a real Chinese, Japanese or Korean keyboard.
 
-## 1.0.0-beta.4 (November 14, 2026)
+## 1.0.0-beta.4 (November 14–16, 2026)
 
-The 1.0.0-beta.4 source ran on the Mac only (macOS ARM64). The Windows 11 desktop was not reachable
-that day, so nothing in this beta has run on Windows yet.
+The release source, `03aa767`, ran on the Mac (macOS ARM64). On November 16 the Windows 11 desktop
+above ran the same commit with the exact candidate files. Its display was a 49 Hz virtual monitor, so
+a 144 Hz display and 150% display scale were not tried on Windows for this beta.
 
 | Check | Mac | Windows |
 | --- | --- | --- |
-| Library unit tests | 1,406 passed | Not run |
-| 20 development fixtures, in one batch | All 20 passed, including the new `easeTest` (46 checks) for forms, key bindings, the colour picker, sideways scrolling and variable-height lists, and `menuTest` (36 checks) for the Skydrop and Overdrive menus | Not run |
+| Library unit tests | 1,406 passed | 1,406 passed |
+| Development fixtures | All 20 passed in one batch, including the new `easeTest` (46 checks) for forms, key bindings, the colour picker, sideways scrolling and variable-height lists, and `menuTest` (36 checks) for the Skydrop and Overdrive menus | All 21 passed |
+| `prepareRelease verifyRelease` | Candidate staged and verified | Passed |
+| Both starter consumers (bundled JAR and unpacked Maven), Minecraft smoke | Passed | Passed |
+| Release files in a clean production client | Passed | 5 of 5 passed |
+| Runtime, demo and sources JARs built on each machine | — | Byte-identical to the Mac's |
 | Public API compared with the published 1.0.0-beta.3 jar (`javap -protected`) | No public or protected type or member removed; `UiColor`, `UiForm` and `UiKeyNames` added | Same jar |
 
 Still to try by hand: moving between monitors with different DPI, a real IME keyboard, and listening to the narrator.

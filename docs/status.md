@@ -1,8 +1,14 @@
-# PaneLib source status — October 28, 2026
+# PaneLib source status — November 16, 2026
 
-PaneLib [`1.0.0-beta.3`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.3) is the latest beta, published on GitHub Releases on October 28,
-2026, and on the [anonymous Maven repository](public-maven.md). It draws on several cores, adds the
-narrator and input methods, and adds read-only text views, a HUD editor and `UiScreen.controls()`.
+PaneLib [`1.0.0-beta.4`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.4) is the latest beta, published on GitHub Releases on November 16,
+2026, and on the [anonymous Maven repository](public-maven.md). It adds one-call screens, settings
+forms, a key binding control, a colour picker and a stepper, clickable HUDs, game-style drawing, and
+animation at the display's refresh rate. It ran on macOS ARM64 and on the Windows 11 desktop; the
+Windows run used a 49 Hz virtual display, so 144 Hz, 150% display scale, a real IME keyboard and the
+narrator's voice were not tried there ([platform testing](platform-testing.md)).
+
+[`1.0.0-beta.3`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.3), published on October 28,
+2026, remains available unchanged.
 
 [`1.0.0-beta.2`](https://github.com/Sl0oth/PaneLib/releases/tag/v1.0.0-beta.2), published on October 22,
 2026, remains available unchanged.

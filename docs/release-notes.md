@@ -37,11 +37,12 @@ The demo JAR is a separate mod: install it next to the runtime and Fabric API; i
 title screen and H reopens it.
 The Maven ZIP is a candidate repository payload, not proof of public hosting or release publication.
 
-Real-client checks for this beta ran on macOS ARM64 only: 1,406 unit tests and 20 in-game fixtures.
-The Windows 11 desktop last ran the 1.0.0-beta.3 branch, so forms, the new controls, clickable HUDs
-and the refresh-rate change are not yet tested on Windows. Linux desktop behavior, real IME keyboards
-and universal performance are not certified by these files. Existing tests cover bounded behaviors,
-not every modpack combination. See the candidate manifest for exact evidence.
+Real-client checks for this beta ran on macOS ARM64 (1,406 unit tests and 20 in-game fixtures) and on
+a Windows 11 desktop (the same 1,406 unit tests, 21 in-game fixtures, both starter consumers and these
+release files in a clean client). The Windows desktop ran at 49 Hz through a virtual display, so a
+144 Hz display, 150% display scale, a real IME keyboard and the narrator's voice were not tried there.
+Linux desktop behavior and universal performance are not certified by these files. Existing tests
+cover bounded behaviors, not every modpack combination. See the candidate manifest for exact evidence.
 
 Prepared locally only. Publication requires a separate release decision; never overwrite a published
 version with different bytes. Keep the existing submitted snapshot unchanged.
