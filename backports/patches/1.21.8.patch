@@ -1,0 +1,330 @@
+--- /dev/null
++++ b/main/dev/pane/ui/KeyEvent.java
+@@ -0,0 +1,4 @@
++package dev.pane.ui;
++
++/** GLFW values supplied by the legacy Screen key callback. */
++public record KeyEvent(int key, int scancode, int modifiers) {}
+--- /dev/null
++++ b/main/dev/pane/ui/MouseButtonEvent.java
+@@ -0,0 +1,4 @@
++package dev.pane.ui;
++
++/** Pointer coordinates and GLFW button/modifiers supplied to a control. */
++public record MouseButtonEvent(double x, double y, int button, int modifiers) {}
+--- a/main/dev/pane/ui/NativeOverlayContext.java
++++ b/main/dev/pane/ui/NativeOverlayContext.java
+@@ -3,7 +3,7 @@
+ import java.util.Map;
+ import java.util.Optional;
+ import java.util.Objects;
+-import net.minecraft.world.entity.player.PlayerSkin;
++import net.minecraft.client.resources.PlayerSkin;
+ import net.minecraft.client.Minecraft;
+ import net.minecraft.client.gui.GuiGraphics;
+ import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+--- a/main/dev/pane/ui/PaneClientResources.java
++++ b/main/dev/pane/ui/PaneClientResources.java
+@@ -1,21 +1,27 @@
+ package dev.pane.ui;
+ 
++import java.util.Collection;
++import java.util.List;
+ import net.fabricmc.api.ClientModInitializer;
+-import net.fabricmc.fabric.api.resource.v1.ResourceLoader;
+-import net.fabricmc.fabric.api.resource.v1.reloader.ResourceReloaderKeys;
+-import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
++import net.fabricmc.fabric.api.resource.ResourceManagerHelper;
++import net.fabricmc.fabric.api.resource.ResourceReloadListenerKeys;
++import net.fabricmc.fabric.api.resource.SimpleSynchronousResourceReloadListener;
+ import net.minecraft.resources.ResourceLocation;
+ import net.minecraft.server.packs.PackType;
++import net.minecraft.server.packs.resources.ResourceManager;
+ 
+-/** Library lifecycle hook; installs no screen, key binding, timer or demo content. */
+ public final class PaneClientResources implements ClientModInitializer {
+-    /** Created by Fabric Loader when the client starts; mods do not construct it. */
+-    public PaneClientResources() { }
+-
+     @Override public void onInitializeClient() {
+-        var loader = ResourceLoader.get(PackType.CLIENT_RESOURCES);
+-        var id = ResourceLocation.fromNamespaceAndPath("panelib", "decoded_textures");
+-        loader.registerReloader(id, (ResourceManagerReloadListener) manager -> UiCanvas.clearMinecraftTextureCache());
+-        loader.addReloaderOrdering(ResourceReloaderKeys.Client.TEXTURES, id);
++        ResourceManagerHelper.get(PackType.CLIENT_RESOURCES).registerReloadListener(new SimpleSynchronousResourceReloadListener() {
++            @Override public ResourceLocation getFabricId() {
++                return ResourceLocation.fromNamespaceAndPath("panelib", "decoded_textures");
++            }
++            @Override public Collection<ResourceLocation> getFabricDependencies() {
++                return List.of(ResourceReloadListenerKeys.TEXTURES);
++            }
++            @Override public void onResourceManagerReload(ResourceManager manager) {
++                UiCanvas.clearMinecraftTextureCache();
++            }
++        });
+     }
+ }
+--- a/main/dev/pane/ui/PlayerPreviewRenderer.java
++++ b/main/dev/pane/ui/PlayerPreviewRenderer.java
+@@ -2,11 +2,11 @@
+ 
+ import net.minecraft.client.gui.GuiGraphics;
+ import net.minecraft.client.model.HumanoidModel;
+-import net.minecraft.client.renderer.entity.state.AvatarRenderState;
++import net.minecraft.client.renderer.entity.state.PlayerRenderState;
+ import net.minecraft.client.resources.DefaultPlayerSkin;
+ import net.minecraft.world.entity.EntityType;
+ import net.minecraft.world.entity.Pose;
+-import net.minecraft.world.entity.player.PlayerSkin;
++import net.minecraft.client.resources.PlayerSkin;
+ import org.joml.Quaternionf;
+ import org.joml.Vector3f;
+ 
+@@ -36,12 +36,11 @@
+ 
+     static void render(GuiGraphics graphics, Frame frame, PlayerSkin skin, UiPlayerPreview options) {
+         // Explicit standing state: no live entity, entity mutation, world access or animation clock.
+-        var state = new AvatarRenderState();
++        var state = new PlayerRenderState();
+         state.entityType = EntityType.PLAYER;
+         state.boundingBoxWidth = .6F;
+         state.boundingBoxHeight = 1.8F;
+         state.eyeHeight = 1.62F;
+-        state.lightCoords = 0x00F000F0;
+         state.skin = skin == null ? DefaultPlayerSkin.getDefaultSkin() : skin;
+         state.pose = Pose.STANDING;
+         state.bodyRot = options.bodyYaw();
+--- a/main/dev/pane/ui/UiClickEvent.java
++++ b/main/dev/pane/ui/UiClickEvent.java
+@@ -1,6 +1,5 @@
+ package dev.pane.ui;
+ 
+-import net.minecraft.client.input.MouseButtonEvent;
+ 
+ /** A raw pointer press enriched with PaneLib's target id and coordinate conversion. */
+ public record UiClickEvent(String targetId, MouseButtonEvent nativeEvent, boolean doubleClick,
+--- a/main/dev/pane/ui/UiHud.java
++++ b/main/dev/pane/ui/UiHud.java
+@@ -442,10 +442,10 @@
+                     for (UiHud hud : huds.values()) hud.extract(graphics);
+                 });
+             net.fabricmc.fabric.api.client.screen.v1.ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+-                net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents.allowMouseClick(screen).register((shown, event) ->
+-                    !mouse(client, event.x(), event.y(), event.button(), true));
+-                net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents.allowMouseRelease(screen).register((shown, event) ->
+-                    !mouse(client, event.x(), event.y(), event.button(), false));
++                net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents.allowMouseClick(screen).register((shown, x, y, button) ->
++                    !mouse(client, x, y, button, true));
++                net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents.allowMouseRelease(screen).register((shown, x, y, button) ->
++                    !mouse(client, x, y, button, false));
+             });
+             ClientTickEvents.END_CLIENT_TICK.register(client -> {
+                 for (UiHud hud : huds.values()) {
+--- a/main/dev/pane/ui/UiHudEditor.java
++++ b/main/dev/pane/ui/UiHudEditor.java
+@@ -5,8 +5,6 @@
+ import java.util.List;
+ import net.minecraft.client.Minecraft;
+ import net.minecraft.client.gui.screens.Screen;
+-import net.minecraft.client.input.KeyEvent;
+-import net.minecraft.client.input.MouseButtonEvent;
+ import org.lwjgl.glfw.GLFW;
+ 
+ /**
+--- a/main/dev/pane/ui/UiKeyHandler.java
++++ b/main/dev/pane/ui/UiKeyHandler.java
+@@ -1,6 +1,5 @@
+ package dev.pane.ui;
+ 
+-import net.minecraft.client.input.KeyEvent;
+ 
+ /** Consumer-owned raw keyboard handling after text editing and modal dismissal have had priority. */
+ @FunctionalInterface
+--- a/main/dev/pane/ui/UiKeyNames.java
++++ b/main/dev/pane/ui/UiKeyNames.java
+@@ -28,8 +28,8 @@
+         var client = net.minecraft.client.Minecraft.getInstance();
+         if (client == null) return false;
+         var window = client.getWindow();
+-        if (isMouse(code)) return GLFW.glfwGetMouseButton(window.handle(), mouseButton(code)) == GLFW.GLFW_PRESS;
+-        return com.mojang.blaze3d.platform.InputConstants.isKeyDown(window, code);
++        if (isMouse(code)) return GLFW.glfwGetMouseButton(window.getWindow(), mouseButton(code)) == GLFW.GLFW_PRESS;
++        return com.mojang.blaze3d.platform.InputConstants.isKeyDown(window.getWindow(), code);
+     }
+ 
+     /**
+--- a/main/dev/pane/ui/UiRetainedTexture.java
++++ b/main/dev/pane/ui/UiRetainedTexture.java
+@@ -62,7 +62,7 @@
+         for (int from = top; from < bottom; from += rows) {
+             int count = Math.min(rows, bottom - from);
+             UiPixelTransfer.pack(pixels, image.getWidth(), left, from, columns, count, packed);
+-            encoder.writeToTexture(texture, band.slice(0, columns * count * 4), com.mojang.blaze3d.platform.NativeImage.Format.RGBA, 0, 0, left, from, columns, count);
++            encoder.writeToTexture(texture, packed.slice(0, columns * count), com.mojang.blaze3d.platform.NativeImage.Format.RGBA, 0, 0, left, from, columns, count);
+         }
+         return columns * (bottom - top);
+     }
+--- a/main/dev/pane/ui/UiScreen.java
++++ b/main/dev/pane/ui/UiScreen.java
+@@ -23,9 +23,6 @@
+ import net.minecraft.client.gui.GuiGraphics;
+ import net.minecraft.client.gui.screens.Screen;
+ import net.minecraft.client.gui.screens.TitleScreen;
+-import net.minecraft.client.input.CharacterEvent;
+-import net.minecraft.client.input.KeyEvent;
+-import net.minecraft.client.input.MouseButtonEvent;
+ import net.minecraft.network.chat.CommonComponents;
+ import net.minecraft.network.chat.Component;
+ import org.lwjgl.glfw.GLFW;
+@@ -1442,7 +1439,44 @@
+             if (area.contains(layoutX, layoutY) || area.contains(oldX, oldY)) requestPartialRepaint(area);
+     }
+ 
+-    @Override
++    private int lastClickButton = -1;
++    private long lastClickTime;
++    private double lastClickX, lastClickY;
++
++    private MouseButtonEvent pointerEvent(double x, double y, int button) {
++        long window = minecraft.getWindow().getWindow();
++        int mods = 0;
++        int[] keys = { GLFW.GLFW_KEY_LEFT_SHIFT, GLFW.GLFW_KEY_LEFT_CONTROL, GLFW.GLFW_KEY_LEFT_ALT, GLFW.GLFW_KEY_LEFT_SUPER };
++        for (int i = 0; i < keys.length; i++) {
++            if (GLFW.glfwGetKey(window, keys[i]) == GLFW.GLFW_PRESS || GLFW.glfwGetKey(window, keys[i] + 4) == GLFW.GLFW_PRESS)
++                mods |= 1 << i;
++        }
++        return new MouseButtonEvent(x, y, button, mods);
++    }
++
++    @Override public boolean mouseClicked(double x, double y, int button) {
++        long now = System.nanoTime();
++        boolean twice = button == lastClickButton && now - lastClickTime < 250_000_000L
++            && Math.abs(x - lastClickX) < 3 && Math.abs(y - lastClickY) < 3;
++        lastClickButton = twice ? -1 : button;
++        lastClickTime = now;
++        lastClickX = x;
++        lastClickY = y;
++        return mouseClicked(pointerEvent(x, y, button), twice);
++    }
++
++    @Override public boolean mouseReleased(double x, double y, int button) {
++        return mouseReleased(pointerEvent(x, y, button));
++    }
++
++    @Override public boolean mouseDragged(double x, double y, int button, double dx, double dy) {
++        return mouseDragged(pointerEvent(x, y, button), dx, dy);
++    }
++
++    @Override public boolean keyPressed(int key, int scan, int mods) {
++        return keyPressed(new KeyEvent(key, scan, mods));
++    }
++
+     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+         if(layoutHitsStale)return true;
+         if(openDialogId!=null&&dialogHitsStale)return true;
+@@ -1539,7 +1573,6 @@
+         return true;
+     }
+ 
+-    @Override
+     public boolean mouseReleased(MouseButtonEvent event) {
+         if(layoutHitsStale){pressedId=null;draggingSlider=null;draggingTextInput=null;draggingKey=null;return true;}
+         if(openDialogId!=null&&dialogHitsStale){pressedId=null;draggingSlider=null;draggingTextInput=null;draggingKey=null;return true;}
+@@ -1586,7 +1619,6 @@
+         return true;
+     }
+ 
+-    @Override
+     public boolean mouseDragged(MouseButtonEvent event, double dragX, double dragY) {
+         if(layoutHitsStale)return true;
+         this.mouseX = (int) event.x();
+@@ -1712,7 +1744,6 @@
+         return true;
+     }
+ 
+-    @Override
+     public boolean keyPressed(KeyEvent event) {
+         if (capturingKey != null) {
+             // As in Minecraft's own controls, Escape leaves the binding without a key.
+@@ -1767,14 +1798,14 @@
+             }
+         }
+         if (!focusScopes.isEmpty() || openDialogId != null || openMenuId != null) return true;
+-        return super.keyPressed(event);
++        return super.keyPressed(event.key(), event.scancode(), event.modifiers());
+     }
+ 
+     @Override
+-    public boolean charTyped(CharacterEvent event) {
++    public boolean charTyped(char character, int modifiers) {
+         UiInputRegion input = inputRegion(focusedId);
+-        if (input == null || !event.isAllowedChatCharacter()) return !focusScopes.isEmpty() || openDialogId != null;
+-        replaceTextSelection(input, event.codepointAsString());
++        if (input == null || !net.minecraft.util.StringUtil.isAllowedChatCharacter(character)) return !focusScopes.isEmpty() || openDialogId != null;
++        replaceTextSelection(input, String.valueOf(character));
+         return true;
+     }
+ 
+@@ -1944,8 +1975,8 @@
+     private static boolean shiftHeld() {
+         try {
+             var window = Minecraft.getInstance().getWindow();
+-            return com.mojang.blaze3d.platform.InputConstants.isKeyDown(window, GLFW.GLFW_KEY_LEFT_SHIFT)
+-                || com.mojang.blaze3d.platform.InputConstants.isKeyDown(window, GLFW.GLFW_KEY_RIGHT_SHIFT);
++            return com.mojang.blaze3d.platform.InputConstants.isKeyDown(window.getWindow(), GLFW.GLFW_KEY_LEFT_SHIFT)
++                || com.mojang.blaze3d.platform.InputConstants.isKeyDown(window.getWindow(), GLFW.GLFW_KEY_RIGHT_SHIFT);
+         } catch (RuntimeException unknown) { return false; }
+     }
+ 
+@@ -3251,5 +3282,4 @@
+     }
+ 
+     @Override public boolean isPauseScreen() { return options.pauseGame(); }
+-    @Override public boolean isInGameUi() { return true; }
+ }
+--- a/main/dev/pane/ui/UiVirtualLists.java
++++ b/main/dev/pane/ui/UiVirtualLists.java
+@@ -177,7 +177,7 @@
+         upload.flip();
+         row.atlasSlot = Math.floorMod(row.index, layer.atlasRows);
+         RenderSystem.getDevice().createCommandEncoder().writeToTexture(
+-            layer.atlas.getTexture(), upload, com.mojang.blaze3d.platform.NativeImage.Format.RGBA, 0, 0, 0, row.atlasSlot * layer.atlasSlotHeight,
++            layer.atlas.getTexture(), upload.order(java.nio.ByteOrder.nativeOrder()).asIntBuffer(), com.mojang.blaze3d.platform.NativeImage.Format.RGBA, 0, 0, 0, row.atlasSlot * layer.atlasSlotHeight,
+             pixelWidth, uploadHeight
+         );
+         row.buttons = Map.copyOf(rowButtons);
+--- a/smoke/dev/pane/backport/ScreenSmoke.java
++++ b/smoke/dev/pane/backport/ScreenSmoke.java
+@@ -9,8 +9,6 @@
+ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+ import net.minecraft.client.Minecraft;
+ import net.minecraft.client.gui.screens.TitleScreen;
+-import net.minecraft.client.input.MouseButtonEvent;
+-import net.minecraft.client.input.MouseButtonInfo;
+ 
+ /** A separate client mod exercises the installed library through a consumer's public API. */
+ public final class ScreenSmoke implements ClientModInitializer {
+@@ -33,10 +31,9 @@
+         if (screen.paintCount() == 0) return;
+         if (firstPaint == 0) {
+             UiRect toggle = screen.regionBounds("enabled").orElseThrow();
+-            var event = new MouseButtonEvent(toggle.centerX() / screen.layoutScale(),
+-                toggle.centerY() / screen.layoutScale(), new MouseButtonInfo(0, 0));
+-            screen.mouseClicked(event, false);
+-            screen.mouseReleased(event);
++            double x = toggle.centerX() / screen.layoutScale(), y = toggle.centerY() / screen.layoutScale();
++            screen.mouseClicked(x, y, 0);
++            screen.mouseReleased(x, y, 0);
+             if (!Boolean.TRUE.equals(screen.value("enabled"))) throw new AssertionError("Toggle click failed");
+             firstPaint = screen.paintCount();
+             return;
+--- a/test/dev/pane/ui/UiScreenOptionsTest.java
++++ b/test/dev/pane/ui/UiScreenOptionsTest.java
+@@ -5,7 +5,6 @@
+ import static org.junit.jupiter.api.Assertions.assertSame;
+ import static org.junit.jupiter.api.Assertions.assertTrue;
+ 
+-import net.minecraft.client.input.KeyEvent;
+ import org.junit.jupiter.api.Test;
+ 
+ final class UiScreenOptionsTest {

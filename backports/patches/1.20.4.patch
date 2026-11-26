@@ -1,0 +1,152 @@
+--- a/main/dev/pane/mixin/VanillaHudMixin.java
++++ b/main/dev/pane/mixin/VanillaHudMixin.java
+@@ -9,39 +9,9 @@
+ 
+ @Mixin(Gui.class)
+ abstract class VanillaHudMixin {
+-    @Inject(method = "renderCameraOverlays", at = @At("HEAD"), cancellable = true)
+-    private void panelib$renderCameraOverlays(CallbackInfo info) {
+-        if (HudHooks.hidden("misc_overlays")) info.cancel();
+-    }
+-
+-    @Inject(method = "renderSleepOverlay", at = @At("HEAD"), cancellable = true)
+-    private void panelib$renderSleepOverlay(CallbackInfo info) {
+-        if (HudHooks.hidden("sleep")) info.cancel();
+-    }
+-
+-    @Inject(method = "renderOverlayMessage", at = @At("HEAD"), cancellable = true)
+-    private void panelib$renderOverlayMessage(CallbackInfo info) {
+-        if (HudHooks.hidden("overlay_message")) info.cancel();
+-    }
+-
+-    @Inject(method = "renderTitle", at = @At("HEAD"), cancellable = true)
+-    private void panelib$renderTitle(CallbackInfo info) {
+-        if (HudHooks.hidden("title_and_subtitle")) info.cancel();
+-    }
+-
+-    @Inject(method = "renderChat", at = @At("HEAD"), cancellable = true)
+-    private void panelib$renderChat(CallbackInfo info) {
+-        if (HudHooks.hidden("chat")) info.cancel();
+-    }
+-
+-    @Inject(method = "renderScoreboardSidebar", at = @At("HEAD"), cancellable = true)
++    @Inject(method = "displayScoreboardSidebar", at = @At("HEAD"), cancellable = true)
+     private void panelib$renderScoreboardSidebar(CallbackInfo info) {
+         if (HudHooks.hidden("scoreboard")) info.cancel();
+-    }
+-
+-    @Inject(method = "renderTabList", at = @At("HEAD"), cancellable = true)
+-    private void panelib$renderTabList(CallbackInfo info) {
+-        if (HudHooks.hidden("player_list")) info.cancel();
+     }
+ 
+     @Inject(method = "renderCrosshair", at = @At("HEAD"), cancellable = true)
+@@ -54,12 +24,7 @@
+         if (HudHooks.hidden("status_effects")) info.cancel();
+     }
+ 
+-    @Inject(method = "renderHotbarAndDecorations", at = @At("HEAD"), cancellable = true)
+-    private void panelib$renderHotbarAndDecorations(CallbackInfo info) {
+-        if (HudHooks.hidden("hotbar_and_bars")) info.cancel();
+-    }
+-
+-    @Inject(method = "renderItemHotbar", at = @At("HEAD"), cancellable = true)
++    @Inject(method = "renderHotbar", at = @At("HEAD"), cancellable = true)
+     private void panelib$renderItemHotbar(CallbackInfo info) {
+         if (HudHooks.hidden("hotbar")) info.cancel();
+     }
+@@ -67,11 +32,6 @@
+     @Inject(method = "renderExperienceBar", at = @At("HEAD"), cancellable = true)
+     private void panelib$renderExperienceBar(CallbackInfo info) {
+         if (HudHooks.hidden("experience_bar")) info.cancel();
+-    }
+-
+-    @Inject(method = "renderExperienceLevel", at = @At("HEAD"), cancellable = true)
+-    private void panelib$renderExperienceLevel(CallbackInfo info) {
+-        if (HudHooks.hidden("experience_level")) info.cancel();
+     }
+ 
+     @Inject(method = "renderSelectedItemName", at = @At("HEAD"), cancellable = true)
+--- a/main/dev/pane/ui/HudHooks.java
++++ b/main/dev/pane/ui/HudHooks.java
+@@ -7,19 +7,11 @@
+ public final class HudHooks {
+     private HudHooks() {}
+     private static final Map<String, ResourceLocation> ELEMENTS = java.util.stream.Stream.of(
+-        "misc_overlays",
+-        "sleep",
+-        "overlay_message",
+-        "title_and_subtitle",
+-        "chat",
+         "scoreboard",
+-        "player_list",
+         "crosshair",
+         "status_effects",
+-        "hotbar_and_bars",
+         "hotbar",
+         "experience_bar",
+-        "experience_level",
+         "held_item_tooltip",
+         "demo_timer",
+         "player_health",
+--- a/main/dev/pane/ui/UiHudReplacements.java
++++ b/main/dev/pane/ui/UiHudReplacements.java
+@@ -2,11 +2,13 @@
+ 
+ import java.util.*;
+ import java.util.function.*;
+-import net.minecraft.client.gui.LayeredDraw.Layer;
++import net.minecraft.client.gui.GuiGraphics;
+ import net.minecraft.resources.ResourceLocation;
+ 
+ /** One delegating wrapper per element, with removable owner claims. Client-thread only. */
+ final class UiHudReplacements {
++    interface Layer { void render(GuiGraphics graphics, float tickDelta); }
++
+     private final BiConsumer<ResourceLocation, Function<Layer, Layer>> install;
+     private final Map<ResourceLocation, Map<Object, BooleanSupplier>> claims = new LinkedHashMap<>();
+ 
+--- a/main/dev/pane/ui/UiScreen.java
++++ b/main/dev/pane/ui/UiScreen.java
+@@ -1397,11 +1397,19 @@
+         return Math.max(0, Math.min(limit, value));
+     }
+ 
++    private final net.minecraft.client.renderer.PanoramaRenderer panorama =
++        new net.minecraft.client.renderer.PanoramaRenderer(TitleScreen.CUBE_MAP);
++
++    private void renderPanorama(GuiGraphics graphics, float tickDelta) {
++        panorama.render(tickDelta, 1);
++        com.mojang.blaze3d.systems.RenderSystem.enableBlend();
++        graphics.blit(new net.minecraft.resources.ResourceLocation("textures/gui/title/background/panorama_overlay.png"),
++            0, 0, width, height, 0, 0, 16, 128, 16, 128);
++    }
++
+     private void extractMinecraftBackdrop(GuiGraphics graphics, float tickDelta) {
+         if (minecraft != null && minecraft.level == null) {
+             renderPanorama(graphics, tickDelta);
+-            renderBlurredBackground(tickDelta);
+-            renderMenuBackground(graphics);
+         } else {
+             renderTransparentBackground(graphics);
+         }
+@@ -1803,7 +1811,7 @@
+     @Override
+     public boolean charTyped(char character, int modifiers) {
+         UiInputRegion input = inputRegion(focusedId);
+-        if (input == null || !net.minecraft.util.StringUtil.isAllowedChatCharacter(character)) return !focusScopes.isEmpty() || openDialogId != null;
++        if (input == null || !net.minecraft.SharedConstants.isAllowedChatCharacter(character)) return !focusScopes.isEmpty() || openDialogId != null;
+         replaceTextSelection(input, String.valueOf(character));
+         return true;
+     }
+--- a/test/dev/pane/ui/UiHudReplacementsTest.java
++++ b/test/dev/pane/ui/UiHudReplacementsTest.java
+@@ -3,7 +3,7 @@
+ import java.util.*;
+ import java.util.concurrent.atomic.*;
+ import java.util.function.Function;
+-import net.minecraft.client.gui.LayeredDraw.Layer;
++import dev.pane.ui.UiHudReplacements.Layer;
+ import net.minecraft.resources.ResourceLocation;
+ import org.junit.jupiter.api.Test;
+ import static org.junit.jupiter.api.Assertions.*;

@@ -1,0 +1,11 @@
+--- a/main/dev/pane/ui/UiScreen.java
++++ b/main/dev/pane/ui/UiScreen.java
+@@ -1621,7 +1621,7 @@
+         Minecraft client = Minecraft.getInstance();
+         java.net.URI uri;
+         try { uri = new java.net.URI(link.url()); } catch (java.net.URISyntaxException exception) { return false; }
+-        if (client.options.chatLinksPrompt().get()) net.minecraft.client.gui.screens.ConfirmLinkScreen.confirmLinkNow(this, uri.toString());
++        if (client.options.chatLinksPrompt().get()) net.minecraft.client.gui.screens.ConfirmLinkScreen.confirmLinkNow(uri.toString(), this, true);
+         else net.minecraft.Util.getPlatform().openUri(uri);
+         return true;
+     }

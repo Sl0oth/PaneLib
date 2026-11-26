@@ -1,0 +1,11 @@
+--- a/main/dev/pane/ui/internal/WorldFrameCapture.java
++++ b/main/dev/pane/ui/internal/WorldFrameCapture.java
+@@ -23,7 +23,7 @@
+         if (PENDING.isEmpty()) return;
+         var receivers = List.copyOf(PENDING);
+         PENDING.clear();
+-        try (var frame = Screenshot.takeScreenshot(target)) {
++        try (var frame = Screenshot.takeScreenshot(target.width, target.height, target)) {
+                 int w = frame.getWidth(), h = frame.getHeight();
+                 int[] argb = new int[w * h];
+                 // The world target's alpha is not coverage; the frame is opaque.

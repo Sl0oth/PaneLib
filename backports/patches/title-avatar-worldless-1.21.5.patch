@@ -1,0 +1,11 @@
+--- a/main/dev/pane/ui/PlayerPreviewRenderer.java
++++ b/main/dev/pane/ui/PlayerPreviewRenderer.java
+@@ -68,7 +68,7 @@
+             graphics.flush();
+             com.mojang.blaze3d.platform.Lighting.setupForEntityInInventory();
+             dispatcher.overrideCameraOrientation(new Quaternionf(camera).conjugate().rotateY((float) Math.PI));
+-            graphics.drawSpecial(buffers -> dispatcher.render(state, 0, 0, 0, pose, buffers, 0xF000F0));
++            graphics.drawSpecial(buffers -> dispatcher.getRenderer(state).render(state, pose, buffers, 0xF000F0));
+             graphics.flush();
+         } finally {
+             dispatcher.overrideCameraOrientation(previous);

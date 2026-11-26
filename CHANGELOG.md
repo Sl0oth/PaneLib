@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.0.0-beta.4 — Fabric backports for 1.16.3 through 26.1.2
+
+PaneLib beta.4 now runs on 35 Fabric versions, from Minecraft 1.16.3 through 26.1.2. If you're updating a mod, you can bring its settings screen and HUD along without rebuilding them out of vanilla widgets.
+
+## What's in the backports
+
+- **Settings screens.** Build a form with toggles, sliders, key bindings and a colour picker. Give it a settings file and PaneLib can load the player's choices the next time they open the game.
+- **Clickable HUDs.** Players can drag a HUD into place, nudge it with the arrow keys and click its controls while chat is open. Replacing the hotbar keeps the neighbouring HUD elements on screen.
+- **Items, entities and skins.** A screen can draw Minecraft's own item and entity models. Player previews also work from the title screen, before there's a world to load. Item overlays pick up the player's resource pack.
+- **Rendering fixes.** Fixed screens that could accept clicks while drawing blank on 1.21.2 through 1.21.5. Moving a cached layer or fading a HUD can reuse the texture that's already on the GPU.
+- **Text and focus.** Backspace and cursor movement keep joined emoji together on older Java versions. Fields accept text committed by an input method. On 26.1.x they can also show the word being composed at the caret.
+- **A starter for every supported version.** Pick a Minecraft version and point the starter at its PaneLib JAR. It builds a separate Fabric mod with a working settings screen you can edit.
+
+A separate mod built against the download for every listed Minecraft version. All 35 ran in Minecraft on Windows, macOS and Linux. The tests opened screens, edited settings, moved HUDs and checked what appeared on screen. Sodium passed on all 35. Iris passed on all 33 with a matching build. In the Windows performance runs, a HUD left alone for 3,185 frames needed zero repaints or uploads.
+
+[Downloads and version-specific changelogs](backports/README.md)
+
 ## 1.0.0-beta.4 — settings forms, new controls, clickable HUDs and high refresh rates
 
 ### Faster and lighter

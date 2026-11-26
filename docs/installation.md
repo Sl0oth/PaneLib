@@ -1,5 +1,7 @@
 # Install PaneLib
 
+For the full-source Fabric backports from 1.16.3 through 26.1.2, use the [backport installation and standalone starter](../backports/full-source-candidates/START-HERE.md). The instructions below target the published 26.2 release.
+
 PaneLib is a **client-side library**, separate from its example showcase. Installing its JAR alone
 adds no screen or key binding. Your mod supplies those. The target is Minecraft **26.2**, Fabric
 Loader **0.19.3 or newer**, **Java 25**, and **Fabric API**. Other versions/loaders are not claimed.

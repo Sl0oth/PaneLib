@@ -1,0 +1,44 @@
+--- a/main/dev/pane/ui/PlayerPreviewRenderer.java
++++ b/main/dev/pane/ui/PlayerPreviewRenderer.java
+@@ -10,8 +10,6 @@
+ import net.minecraft.world.entity.EntityType;
+ import net.minecraft.world.entity.Pose;
+ import net.minecraft.resources.ResourceLocation;
+-import org.joml.Quaternionf;
+-import org.joml.Vector3f;
+ 
+ /** Minecraft adapter kept out of consumer code. States are per submission: extraction retains them. */
+ final class PlayerPreviewRenderer {
+@@ -52,8 +50,8 @@
+             pose.translate(frame.x() + frame.width() / 2F + frame.offsetX() * frame.size(),
+                 frame.y() + frame.height() / 2F + frame.offsetY() * frame.size(), 50);
+             pose.scale(frame.size(), frame.size(), frame.size());
+-            pose.mulPose(com.mojang.math.Axis.XP.rotationDegrees(options.cameraPitch()));
+-            pose.mulPose(com.mojang.math.Axis.YP.rotationDegrees(options.bodyYaw()));
++            pose.mulPose(com.mojang.math.Vector3f.XP.rotationDegrees(options.cameraPitch()));
++            pose.mulPose(com.mojang.math.Vector3f.YP.rotationDegrees(options.bodyYaw()));
+             pose.translate(0, -1.5F, 0);
+             graphics.flush();
+             com.mojang.blaze3d.platform.Lighting.setupForEntityInInventory();
+--- a/main/dev/pane/ui/UiGpuLayers.java
++++ b/main/dev/pane/ui/UiGpuLayers.java
+@@ -159,7 +159,7 @@
+                 float pivotX = layer.screen.centerX(), pivotY = layer.screen.centerY();
+                 pose.scale(1 / layoutScale, 1 / layoutScale, 1);
+                 pose.translate(transform.x() + layer.liveX + pivotX, transform.y() + layer.liveY + pivotY, 0);
+-                pose.mulPose(com.mojang.math.Axis.ZP.rotationDegrees(transform.rotationDegrees()));
++                pose.mulPose(com.mojang.math.Vector3f.ZP.rotationDegrees(transform.rotationDegrees()));
+                 pose.scale(transform.scaleX(), transform.scaleY(), 1);
+                 pose.translate(layer.screen.x() - pivotX, layer.screen.y() - pivotY, 0);
+                 pose.scale(1 / layer.quality, 1 / layer.quality, 1);
+--- a/main/dev/pane/ui/UiScreen.java
++++ b/main/dev/pane/ui/UiScreen.java
+@@ -821,7 +821,7 @@
+         toastOverlay.show(toast, document.toastSettings().maxVisible(), System.nanoTime());
+         // Acknowledgements are spoken as they appear, after whatever the narrator is saying.
+         if (client != null && client.getNarrator().isActive())
+-            client.getNarrator().say(CommonComponents.joinForNarration(Component.literal(toast.title()), Component.literal(toast.message())));
++            client.getNarrator().sayNow(CommonComponents.joinForNarration(Component.literal(toast.title()), Component.literal(toast.message())));
+     }
+ 
+     /** This client reports only committed input characters. */

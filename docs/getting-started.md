@@ -1,5 +1,7 @@
 # Build your first PaneLib screen
 
+Developing for 1.16.3 through 26.1.2? Generate the [version-matched standalone project](../backports/full-source-candidates/START-HERE.md) for the exact downloaded backport JAR.
+
 Start with the [independent five-control starter](../examples/first-screen/README.md). It includes
 imports, a Fabric client entrypoint, opening the screen, H to reopen, and settings persistence.
 It runs against the **packaged library JAR**, without the demo module or PaneLib source on its classpath.

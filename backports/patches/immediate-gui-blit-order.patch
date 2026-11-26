@@ -1,0 +1,36 @@
+--- a/main/dev/pane/mixin/GuiGraphicsBlitInvoker.java
++++ b/main/dev/pane/mixin/GuiGraphicsBlitInvoker.java
+@@ -15,5 +15,5 @@
+     /** Minecraft's own blit with an explicit colour; internal. */
+     @Invoker("innerBlit")
+-    void panelib$innerBlit(Function<ResourceLocation, net.minecraft.client.renderer.RenderType> pipeline, ResourceLocation texture, int x0, int y0, int x1, int y1,
++    void panelib$innerBlit(Function<ResourceLocation, net.minecraft.client.renderer.RenderType> pipeline, ResourceLocation texture, int x0, int x1, int y0, int y1,
+                            float u0, float u1, float v0, float v1, int color);
+ }
+--- a/main/dev/pane/ui/PortBlit.java
++++ b/main/dev/pane/ui/PortBlit.java
+@@ -11,5 +11,5 @@
+                      int x0, int y0, int x1, int y1, float u0, float u1, float v0, float v1) {
+         ((GuiGraphicsBlitInvoker) graphics).panelib$innerBlit(RenderType::guiTextured,
+-            texture, x0, y0, x1, y1, u0, u1, v0, v1, -1);
++            texture, x0, x1, y0, y1, u0, u1, v0, v1, -1);
+     }
+ }
+--- a/main/dev/pane/ui/UiHud.java
++++ b/main/dev/pane/ui/UiHud.java
+@@ -348,5 +348,5 @@
+         graphics.pose().scale(target.width() / width, target.height() / height, 1);
+         ((dev.pane.mixin.GuiGraphicsBlitInvoker) graphics).panelib$innerBlit(net.minecraft.client.renderer.RenderType::guiTextured,
+-            surface.view(), 0, 0, width, height, 0, 1, 0, 1,
++            surface.view(), 0, width, 0, height, 0, 1, 0, 1,
+             Math.round(Math.max(0, Math.min(1, opacity)) * 255) << 24 | 0xFFFFFF);
+         graphics.pose().popPose();
+--- a/main/dev/pane/ui/UiGpuLayers.java
++++ b/main/dev/pane/ui/UiGpuLayers.java
+@@ -167,5 +167,5 @@
+                 int alpha = Math.round(transform.opacity() * 255);
+                 ((GuiGraphicsBlitInvoker) graphics).panelib$innerBlit(RenderType::guiTextured,
+-                    layer.surface.view(), 0, 0, layer.surface.image.getWidth(),
++                    layer.surface.view(), 0, layer.surface.image.getWidth(), 0,
+                     layer.surface.image.getHeight(), 0, 1, 0, 1, alpha << 24 | 0xFFFFFF);
+             } finally {

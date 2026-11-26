@@ -1,0 +1,247 @@
+--- a/main/dev/pane/ui/PlayerPreviewRenderer.java
++++ b/main/dev/pane/ui/PlayerPreviewRenderer.java
+@@ -3,7 +3,7 @@
+ import dev.pane.ui.PortGraphics;
+ import net.minecraft.client.model.HumanoidModel;
+ import net.minecraft.client.model.PlayerModel;
+-import net.minecraft.client.model.geom.ModelLayers;
++
+ import net.minecraft.client.renderer.RenderType;
+ import net.minecraft.client.renderer.texture.OverlayTexture;
+ import net.minecraft.client.resources.DefaultPlayerSkin;
+@@ -39,7 +39,7 @@
+         var client = net.minecraft.client.Minecraft.getInstance();
+         ResourceLocation chosen = skin == null ? DefaultPlayerSkin.getDefaultSkin() : skin;
+         boolean slim = false; // This client represents skins as texture identifiers without a model field.
+-        var model = new PlayerModel<>(client.getEntityModels().bakeLayer(slim ? ModelLayers.PLAYER_SLIM : ModelLayers.PLAYER), slim);
++        var model = new PlayerModel<>(0f, slim);
+         model.head.yRot = (float) Math.toRadians(frame.headYaw());
+         model.head.xRot = (float) Math.toRadians(frame.headPitch());
+         model.hat.copyFrom(model.head);
+@@ -54,7 +54,7 @@
+             pose.mulPose(com.mojang.math.Vector3f.YP.rotationDegrees(options.bodyYaw()));
+             pose.translate(0, -1.5F, 0);
+             graphics.flush();
+-            com.mojang.blaze3d.platform.Lighting.setupForEntityInInventory();
++            com.mojang.blaze3d.platform.Lighting.setupFor3DItems();
+             var buffers = client.renderBuffers().bufferSource();
+             model.renderToBuffer(pose, buffers.getBuffer(RenderType.entityTranslucent(chosen)), 0xF000F0, OverlayTexture.NO_OVERLAY, 1, 1, 1, 1);
+             buffers.endBatch();
+--- a/main/dev/pane/ui/PortBlit.java
++++ b/main/dev/pane/ui/PortBlit.java
+@@ -8,14 +8,14 @@
+ final class PortBlit {
+     static void tinted(PortGraphics graphics, ResourceLocation texture, int x0, int y0, int x1, int y1,
+                        float u0, float u1, float v0, float v1, int color) {
+-        com.mojang.blaze3d.systems.RenderSystem.setShader(net.minecraft.client.renderer.GameRenderer::getPositionTexColorShader);
+-        com.mojang.blaze3d.systems.RenderSystem.setShaderTexture(0, texture);
++        com.mojang.blaze3d.systems.RenderSystem.enableTexture();
++        net.minecraft.client.Minecraft.getInstance().getTextureManager().bind(texture);
+         com.mojang.blaze3d.systems.RenderSystem.enableBlend();
+         com.mojang.blaze3d.systems.RenderSystem.defaultBlendFunc();
+         var matrix = graphics.pose().last().pose();
+         var buffer = com.mojang.blaze3d.vertex.Tesselator.getInstance().getBuilder();
+         int red = color >>> 16 & 255, green = color >>> 8 & 255, blue = color & 255, alpha = color >>> 24;
+-        buffer.begin(com.mojang.blaze3d.vertex.VertexFormat.Mode.QUADS, com.mojang.blaze3d.vertex.DefaultVertexFormat.POSITION_TEX_COLOR);
++        buffer.begin(org.lwjgl.opengl.GL11.GL_QUADS, com.mojang.blaze3d.vertex.DefaultVertexFormat.POSITION_TEX_COLOR);
+         buffer.vertex(matrix, x0, y1, 0).uv(u0, v1).color(red, green, blue, alpha).endVertex();
+         buffer.vertex(matrix, x1, y1, 0).uv(u1, v1).color(red, green, blue, alpha).endVertex();
+         buffer.vertex(matrix, x1, y0, 0).uv(u1, v0).color(red, green, blue, alpha).endVertex();
+--- a/main/dev/pane/ui/PortGraphics.java
++++ b/main/dev/pane/ui/PortGraphics.java
+@@ -37,15 +37,12 @@
+     }
+     public void renderItem(ItemStack stack, int x, int y) { withModelView(() -> Minecraft.getInstance().getItemRenderer().renderGuiItem(stack, x, y)); }
+     void withModelView(Runnable draw) {
+-        PoseStack modelView = com.mojang.blaze3d.systems.RenderSystem.getModelViewStack();
+-        modelView.pushPose();
++        com.mojang.blaze3d.systems.RenderSystem.pushMatrix();
+         try {
+-            modelView.mulPoseMatrix(pose.last().pose());
+-            com.mojang.blaze3d.systems.RenderSystem.applyModelViewMatrix();
++            com.mojang.blaze3d.systems.RenderSystem.multMatrix(pose.last().pose());
+             draw.run();
+         } finally {
+-            modelView.popPose();
+-            com.mojang.blaze3d.systems.RenderSystem.applyModelViewMatrix();
++            com.mojang.blaze3d.systems.RenderSystem.popMatrix();
+         }
+     }
+     public void blit(ResourceLocation id, int x, int y, int w, int h, float u, float v, int sw, int sh, int tw, int th) {
+--- a/main/dev/pane/ui/UiHud.java
++++ b/main/dev/pane/ui/UiHud.java
+@@ -359,13 +359,14 @@
+                 (int) Math.ceil(presented.right()), (int) Math.ceil(presented.bottom()));
+             try {
+                 graphics.flush();
+-                var old = RenderSystem.getShaderColor().clone();
++                float[] old = new float[4];
++                org.lwjgl.opengl.GL11.glGetFloatv(org.lwjgl.opengl.GL11.GL_CURRENT_COLOR, old);
+                 try {
+-                    RenderSystem.setShaderColor(old[0], old[1], old[2], old[3] * lastOpacity);
++                    RenderSystem.color4f(old[0], old[1], old[2], old[3] * lastOpacity);
+                     dev.pane.ui.internal.NativeOpacity.with(lastOpacity, () -> nativeOverlay.render(context));
+                     graphics.flush();
+                 } finally {
+-                    RenderSystem.setShaderColor(old[0], old[1], old[2], old[3]);
++                    RenderSystem.color4f(old[0], old[1], old[2], old[3]);
+                 }
+             } finally { graphics.disableScissor(); }
+             nativeItemCount = context.renderedItemCount();
+--- a/main/dev/pane/ui/UiNarration.java
++++ b/main/dev/pane/ui/UiNarration.java
+@@ -2,7 +2,7 @@
+ 
+ import java.util.ArrayList;
+ import java.util.List;
+-import net.minecraft.client.gui.narration.NarratedElementType;
++import dev.pane.ui.UiNarration.NarratedElementType;
+ import net.minecraft.network.chat.CommonComponents;
+ import net.minecraft.network.chat.Component;
+ 
+@@ -19,6 +19,11 @@
+  */
+ public record UiNarration(Role role, String label, String state, int position, int count) {
+     /** Kinds of control, each narrated the way Minecraft narrates its own. */
++    enum NarratedElementType { TITLE, POSITION, USAGE }
++    static Component join(Component first, Component second) {
++        return first.copy().append(". ").append(second);
++    }
++
+     public enum Role {
+         /** "Save button", with how to activate it. */
+         BUTTON,
+@@ -80,11 +85,11 @@
+         boolean checked = "true".equals(state) || "on".equalsIgnoreCase(state);
+         Component title = switch (role) {
+             case BUTTON, MENU -> state == null || state.isEmpty() ? new net.minecraft.network.chat.TranslatableComponent("gui.narrate.button", name)
+-                : new net.minecraft.network.chat.TranslatableComponent("gui.narrate.button", CommonComponents.joinForNarration(name, new net.minecraft.network.chat.TextComponent(state)));
++                : new net.minecraft.network.chat.TranslatableComponent("gui.narrate.button", UiNarration.join(name, new net.minecraft.network.chat.TextComponent(state)));
+             case LINK -> new net.minecraft.network.chat.TranslatableComponent("gui.narrate.button", name);
+-            case CHECKBOX -> CommonComponents.joinForNarration(new net.minecraft.network.chat.TranslatableComponent("narration.checkbox", name), checked ? on : off);
+-            case TOGGLE -> CommonComponents.joinForNarration(label.isEmpty() ? new net.minecraft.network.chat.TextComponent("") : name, checked ? on : off);
+-            case RADIO, TAB -> checked ? CommonComponents.joinForNarration(new net.minecraft.network.chat.TranslatableComponent("gui.narrate.tab", name), new net.minecraft.network.chat.TranslatableComponent("gui.yes"))
++            case CHECKBOX -> UiNarration.join(new net.minecraft.network.chat.TranslatableComponent("narration.checkbox", name), checked ? on : off);
++            case TOGGLE -> UiNarration.join(label.isEmpty() ? new net.minecraft.network.chat.TextComponent("") : name, checked ? on : off);
++            case RADIO, TAB -> checked ? UiNarration.join(new net.minecraft.network.chat.TranslatableComponent("gui.narrate.tab", name), new net.minecraft.network.chat.TranslatableComponent("gui.yes"))
+                 : new net.minecraft.network.chat.TranslatableComponent("gui.narrate.tab", name);
+             // Minecraft's own sliders read "Volume: 50% slider".
+             case SLIDER -> new net.minecraft.network.chat.TranslatableComponent("gui.narrate.slider", state == null ? name
+@@ -92,7 +97,7 @@
+             case TEXT_FIELD -> new net.minecraft.network.chat.TranslatableComponent("gui.narrate.editBox", name, state == null ? "" : state);
+             // A password's characters are never spoken.
+             case PASSWORD -> new net.minecraft.network.chat.TranslatableComponent("gui.narrate.editBox", name, "");
+-            case LIST_ROW -> state == null ? name : CommonComponents.joinForNarration(name, new net.minecraft.network.chat.TextComponent(state));
++            case LIST_ROW -> state == null ? name : UiNarration.join(name, new net.minecraft.network.chat.TextComponent(state));
+             case TEXT -> name;
+         };
+         parts.add(new Part(NarratedElementType.TITLE, title));
+--- a/main/dev/pane/ui/UiRichText.java
++++ b/main/dev/pane/ui/UiRichText.java
+@@ -114,7 +114,7 @@
+             char current = value.charAt(index);
+             if (current == '&' && index + 1 < value.length()
+                     && ChatFormatting.getByCode(value.charAt(index + 1)) != null) {
+-                normalized.append(ChatFormatting.PREFIX_CODE).append(value.charAt(++index));
++                normalized.append('\u00a7').append(value.charAt(++index));
+             } else {
+                 normalized.append(current);
+             }
+--- a/main/dev/pane/ui/UiScreen.java
++++ b/main/dev/pane/ui/UiScreen.java
+@@ -17,8 +17,8 @@
+ import java.util.HashSet;
+ import java.util.concurrent.CompletionStage;
+ import net.minecraft.client.Minecraft;
+-import net.minecraft.client.gui.narration.NarratedElementType;
+-import net.minecraft.client.gui.narration.NarrationElementOutput;
++import dev.pane.ui.UiNarration.NarratedElementType;
++
+ import dev.pane.ui.PortGraphics;
+ import net.minecraft.client.gui.screens.Screen;
+ import net.minecraft.client.gui.screens.TitleScreen;
+@@ -821,7 +821,7 @@
+         toastOverlay.show(toast, document.toastSettings().maxVisible(), System.nanoTime());
+         // Acknowledgements are spoken as they appear, after whatever the narrator is saying.
+         if (client != null && net.minecraft.client.gui.chat.NarratorChatListener.INSTANCE.isActive())
+-            net.minecraft.client.gui.chat.NarratorChatListener.INSTANCE.sayNow(CommonComponents.joinForNarration(new net.minecraft.network.chat.TextComponent(toast.title()), new net.minecraft.network.chat.TextComponent(toast.message())));
++            net.minecraft.client.gui.chat.NarratorChatListener.INSTANCE.sayNow(UiNarration.join(new net.minecraft.network.chat.TextComponent(toast.title()), new net.minecraft.network.chat.TextComponent(toast.message())).getString());
+     }
+ 
+     /** This client reports only committed input characters. */
+@@ -832,24 +832,25 @@
+      * has more than one page, so moving between pages is announced.
+      */
+     @Override
+-    public Component getNarrationMessage() {
++    public String getNarrationMessage() {
+         UiPage page = document.page(pageId);
+-        if (document.pages().size() < 2 || page == null || page.navigationLabel().isBlank()) return getTitle();
+-        return CommonComponents.joinForNarration(getTitle(), new net.minecraft.network.chat.TextComponent(page.navigationLabel()));
+-    }
+-
+-    /**
+-     * Narrates the focused control, or the hovered one when nothing has keyboard focus, in
+-     * Minecraft's own words. An open dialog is narrated first: its title and message, then its
+-     * focused button.
+-     */
++        String title = getTitle().getString();
++        if (document.pages().size() > 1 && page != null && !page.navigationLabel().isBlank())
++            title += ". " + page.navigationLabel();
++        return title;
++    }
++
++    private String lastNarration = "";
++
+     @Override
+-    protected void updateNarratedWidget(NarrationElementOutput output) {
+-        var parts = narrationParts();
+-        if (parts.isEmpty()) return;
+-        // Nested under the screen's own title, as Minecraft narrates the widgets of its screens.
+-        NarrationElementOutput widget = output.nest();
+-        for (UiNarration.Part part : parts) widget.add(part.type(), part.text());
++    public void tick() {
++        super.tick();
++        var narrator = net.minecraft.client.gui.chat.NarratorChatListener.INSTANCE;
++        if (!narrator.isActive()) return;
++        String spoken = narrationParts().stream().map(part -> part.text().getString())
++            .collect(java.util.stream.Collectors.joining(". "));
++        if (!spoken.isEmpty() && !spoken.equals(lastNarration)) narrator.sayNow(spoken);
++        lastNarration = spoken;
+     }
+ 
+     /** The parts {@link #updateNarratedWidget} speaks for the current focus, hover and dialog. */
+@@ -864,7 +865,7 @@
+             List<UiNarration.Part> buttonParts = button == null || button.isBlank() ? List.of() : UiNarration.of(UiNarration.Role.BUTTON, button).parts(true);
+             // One title carries the dialog and its focused button; the button's usage follows.
+             for (UiNarration.Part part : buttonParts) if (part.type() == NarratedElementType.TITLE) words.add(part.text());
+-            parts.add(new UiNarration.Part(NarratedElementType.TITLE, words.stream().reduce(CommonComponents::joinForNarration).orElse(new net.minecraft.network.chat.TextComponent(""))));
++            parts.add(new UiNarration.Part(NarratedElementType.TITLE, words.stream().reduce(UiNarration::join).orElse(new net.minecraft.network.chat.TextComponent(""))));
+             for (UiNarration.Part part : buttonParts) if (part.type() != NarratedElementType.TITLE) parts.add(part);
+             return parts;
+         }
+--- a/main/dev/pane/ui/internal/WorldFrameCapture.java
++++ b/main/dev/pane/ui/internal/WorldFrameCapture.java
+@@ -23,7 +23,7 @@
+         if (PENDING.isEmpty()) return;
+         var receivers = List.copyOf(PENDING);
+         PENDING.clear();
+-        try (var frame = Screenshot.takeScreenshot(target)) {
++        try (var frame = Screenshot.takeScreenshot(target.width, target.height, target)) {
+                 int w = frame.getWidth(), h = frame.getHeight();
+                 int[] argb = new int[w * h];
+                 // The world target's alpha is not coverage; the frame is opaque.
+--- a/test/dev/pane/ui/UiCanvasTextTest.java
++++ b/test/dev/pane/ui/UiCanvasTextTest.java
+@@ -68,9 +68,9 @@
+     @Test
+     void componentRgbAndDecorationsRenderAndEllipsizeWithoutCodes() {
+         Component component = new net.minecraft.network.chat.TextComponent("Custom RGB ")
+-            .withStyle(Style.EMPTY.withColor(0x12ABEF).withBold(true))
++            .withStyle(Style.EMPTY.withColor(net.minecraft.network.chat.TextColor.fromRgb(0x12ABEF)).withBold(true))
+             .append(new net.minecraft.network.chat.TextComponent("italic underline")
+-                .withStyle(Style.EMPTY.withItalic(true).withUnderlined(true).withStrikethrough(true)));
++                .withStyle(Style.EMPTY.withItalic(true).withUnderlined(true).applyFormat(net.minecraft.ChatFormatting.STRIKETHROUGH)));
+         UiRichText rich = UiRichText.component(component);
+         assertEquals("Custom RGB italic underline", rich.plainText());
+         assertTrue(rich.spans().stream().anyMatch(span -> Integer.valueOf(0x12ABEF).equals(span.color())));

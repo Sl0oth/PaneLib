@@ -1,0 +1,13 @@
+--- a/main/dev/pane/ui/HudPartHooks.java
++++ b/main/dev/pane/ui/HudPartHooks.java
+@@ -0,0 +1,10 @@
++package dev.pane.ui;
++
++import net.minecraft.resources.ResourceLocation;
++
++/** The Fabric layer on these releases groups the hotbar with unrelated survival indicators. */
++public final class HudPartHooks {
++    static final ResourceLocation HOTBAR = ResourceLocation.withDefaultNamespace("hotbar");
++    private HudPartHooks() {}
++    public static boolean hideHotbar() { return UiHud.Registry.replacements.hidden(HOTBAR); }
++}

@@ -1,0 +1,118 @@
+--- a/main/dev/pane/ui/NativeOverlayContext.java
++++ b/main/dev/pane/ui/NativeOverlayContext.java
+@@ -3,7 +3,7 @@
+ import java.util.Map;
+ import java.util.Optional;
+ import java.util.Objects;
+-import net.minecraft.client.resources.PlayerSkin;
++import net.minecraft.resources.ResourceLocation;
+ import net.minecraft.client.Minecraft;
+ import net.minecraft.client.gui.GuiGraphics;
+ import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+@@ -136,7 +136,7 @@
+         float boxHeight = Math.max(.1F, entity.getBbHeight());
+         int size = (int) Math.max(1, Math.min(width / (boxWidth * 2.2F), height / (boxHeight * 1.3F)));
+         InventoryScreen.renderEntityInInventoryFollowsMouse(
+-            graphics, x1, y1, x1 + width, y1 + height, size, 0.0F, mouseX, mouseY, entity
++            graphics, x1 + width / 2, y1 + height, size, x1 + width / 2F - mouseX, y1 + height / 2F - mouseY, entity
+         );
+     }
+ 
+@@ -149,7 +149,7 @@
+     }
+ 
+     /** Draws a world-free standing avatar using the default presentation. See the options overload. */
+-    public void playerPreview(String slotId, PlayerSkin skin) {
++    public void playerPreview(String slotId, ResourceLocation skin) {
+         playerPreview(slotId, skin, UiPlayerPreview.standing());
+     }
+ 
+@@ -163,7 +163,7 @@
+      * clipping rules in {@link #entity} apply. This counts as one native entity submission per draw.
+      * Settings must be non-null, even if the slot is absent.</p>
+      */
+-    public void playerPreview(String slotId, PlayerSkin skin, UiPlayerPreview options) {
++    public void playerPreview(String slotId, ResourceLocation skin, UiPlayerPreview options) {
+         Objects.requireNonNull(options, "options");
+         var frame = PlayerPreviewRenderer.frame(bounds.get(slotId), guiScale, options, mouseX, mouseY, pointerBlocked);
+         if (frame == null) return;
+--- a/main/dev/pane/ui/PlayerPreviewRenderer.java
++++ b/main/dev/pane/ui/PlayerPreviewRenderer.java
+@@ -9,7 +9,7 @@
+ import net.minecraft.client.resources.DefaultPlayerSkin;
+ import net.minecraft.world.entity.EntityType;
+ import net.minecraft.world.entity.Pose;
+-import net.minecraft.client.resources.PlayerSkin;
++import net.minecraft.resources.ResourceLocation;
+ import org.joml.Quaternionf;
+ import org.joml.Vector3f;
+ 
+@@ -37,10 +37,10 @@
+             dev.pane.ui.UiClamp.clamp(yaw, -90, 90), dev.pane.ui.UiClamp.clamp(pitch, -90, 90));
+     }
+ 
+-    static void render(GuiGraphics graphics, Frame frame, PlayerSkin skin, UiPlayerPreview options) {
++    static void render(GuiGraphics graphics, Frame frame, ResourceLocation skin, UiPlayerPreview options) {
+         var client = net.minecraft.client.Minecraft.getInstance();
+-        PlayerSkin chosen = skin == null ? DefaultPlayerSkin.get(new java.util.UUID(0, 0)) : skin;
+-        boolean slim = chosen.model() == PlayerSkin.Model.SLIM;
++        ResourceLocation chosen = skin == null ? DefaultPlayerSkin.getDefaultSkin() : skin;
++        boolean slim = false; // This client represents skins as texture identifiers without a model field.
+         var model = new PlayerModel<>(client.getEntityModels().bakeLayer(slim ? ModelLayers.PLAYER_SLIM : ModelLayers.PLAYER), slim);
+         model.head.yRot = (float) Math.toRadians(frame.headYaw());
+         model.head.xRot = (float) Math.toRadians(frame.headPitch());
+@@ -58,7 +58,7 @@
+             graphics.flush();
+             com.mojang.blaze3d.platform.Lighting.setupForEntityInInventory();
+             var buffers = client.renderBuffers().bufferSource();
+-            model.renderToBuffer(pose, buffers.getBuffer(RenderType.entityTranslucent(chosen.texture())), 0xF000F0, OverlayTexture.NO_OVERLAY, 1, 1, 1, 1);
++            model.renderToBuffer(pose, buffers.getBuffer(RenderType.entityTranslucent(chosen)), 0xF000F0, OverlayTexture.NO_OVERLAY, 1, 1, 1, 1);
+             buffers.endBatch();
+         } finally {
+             com.mojang.blaze3d.platform.Lighting.setupFor3DItems();
+--- a/main/dev/pane/ui/UiScreen.java
++++ b/main/dev/pane/ui/UiScreen.java
+@@ -1171,7 +1171,9 @@
+     }
+ 
+     @Override
+-    public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float tickDelta) {
++    public void renderBackground(GuiGraphics graphics) {
++        int mouseX = this.mouseX, mouseY = this.mouseY;
++        float tickDelta = minecraft.getFrameTime();
+         synchronizeViewport(graphics);
+         Screen parent = options.parent();
+         switch (options.backdrop()) {
+@@ -1199,11 +1201,12 @@
+         // renderBackground empty. Asking for the whole render state would also copy its logo,
+         // splash, buttons, and footer, so use Minecraft's panorama-only path for this one screen.
+         if (parent instanceof TitleScreen) renderPanorama(graphics, tickDelta);
+-        else parent.renderBackground(graphics, mouseX, mouseY, tickDelta);
++        else parent.renderBackground(graphics);
+     }
+ 
+     @Override
+     public void render(GuiGraphics graphics, int mouseX, int mouseY, float tickDelta) {
++        renderBackground(graphics);
+         frameCount++;
+         long revision = UiCanvas.minecraftTextureRevision();
+         if (minecraftTextureRevision != revision) {
+@@ -1411,7 +1414,7 @@
+         if (minecraft != null && minecraft.level == null) {
+             renderPanorama(graphics, tickDelta);
+         } else {
+-            renderTransparentBackground(graphics);
++            graphics.fillGradient(0, 0, width, height, 0xC0101010, 0xD0101010);
+         }
+     }
+ 
+@@ -1670,7 +1673,8 @@
+     }
+ 
+     @Override
+-    public boolean mouseScrolled(double mouseX, double mouseY, double horizontal, double vertical) {
++    public boolean mouseScrolled(double mouseX, double mouseY, double vertical) {
++        double horizontal = 0;
+         if(layoutHitsStale)return true;
+         float scale = eventLayoutScale();
+         if (openDialogId != null) {

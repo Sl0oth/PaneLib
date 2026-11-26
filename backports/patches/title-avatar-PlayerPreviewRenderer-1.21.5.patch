@@ -1,0 +1,9 @@
+--- a/main/dev/pane/ui/PlayerPreviewRenderer.java
++++ b/main/dev/pane/ui/PlayerPreviewRenderer.java
+@@ -58,5 +58,5 @@
+         var dispatcher = client.getEntityRenderDispatcher();
+         var pose = graphics.pose();
+-        org.joml.Quaternionf previous = new Quaternionf(dispatcher.cameraOrientation());
++        org.joml.Quaternionf previous = dispatcher.cameraOrientation();
+         graphics.enableScissor(frame.x(), frame.y(), frame.x() + frame.width(), frame.y() + frame.height());
+         pose.pushPose();

@@ -1,0 +1,12 @@
+--- a/main/dev/pane/ui/UiHudReplacements.java
++++ b/main/dev/pane/ui/UiHudReplacements.java
+@@ -31,4 +31,9 @@
+     }
+ 
++    boolean hidden(ResourceLocation id) {
++        var owners = claims.get(id);
++        return owners != null && owners.values().stream().anyMatch(BooleanSupplier::getAsBoolean);
++    }
++
+     void remove(Object owner) { for (var owners : claims.values()) owners.remove(owner); }
+     void clear() { for (var owners : claims.values()) owners.clear(); }

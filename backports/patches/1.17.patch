@@ -1,0 +1,19 @@
+--- a/main/dev/pane/ui/PortBlit.java
++++ b/main/dev/pane/ui/PortBlit.java
+@@ -14,11 +14,12 @@
+         com.mojang.blaze3d.systems.RenderSystem.defaultBlendFunc();
+         var matrix = graphics.pose().last().pose();
+         var buffer = com.mojang.blaze3d.vertex.Tesselator.getInstance().getBuilder();
++        int red = color >>> 16 & 255, green = color >>> 8 & 255, blue = color & 255, alpha = color >>> 24;
+         buffer.begin(com.mojang.blaze3d.vertex.VertexFormat.Mode.QUADS, com.mojang.blaze3d.vertex.DefaultVertexFormat.POSITION_TEX_COLOR);
+-        buffer.vertex(matrix, x0, y1, 0).uv(u0, v1).color(color).endVertex();
+-        buffer.vertex(matrix, x1, y1, 0).uv(u1, v1).color(color).endVertex();
+-        buffer.vertex(matrix, x1, y0, 0).uv(u1, v0).color(color).endVertex();
+-        buffer.vertex(matrix, x0, y0, 0).uv(u0, v0).color(color).endVertex();
++        buffer.vertex(matrix, x0, y1, 0).uv(u0, v1).color(red, green, blue, alpha).endVertex();
++        buffer.vertex(matrix, x1, y1, 0).uv(u1, v1).color(red, green, blue, alpha).endVertex();
++        buffer.vertex(matrix, x1, y0, 0).uv(u1, v0).color(red, green, blue, alpha).endVertex();
++        buffer.vertex(matrix, x0, y0, 0).uv(u0, v0).color(red, green, blue, alpha).endVertex();
+         com.mojang.blaze3d.vertex.Tesselator.getInstance().end();
+     }
+ 

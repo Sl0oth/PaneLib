@@ -1,0 +1,765 @@
+--- a/main/dev/pane/mixin/GuiGraphicsBlitInvoker.java
++++ b/main/dev/pane/mixin/GuiGraphicsBlitInvoker.java
+@@ -3,7 +3,7 @@
+ import com.mojang.blaze3d.pipeline.RenderPipeline;
+ import com.mojang.blaze3d.textures.GpuSampler;
+ import com.mojang.blaze3d.textures.GpuTextureView;
+-import net.minecraft.client.gui.GuiGraphicsExtractor;
++import net.minecraft.client.gui.GuiGraphics;
+ import org.spongepowered.asm.mixin.Mixin;
+ import org.spongepowered.asm.mixin.gen.Invoker;
+ 
+@@ -11,10 +11,10 @@
+  * The public texture blit is always opaque white; GPU layers need its colour argument for opacity.
+  * <p><b>Internal:</b> public only so Minecraft's mixin loader can apply it; not part of PaneLib's API.
+  */
+-@Mixin(GuiGraphicsExtractor.class)
++@Mixin(GuiGraphics.class)
+ public interface GuiGraphicsBlitInvoker {
+     /** Minecraft's own blit with an explicit colour; internal. */
+-    @Invoker("innerBlit")
++    @Invoker("submitBlit")
+     void panelib$innerBlit(RenderPipeline pipeline, GpuTextureView texture, GpuSampler sampler, int x0, int y0, int x1, int y1,
+                            float u0, float u1, float v0, float v1, int color);
+ }
+--- a/main/dev/pane/mixin/GuiItemOpacityMixin.java
++++ b/main/dev/pane/mixin/GuiItemOpacityMixin.java
+@@ -3,7 +3,7 @@
+ import com.llamalad7.mixinextras.sugar.Local;
+ import dev.pane.ui.internal.NativeOpacity;
+ import net.minecraft.client.gui.render.GuiRenderer;
+-import net.minecraft.client.renderer.state.gui.GuiItemRenderState;
++import net.minecraft.client.gui.render.state.GuiItemRenderState;
+ import org.spongepowered.asm.mixin.Mixin;
+ import org.spongepowered.asm.mixin.injection.At;
+ import org.spongepowered.asm.mixin.injection.ModifyArg;
+@@ -11,7 +11,7 @@
+ @Mixin(GuiRenderer.class)
+ abstract class GuiItemOpacityMixin {
+     @ModifyArg(method = "submitBlitFromItemAtlas", at = @At(value = "INVOKE", target =
+-        "Lnet/minecraft/client/renderer/state/gui/BlitRenderState;<init>(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/client/gui/render/TextureSetup;Lorg/joml/Matrix3x2f;IIIIFFFFILnet/minecraft/client/gui/navigation/ScreenRectangle;Lnet/minecraft/client/gui/navigation/ScreenRectangle;)V"), index = 11)
++        "Lnet/minecraft/client/gui/render/state/BlitRenderState;<init>(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/client/gui/render/TextureSetup;Lorg/joml/Matrix3x2f;IIIIFFFFILnet/minecraft/client/gui/navigation/ScreenRectangle;Lnet/minecraft/client/gui/navigation/ScreenRectangle;)V"), index = 11)
+     private int panelib$tint(int color, @Local(argsOnly = true) GuiItemRenderState item) {
+         return NativeOpacity.tint(color, NativeOpacity.of(item));
+     }
+--- a/main/dev/pane/mixin/GuiPictureOpacityMixin.java
++++ b/main/dev/pane/mixin/GuiPictureOpacityMixin.java
+@@ -3,7 +3,7 @@
+ import com.llamalad7.mixinextras.sugar.Local;
+ import dev.pane.ui.internal.NativeOpacity;
+ import net.minecraft.client.gui.render.pip.PictureInPictureRenderer;
+-import net.minecraft.client.renderer.state.gui.pip.PictureInPictureRenderState;
++import net.minecraft.client.gui.render.state.pip.PictureInPictureRenderState;
+ import org.spongepowered.asm.mixin.Mixin;
+ import org.spongepowered.asm.mixin.injection.At;
+ import org.spongepowered.asm.mixin.injection.ModifyArg;
+@@ -11,7 +11,7 @@
+ @Mixin(PictureInPictureRenderer.class)
+ abstract class GuiPictureOpacityMixin {
+     @ModifyArg(method = "blitTexture", at = @At(value = "INVOKE", target =
+-        "Lnet/minecraft/client/renderer/state/gui/BlitRenderState;<init>(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/client/gui/render/TextureSetup;Lorg/joml/Matrix3x2f;IIIIFFFFILnet/minecraft/client/gui/navigation/ScreenRectangle;Lnet/minecraft/client/gui/navigation/ScreenRectangle;)V"), index = 11)
++        "Lnet/minecraft/client/gui/render/state/BlitRenderState;<init>(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/client/gui/render/TextureSetup;Lorg/joml/Matrix3x2f;IIIIFFFFILnet/minecraft/client/gui/navigation/ScreenRectangle;Lnet/minecraft/client/gui/navigation/ScreenRectangle;)V"), index = 11)
+     private int panelib$tint(int color, @Local(argsOnly = true) PictureInPictureRenderState state) {
+         return NativeOpacity.tint(color, NativeOpacity.of(state));
+     }
+--- a/main/dev/pane/mixin/NativeDrawOpacityMixin.java
++++ b/main/dev/pane/mixin/NativeDrawOpacityMixin.java
+@@ -2,8 +2,8 @@
+ 
+ import dev.pane.ui.internal.NativeOpacity;
+ import dev.pane.ui.internal.NativeOpacityAccess;
+-import net.minecraft.client.renderer.state.gui.GuiItemRenderState;
+-import net.minecraft.client.renderer.state.gui.pip.GuiEntityRenderState;
++import net.minecraft.client.gui.render.state.GuiItemRenderState;
++import net.minecraft.client.gui.render.state.pip.GuiEntityRenderState;
+ import org.spongepowered.asm.mixin.Mixin;
+ import org.spongepowered.asm.mixin.Unique;
+ import org.spongepowered.asm.mixin.injection.At;
+--- a/main/dev/pane/ui/NativeOverlayContext.java
++++ b/main/dev/pane/ui/NativeOverlayContext.java
+@@ -5,7 +5,7 @@
+ import java.util.Objects;
+ import net.minecraft.world.entity.player.PlayerSkin;
+ import net.minecraft.client.Minecraft;
+-import net.minecraft.client.gui.GuiGraphicsExtractor;
++import net.minecraft.client.gui.GuiGraphics;
+ import net.minecraft.client.gui.screens.inventory.InventoryScreen;
+ import net.minecraft.world.entity.LivingEntity;
+ import net.minecraft.world.item.ItemStack;
+@@ -16,7 +16,7 @@
+  * the cached surface has been blitted, so keep the work here to real draw calls.
+  */
+ public final class NativeOverlayContext {
+-    private final GuiGraphicsExtractor graphics;
++    private final GuiGraphics graphics;
+     private final String pageId;
+     private final Map<String, NativeBounds> bounds;
+     private final double guiScale;
+@@ -28,17 +28,17 @@
+     private int renderedTextCount;
+     private final NativeTextRenderer textRenderer;
+ 
+-    NativeOverlayContext(GuiGraphicsExtractor graphics, String pageId, Map<String, NativeBounds> bounds,
++    NativeOverlayContext(GuiGraphics graphics, String pageId, Map<String, NativeBounds> bounds,
+                          double guiScale, int mouseX, int mouseY) {
+         this(graphics, pageId, bounds, guiScale, mouseX, mouseY, false);
+     }
+ 
+-    NativeOverlayContext(GuiGraphicsExtractor graphics, String pageId, Map<String, NativeBounds> bounds,
++    NativeOverlayContext(GuiGraphics graphics, String pageId, Map<String, NativeBounds> bounds,
+                          double guiScale, int mouseX, int mouseY, boolean pointerBlocked) {
+         this(graphics, pageId, bounds, guiScale, mouseX, mouseY, pointerBlocked, new NativeTextRenderer());
+     }
+ 
+-    NativeOverlayContext(GuiGraphicsExtractor graphics, String pageId, Map<String, NativeBounds> bounds,
++    NativeOverlayContext(GuiGraphics graphics, String pageId, Map<String, NativeBounds> bounds,
+                          double guiScale, int mouseX, int mouseY, boolean pointerBlocked, NativeTextRenderer textRenderer) {
+         this.textRenderer = textRenderer;
+         this.pointerBlocked = pointerBlocked;
+@@ -58,7 +58,7 @@
+     public boolean pointerBlocked() { return pointerBlocked; }
+ 
+     /** Minecraft's graphics for this frame, for drawing anything the helpers here do not cover. */
+-    public GuiGraphicsExtractor graphics() { return graphics; }
++    public GuiGraphics graphics() { return graphics; }
+ 
+     /** Slot rectangle in physical backing pixels. Helpers perform the GUI-scale conversion internally. */
+     public Optional<NativeBounds> bounds(String id) { return Optional.ofNullable(bounds.get(id)); }
+@@ -106,7 +106,7 @@
+         graphics.pose().pushMatrix();
+         graphics.pose().translate(x + w / 2.0F, y + h / 2.0F);
+         graphics.pose().scale(itemScale, itemScale);
+-        graphics.item(stack, -8, -8);
++        graphics.renderItem(stack, -8, -8);
+         graphics.pose().popMatrix();
+     }
+ 
+@@ -135,7 +135,7 @@
+         float boxWidth = Math.max(.1F, entity.getBbWidth());
+         float boxHeight = Math.max(.1F, entity.getBbHeight());
+         int size = (int) Math.max(1, Math.min(width / (boxWidth * 2.2F), height / (boxHeight * 1.3F)));
+-        InventoryScreen.extractEntityInInventoryFollowsMouse(
++        InventoryScreen.renderEntityInInventoryFollowsMouse(
+             graphics, x1, y1, x1 + width, y1 + height, size, 0.0F, mouseX, mouseY, entity
+         );
+     }
+--- a/main/dev/pane/ui/NativeTextRenderer.java
++++ b/main/dev/pane/ui/NativeTextRenderer.java
+@@ -4,7 +4,7 @@
+ import java.util.LinkedHashMap;
+ import net.minecraft.client.Minecraft;
+ import net.minecraft.client.gui.Font;
+-import net.minecraft.client.gui.GuiGraphicsExtractor;
++import net.minecraft.client.gui.GuiGraphics;
+ import net.minecraft.locale.Language;
+ import net.minecraft.network.chat.Component;
+ import net.minecraft.network.chat.FormattedText;
+@@ -39,7 +39,7 @@
+         return Math.round((color >>> 24) * Math.clamp(opacity, 0, 1)) << 24 | color & 0xFFFFFF;
+     }
+ 
+-    boolean render(GuiGraphicsExtractor graphics, String id, NativeBounds box, double guiScale,
++    boolean render(GuiGraphics graphics, String id, NativeBounds box, double guiScale,
+                    Object input, UiMinecraftTextStyle style) {
+         // Check eligibility before looking up Minecraft, also making absent slots safe headlessly.
+         Frame frame = frame(box, guiScale, 9, style.shadow());
+@@ -57,7 +57,7 @@
+         try {
+             graphics.pose().translate(frame.x() + offset * frame.scale(), frame.y());
+             graphics.pose().scale(frame.scale(), frame.scale());
+-            graphics.text(font, line.text(), 0, 0, color, style.shadow());
++            graphics.drawString(font, line.text(), 0, 0, color, style.shadow());
+         } finally {
+             graphics.pose().popMatrix();
+             graphics.disableScissor();
+--- a/main/dev/pane/ui/PaneClientResources.java
++++ b/main/dev/pane/ui/PaneClientResources.java
+@@ -3,10 +3,9 @@
+ import net.fabricmc.api.ClientModInitializer;
+ import net.fabricmc.fabric.api.resource.v1.ResourceLoader;
+ import net.fabricmc.fabric.api.resource.v1.reloader.ResourceReloaderKeys;
+-import net.fabricmc.fabric.api.resource.v1.reloader.SimpleReloadListener;
++import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
+ import net.minecraft.resources.Identifier;
+ import net.minecraft.server.packs.PackType;
+-import net.minecraft.server.packs.resources.PreparableReloadListener;
+ 
+ /** Library lifecycle hook; installs no screen, key binding, timer or demo content. */
+ public final class PaneClientResources implements ClientModInitializer {
+@@ -16,12 +15,7 @@
+     @Override public void onInitializeClient() {
+         var loader = ResourceLoader.get(PackType.CLIENT_RESOURCES);
+         var id = Identifier.fromNamespaceAndPath("panelib", "decoded_textures");
+-        loader.registerReloadListener(id, new SimpleReloadListener<Void>() {
+-            @Override protected Void prepare(PreparableReloadListener.SharedState state) { return null; }
+-            @Override protected void apply(Void unused, PreparableReloadListener.SharedState state) {
+-                UiCanvas.clearMinecraftTextureCache();
+-            }
+-        });
+-        loader.addListenerOrdering(ResourceReloaderKeys.Client.TEXTURES, id);
++        loader.registerReloader(id, (ResourceManagerReloadListener) manager -> UiCanvas.clearMinecraftTextureCache());
++        loader.addReloaderOrdering(ResourceReloaderKeys.Client.TEXTURES, id);
+     }
+ }
+--- a/main/dev/pane/ui/PlayerPreviewRenderer.java
++++ b/main/dev/pane/ui/PlayerPreviewRenderer.java
+@@ -1,6 +1,6 @@
+ package dev.pane.ui;
+ 
+-import net.minecraft.client.gui.GuiGraphicsExtractor;
++import net.minecraft.client.gui.GuiGraphics;
+ import net.minecraft.client.model.HumanoidModel;
+ import net.minecraft.client.renderer.entity.state.AvatarRenderState;
+ import net.minecraft.client.resources.DefaultPlayerSkin;
+@@ -34,7 +34,7 @@
+             Math.clamp(yaw, -90, 90), Math.clamp(pitch, -90, 90));
+     }
+ 
+-    static void render(GuiGraphicsExtractor graphics, Frame frame, PlayerSkin skin, UiPlayerPreview options) {
++    static void render(GuiGraphics graphics, Frame frame, PlayerSkin skin, UiPlayerPreview options) {
+         // Explicit standing state: no live entity, entity mutation, world access or animation clock.
+         var state = new AvatarRenderState();
+         state.entityType = EntityType.PLAYER;
+@@ -55,7 +55,7 @@
+         state.rightArmPose = state.leftArmPose = HumanoidModel.ArmPose.EMPTY;
+         // Other fresh-state fields remain neutral: no name, shadow, fire, equipment or movement.
+         var camera = new Quaternionf().rotateX((float) Math.toRadians(options.cameraPitch()));
+-        graphics.entity(state, frame.size(), new Vector3f(frame.offsetX(), frame.offsetY(), 0),
++        graphics.submitEntityRenderState(state, frame.size(), new Vector3f(frame.offsetX(), frame.offsetY(), 0),
+             new Quaternionf().rotateZ((float) Math.PI).mul(camera), camera,
+             frame.x(), frame.y(), frame.x() + frame.width(), frame.y() + frame.height());
+     }
+--- /dev/null
++++ b/main/dev/pane/ui/PortBlit.java
+@@ -0,0 +1,16 @@
++package dev.pane.ui;
++
++import com.mojang.blaze3d.textures.GpuSampler;
++import com.mojang.blaze3d.textures.GpuTextureView;
++import dev.pane.mixin.GuiGraphicsBlitInvoker;
++import net.minecraft.client.gui.GuiGraphics;
++import net.minecraft.client.renderer.RenderPipelines;
++
++/** Submits the retained surface with its two GUI corners and normalized texture coordinates. */
++final class PortBlit {
++    static void draw(GuiGraphics graphics, GpuTextureView texture, GpuSampler sampler,
++                     int x0, int y0, int x1, int y1, float u0, float u1, float v0, float v1) {
++        ((GuiGraphicsBlitInvoker) graphics).panelib$innerBlit(RenderPipelines.GUI_TEXTURED,
++            texture, sampler, x0, y0, x1, y1, u0, u1, v0, v1, -1);
++    }
++}
+--- a/main/dev/pane/ui/UiCanvas.java
++++ b/main/dev/pane/ui/UiCanvas.java
+@@ -1944,7 +1944,7 @@
+         try {
+             if (!(Minecraft.getInstance().getTextureManager().getTexture(texture) instanceof DynamicTexture dynamic)) return null;
+             var pixels = dynamic.getPixels();
+-            if (pixels == null || pixels.isClosed()) return null;
++            if (pixels == null) return null;
+             int width = pixels.getWidth(), height = pixels.getHeight();
+             BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+             int[] target = pixels.getPixelsABGR();
+--- a/main/dev/pane/ui/UiGpuLayers.java
++++ b/main/dev/pane/ui/UiGpuLayers.java
+@@ -11,7 +11,7 @@
+ import java.util.Map;
+ import java.util.Objects;
+ import java.util.function.Consumer;
+-import net.minecraft.client.gui.GuiGraphicsExtractor;
++import net.minecraft.client.gui.GuiGraphics;
+ import net.minecraft.client.renderer.RenderPipelines;
+ 
+ /**
+@@ -145,7 +145,7 @@
+     }
+ 
+     /** Draws every layer at its current animated transform, pivoting on the centre of its bounds. */
+-    void render(GuiGraphicsExtractor graphics, GpuSampler sampler, float layoutScale, long now) {
++    void render(GuiGraphics graphics, GpuSampler sampler, float layoutScale, long now) {
+         for (Layer layer : layers.values()) {
+             UiTransform transform = layer.at(now);
+             if (layer.surface == null || transform.opacity() <= 0) continue;
+--- a/main/dev/pane/ui/UiHud.java
++++ b/main/dev/pane/ui/UiHud.java
+@@ -8,7 +8,7 @@
+ import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+ import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
+ import net.minecraft.client.Minecraft;
+-import net.minecraft.client.gui.GuiGraphicsExtractor;
++import net.minecraft.client.gui.GuiGraphics;
+ import net.minecraft.resources.Identifier;
+ 
+ /**
+@@ -303,7 +303,7 @@
+     public long nativeTextLayoutCount() { return nativeText.layouts(); }
+     private void clearNativeCounts() { nativeItemCount = nativeEntityCount = nativeTextCount = 0; }
+ 
+-    private void extract(GuiGraphicsExtractor graphics) {
++    private void extract(GuiGraphics graphics) {
+         clearNativeCounts();
+         Minecraft client = Minecraft.getInstance();
+         if (!eligible(client)) return;
+--- a/main/dev/pane/ui/UiHudReplacements.java
++++ b/main/dev/pane/ui/UiHudReplacements.java
+@@ -22,7 +22,7 @@
+             Map<Object, BooleanSupplier> owners = new IdentityHashMap<>();
+             install.accept(id, original -> (graphics, delta) -> {
+                 for (BooleanSupplier claim : owners.values()) if (claim.getAsBoolean()) return;
+-                original.extractRenderState(graphics, delta);
++                original.render(graphics, delta);
+             });
+             claims.put(id, owners);
+         }
+--- a/main/dev/pane/ui/UiScreen.java
++++ b/main/dev/pane/ui/UiScreen.java
+@@ -21,13 +21,12 @@
+ import net.minecraft.client.Minecraft;
+ import net.minecraft.client.gui.narration.NarratedElementType;
+ import net.minecraft.client.gui.narration.NarrationElementOutput;
+-import net.minecraft.client.gui.GuiGraphicsExtractor;
++import net.minecraft.client.gui.GuiGraphics;
+ import net.minecraft.client.gui.screens.Screen;
+ import net.minecraft.client.gui.screens.TitleScreen;
+ import net.minecraft.client.input.CharacterEvent;
+ import net.minecraft.client.input.KeyEvent;
+ import net.minecraft.client.input.MouseButtonEvent;
+-import net.minecraft.client.input.PreeditEvent;
+ import net.minecraft.network.chat.CommonComponents;
+ import net.minecraft.network.chat.Component;
+ import org.lwjgl.glfw.GLFW;
+@@ -196,15 +195,6 @@
+     private boolean dragMoved;
+     /** Key prefixes the latest paint scoped to a region; see {@link UiContext#repaintScope}. */
+     private Map<String, UiRect> repaintScopes = Map.of();
+-    /** Text an input method is composing into the focused input, not yet part of its value; null when none. */
+-    private PreeditEvent preedit;
+-    /** Where the composition was last drawn, in layout units, so the next change repaints it. */
+-    private UiRect preeditBounds;
+-    /** The type each text input of the latest paint used. */
+-    private Map<String, UiInputTypography> inputTypography = Map.of();
+-    /** Whether Minecraft has been told a text input has focus, which switches the input method on. */
+-    private boolean textInputFocused;
+-    private UiRect imeArea;
+     /** What the narrator says about each control of the latest paint. */
+     private Map<String, UiNarration> narrations = Map.of();
+     /** The focused field's text when focus reached it; narrated instead of the live text so typing is not read back. */
+@@ -840,103 +830,8 @@
+             client.getNarrator().saySystemQueued(CommonComponents.joinForNarration(Component.literal(toast.title()), Component.literal(toast.message())));
+     }
+ 
+-    /**
+-     * An input method's composition for the focused text input: shown at its caret in the input's
+-     * own type, underlined, with the clause being converted marked, until it is committed as typed
+-     * text or cancelled. It never enters the value, so cancelling leaves the input unchanged.
+-     */
+-    @Override
+-    public boolean preeditUpdated(PreeditEvent event) {
+-        UiInputRegion input = inputRegion(focusedId);
+-        PreeditEvent next = input == null || event == null || event.fullText().isEmpty() ? null : event;
+-        if (preedit == null && next == null) return input != null;
+-        UiRect old = preeditBounds;
+-        if ((preedit == null) != (next == null)) imeGeneration++;
+-        if (preedit != null && next == null) compositionEndedFrame = frameCount;
+-        preedit = next;
+-        UiRect area = input == null || next == null ? null : preeditArea(input, inputTypography.get(input.id()), next.fullText());
+-        UiRect repaint = old == null ? area : area == null ? old : old.union(area);
+-        if (repaint != null) requestPartialRepaint(repaint.expandAndClamp(surfaceLayoutWidth, surfaceLayoutHeight, 2));
+-        return input != null;
+-    }
+-
+-    /** Text being composed, for diagnostics and tests; empty when none. <b>Experimental.</b> */
+-    public String compositionText() { return preedit == null ? "" : preedit.fullText(); }
+-
+-    private final java.awt.image.BufferedImage measureImage = new java.awt.image.BufferedImage(1, 1, java.awt.image.BufferedImage.TYPE_INT_ARGB);
+-
+-    /** Where a composition is drawn: from the caret, as wide as its text, kept on the surface. */
+-    private UiRect preeditArea(UiInputRegion input, UiInputTypography type, String text) {
+-        if (input == null || type == null || text == null) return null;
+-        var graphics = measureImage.createGraphics();
+-        try {
+-            var canvas = new UiCanvas(graphics, measureImage);
+-            float width = canvas.textWidth(text, type.size(), type.style(), type.family()) + 6;
+-            float height = canvas.textHeight(type.size(), type.style(), type.family()) + 6;
+-            // Starts at the caret, so the text before it stays readable.
+-            float x = input.caretX(textCursor, textUpstream);
+-            float[] ys = input.caretYs();
+-            float centerY = input.multiline() && textCursor < ys.length && ys[textCursor] != 0 ? ys[textCursor] : input.bounds().centerY();
+-            if (input.toLocal() != null) {
+-                // Inside a rotated or scaled group the composition sits upright at the caret's place on the page.
+-                var caret = input.page(x, input.multiline() && textCursor < ys.length ? ys[textCursor] : input.local(input.bounds().centerX(), input.bounds().centerY()).y);
+-                x = caret.x; centerY = caret.y;
+-            }
+-            x = Math.max(0, Math.min(x, surfaceLayoutWidth - width));
+-            return new UiRect(x, centerY - height / 2, width, height);
+-        } finally { graphics.dispose(); }
+-    }
+-
+-    private void paintPreedit(UiCanvas canvas, List<UiInputRegion> inputs, Map<String, UiInputTypography> types) {
+-        UiInputRegion input = null;
+-        for (UiInputRegion candidate : inputs) if (candidate.id().equals(focusedId)) input = candidate;
+-        UiInputTypography type = input == null ? null : types.get(input.id());
+-        if (preedit == null || input == null || type == null || openDialogId != null) { preeditBounds = null; return; }
+-        UiRect box = preeditArea(input, type, preedit.fullText());
+-        preeditBounds = box;
+-        String text = preedit.fullText();
+-        float size = type.size(), textHeight = canvas.textHeight(size, type.style(), type.family());
+-        float x = box.x() + 3, top = box.centerY() - textHeight / 2, underline = top + textHeight + 1;
+-        canvas.roundRect(type.surface(), box.x(), box.y(), box.width(), box.height(), 4);
+-        canvas.strokeRoundRect(UiCanvas.fade(type.accent(), .55F), .8F, box.x(), box.y(), box.width(), box.height(), 4);
+-        canvas.text(text, x, top, size, type.text(), type.style(), type.family());
+-        canvas.line(UiCanvas.fade(type.text(), .6F), 1, x, underline, x + canvas.textWidth(text, size, type.style(), type.family()), underline);
+-        // The clause being converted carries a heavier underline in the accent.
+-        var blocks = preedit.blocks();
+-        int focused = preedit.focusedBlock();
+-        if (focused >= 0 && focused < blocks.size()) {
+-            String before = String.join("", blocks.subList(0, focused));
+-            float from = x + canvas.textWidth(before, size, type.style(), type.family());
+-            float to = from + canvas.textWidth(blocks.get(focused), size, type.style(), type.family());
+-            canvas.line(type.accent(), 2, from, underline, to, underline);
+-        }
+-        int caret = Math.clamp(preedit.caretPosition(), 0, text.length());
+-        float caretX = x + canvas.textWidth(text.substring(0, caret), size, type.style(), type.family());
+-        canvas.line(type.accent(), 1, caretX, top, caretX, top + textHeight);
+-    }
+-
+-    /**
+-     * Tells Minecraft when a text input gains or loses focus, which turns the input method on and
+-     * off, and where the caret is, so the input method's candidate window opens beside it.
+-     */
+-    private void synchronizeTextInput() {
+-        UiInputRegion input = inputRegion(focusedId);
+-        // A read-only view takes keyboard focus for selection, but never an input method.
+-        if (input != null && input.readOnly()) input = null;
+-        boolean focused = input != null;
+-        Minecraft client = Minecraft.getInstance();
+-        if (focused != textInputFocused) {
+-            textInputFocused = focused;
+-            if (!focused) { preedit = null; if (preeditBounds != null) requestPartialRepaint(preeditBounds.expandAndClamp(surfaceLayoutWidth, surfaceLayoutHeight, 2)); preeditBounds = null; }
+-            client.onTextInputFocusChange(this, focused);
+-        }
+-        if (!focused || layoutScale <= 0) { imeArea = null; return; }
+-        UiRect area = preeditBounds != null ? preeditBounds : preeditArea(input, inputTypography.get(input.id()), "");
+-        if (area == null || area.equals(imeArea)) return;
+-        imeArea = area;
+-        client.textInputManager().setTextInputArea(Math.round(area.x() / layoutScale), Math.round(area.y() / layoutScale),
+-            Math.max(1, Math.round(area.width() / layoutScale)), Math.max(1, Math.round(area.height() / layoutScale)));
+-    }
++    /** This client reports only committed input characters. */
++    public String compositionText() { return ""; }
+ 
+     /**
+      * The screen's title for the narrator: the document title, and the page title when the document
+@@ -1282,7 +1177,7 @@
+     }
+ 
+     @Override
+-    public void extractBackground(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float tickDelta) {
++    public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float tickDelta) {
+         synchronizeViewport(graphics);
+         Screen parent = options.parent();
+         switch (options.backdrop()) {
+@@ -1298,25 +1193,24 @@
+                 } else {
+                     extractParentBackground(parent, graphics, mouseX, mouseY, tickDelta);
+                     graphics.nextStratum();
+-                    parent.extractRenderState(graphics, mouseX, mouseY, tickDelta);
++                    parent.render(graphics, mouseX, mouseY, tickDelta);
+                 }
+             }
+         }
+     }
+ 
+-    private void extractParentBackground(Screen parent, GuiGraphicsExtractor graphics,
++    private void extractParentBackground(Screen parent, GuiGraphics graphics,
+                                          int mouseX, int mouseY, float tickDelta) {
+-        // TitleScreen draws its panorama from extractRenderState and intentionally leaves
+-        // extractBackground empty. Asking for the whole render state would also copy its logo,
++        // TitleScreen draws its panorama from render and intentionally leaves
++        // renderBackground empty. Asking for the whole render state would also copy its logo,
+         // splash, buttons, and footer, so use Minecraft's panorama-only path for this one screen.
+-        if (parent instanceof TitleScreen) extractPanorama(graphics, tickDelta);
+-        else parent.extractBackground(graphics, mouseX, mouseY, tickDelta);
++        if (parent instanceof TitleScreen) renderPanorama(graphics, tickDelta);
++        else parent.renderBackground(graphics, mouseX, mouseY, tickDelta);
+     }
+ 
+     @Override
+-    public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float tickDelta) {
++    public void render(GuiGraphics graphics, int mouseX, int mouseY, float tickDelta) {
+         frameCount++;
+-        synchronizeTextInput();
+         long revision = UiCanvas.minecraftTextureRevision();
+         if (minecraftTextureRevision != revision) {
+             minecraftTextureRevision = revision;
+@@ -1401,7 +1295,7 @@
+             return;
+         }
+         long compositeStarted = System.nanoTime();
+-        graphics.blit(surface.view(), surfaceSampler, 0, 0, width, height, 0, 1, 0, 1);
++        PortBlit.draw(graphics, surface.view(), surfaceSampler, 0, 0, width, height, 0, 1, 0, 1);
+         if (virtual.active && !virtual.layers.isEmpty()) {
+             graphics.nextStratum();
+             if (virtual.render(graphics, now, null, layoutScale)) refreshVirtualInteractions();
+@@ -1474,7 +1368,7 @@
+     }
+ 
+     /** Reblits named retained regions after native Minecraft rendering has completed. */
+-    private void renderNativeOverlayLayers(GuiGraphicsExtractor graphics) {
++    private void renderNativeOverlayLayers(GuiGraphics graphics) {
+         if (surface == null || surfaceSampler == null || width <= 0 || height <= 0) return;
+         for (UiRect layer : nativeOverlayLayersView.values()) {
+             UiRect guiBounds = nativeOverlayGuiBounds(layer, layoutScale, width, height);
+@@ -1484,7 +1378,7 @@
+             int bottom = (int) guiBounds.bottom();
+             if (right <= x || bottom <= y) continue;
+             graphics.enableScissor(x, y, right, bottom);
+-            graphics.blit(surface.view(), surfaceSampler, 0, 0, width, height, 0, 1, 0, 1);
++            PortBlit.draw(graphics, surface.view(), surfaceSampler, 0, 0, width, height, 0, 1, 0, 1);
+             graphics.disableScissor();
+         }
+     }
+@@ -1509,13 +1403,13 @@
+         return Math.max(0, Math.min(limit, value));
+     }
+ 
+-    private void extractMinecraftBackdrop(GuiGraphicsExtractor graphics, float tickDelta) {
++    private void extractMinecraftBackdrop(GuiGraphics graphics, float tickDelta) {
+         if (minecraft != null && minecraft.level == null) {
+-            extractPanorama(graphics, tickDelta);
+-            extractBlurredBackground(graphics);
+-            extractMenuBackground(graphics);
++            renderPanorama(graphics, tickDelta);
++            renderBlurredBackground(graphics);
++            renderMenuBackground(graphics);
+         } else {
+-            extractTransparentBackground(graphics);
++            renderTransparentBackground(graphics);
+         }
+     }
+ 
+@@ -1523,7 +1417,7 @@
+      * macOS can expose a new drawable before Minecraft delivers the matching Screen.resize call.
+      * Trust the extractor's active GUI viewport so the retained texture always covers that frame.
+      */
+-    private void synchronizeViewport(GuiGraphicsExtractor graphics) {
++    private void synchronizeViewport(GuiGraphics graphics) {
+         int viewportWidth = Math.max(1, graphics.guiWidth());
+         int viewportHeight = Math.max(1, graphics.guiHeight());
+         if (width != viewportWidth || height != viewportHeight) resize(viewportWidth, viewportHeight);
+@@ -1882,17 +1776,9 @@
+     public boolean charTyped(CharacterEvent event) {
+         UiInputRegion input = inputRegion(focusedId);
+         if (input == null || !event.isAllowedChatCharacter()) return !focusScopes.isEmpty() || openDialogId != null;
+-        // Characters typed while composing, or in the frame a composition ended, are its commit.
+-        committing = preedit != null || compositionEndedFrame == frameCount;
+-        try { replaceTextSelection(input, event.codepointAsString()); }
+-        finally { committing = false; }
++        replaceTextSelection(input, event.codepointAsString());
+         return true;
+     }
+-
+-    private boolean committing;
+-    /** Counts compositions; the characters one commits share an undo step. */
+-    private int imeGeneration, committedGeneration = -1;
+-    private long compositionEndedFrame = -1;
+ 
+     private void runAction(String action, boolean fromPointer) {
+         hoverDirty = true;
+@@ -2529,10 +2415,7 @@
+         textAnchor = textCursor;
+         var history = textHistories.computeIfAbsent(input.key(), ignored -> new UiTextHistory());
+         var after = new UiTextHistory.Snapshot(next, textCursor, textAnchor);
+-        // Characters an input method commits for one composition undo as one edit.
+-        if (committing && committedGeneration == imeGeneration) history.extend(before, after);
+-        else history.record(before, after);
+-        committedGeneration = committing ? imeGeneration : -1;
++        history.record(before, after);
+         state.put(input.key(), next);
+         eventListener.onEvent("value", input.key(), next);
+         // A declared repaint scope for the value repaints only its region; otherwise the page.
+@@ -2855,7 +2738,6 @@
+             var live = interactions.live;
+             refreshes = List.copyOf(live.refreshes);
+             repaintScopes = Map.copyOf(live.scopes);
+-            inputTypography = Map.copyOf(live.typography);
+             var described = new HashMap<>(live.narrations);
+             described.putAll(live.namedNarrations);
+             narrations = Map.copyOf(described);
+@@ -2890,7 +2772,6 @@
+             }
+ 
+             toastOverlay.dirty = true;
+-            paintPreedit(canvas, nextInputRegions, live.typography);
+             rebuildPopupSurface(canvas, nextMenus, nextDialogs, nextHits, layoutWidth, layoutHeight);
+ 
+             hitRegions = List.copyOf(nextHits);
+@@ -3129,7 +3010,7 @@
+         popupPaintState = nextState; popupDirty = false;
+     }
+ 
+-    private void renderPopupOverlay(GuiGraphicsExtractor graphics) {
++    private void renderPopupOverlay(GuiGraphics graphics) {
+         if (popupDirty && surface != null) {
+             var hits = new ArrayList<>(hitRegions);
+             hits.removeAll(popupHits);
+@@ -3143,7 +3024,7 @@
+             graphics.fill(0, 0, width, height, popupBackdrop);
+             graphics.nextStratum();
+         }
+-        graphics.blit(popupSurface.view(), surfaceSampler,
++        PortBlit.draw(graphics, popupSurface.view(), surfaceSampler,
+             Math.round(popupLayoutBounds.x() / layoutScale), Math.round(popupLayoutBounds.y() / layoutScale),
+             Math.round(popupLayoutBounds.right() / layoutScale), Math.round(popupLayoutBounds.bottom() / layoutScale),
+             0, 1, 0, 1);
+@@ -3155,7 +3036,7 @@
+         popupBackdrop = 0; popupDirty = false; popupPaintState = null; popupHits = List.of();
+     }
+ 
+-    private void renderToastOverlay(GuiGraphicsExtractor extractor, long now) {
++    private void renderToastOverlay(GuiGraphics extractor, long now) {
+         if (toastOverlay.dirty) {
+             pruneToasts(now);
+             var pageHits = new ArrayList<>(hitRegions);
+@@ -3172,7 +3053,7 @@
+         if (openDialogId == null && openMenuId == null) toastOverlay.render(extractor, surfaceSampler, layoutScale);
+     }
+ 
+-    private void renderTooltipOverlay(GuiGraphicsExtractor graphics) {
++    private void renderTooltipOverlay(GuiGraphics graphics) {
+         UiTooltip tooltip = hoveredTooltip();
+         boolean shown = tooltipRevealAt == 0 && tooltip != null && surfaceLayoutWidth > 0 && surfaceLayoutHeight > 0
+             && tooltipOverlay.render(graphics, surfaceSampler, tooltip, surface == null ? null : surface.image,
+@@ -3347,9 +3228,7 @@
+ 
+     @Override
+     public void removed() {
+-        preedit = null; preeditBounds = null;
+         worldCaptureRequest++; interactions.worldSnapshot = null;
+-        if (textInputFocused) { textInputFocused = false; Minecraft.getInstance().onTextInputFocusChange(this, false); }
+         pressedId = null; draggingSlider = null; draggingTextInput = null; draggingKey = null;
+         nativeText.clear(); lastNativeTextCount = 0;
+         interactions.scrollEnds.cancelPending();
+--- a/main/dev/pane/ui/UiToastOverlay.java
++++ b/main/dev/pane/ui/UiToastOverlay.java
+@@ -12,7 +12,7 @@
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Optional;
+-import net.minecraft.client.gui.GuiGraphicsExtractor;
++import net.minecraft.client.gui.GuiGraphics;
+ 
+ /** Toast stacks in their own cropped texture, so fades and expiry never repaint the page. */
+ final class UiToastOverlay {
+@@ -123,10 +123,10 @@
+         layoutBounds = new UiRect(area.x(), area.y(), w / quality, h / quality);
+     }
+ 
+-    void render(GuiGraphicsExtractor extractor, GpuSampler sampler, float layoutScale) {
++    void render(GuiGraphics extractor, GpuSampler sampler, float layoutScale) {
+         if (toasts.isEmpty() || surface == null || layoutBounds == null) return;
+         extractor.nextStratum();
+-        extractor.blit(surface.view(), sampler,
++        PortBlit.draw(extractor, surface.view(), sampler,
+             Math.round(layoutBounds.x() / layoutScale), Math.round(layoutBounds.y() / layoutScale),
+             Math.round(layoutBounds.right() / layoutScale), Math.round(layoutBounds.bottom() / layoutScale), 0, 1, 0, 1);
+     }
+--- a/main/dev/pane/ui/UiTooltipOverlay.java
++++ b/main/dev/pane/ui/UiTooltipOverlay.java
+@@ -3,7 +3,7 @@
+ import com.mojang.blaze3d.textures.GpuSampler;
+ import java.awt.Graphics2D;
+ import java.awt.image.BufferedImage;
+-import net.minecraft.client.gui.GuiGraphicsExtractor;
++import net.minecraft.client.gui.GuiGraphics;
+ 
+ /**
+  * Hover tooltip in a small independent texture. Baking one into the full page used to switch
+@@ -19,7 +19,7 @@
+     long allocations;
+ 
+     /** Composites the tooltip, repainting it first when dirty. Returns false when nothing is shown. */
+-    boolean render(GuiGraphicsExtractor graphics, GpuSampler sampler, UiTooltip tooltip, BufferedImage measureImage,
++    boolean render(GuiGraphics graphics, GpuSampler sampler, UiTooltip tooltip, BufferedImage measureImage,
+                    float quality, int layoutWidth, int layoutHeight, float layoutScale, UiTheme theme, UiTooltipStyle style) {
+         if (dirty || surface == null) {
+             if (measureImage == null) bounds = null;
+@@ -27,7 +27,7 @@
+         }
+         if (surface == null || bounds == null) return false;
+         graphics.nextStratum();
+-        graphics.blit(surface.view(), sampler,
++        PortBlit.draw(graphics, surface.view(), sampler,
+             Math.round(bounds.x() / layoutScale), Math.round(bounds.y() / layoutScale),
+             Math.round(bounds.right() / layoutScale), Math.round(bounds.bottom() / layoutScale), 0, 1, 0, 1);
+         return true;
+--- a/main/dev/pane/ui/UiVirtualLists.java
++++ b/main/dev/pane/ui/UiVirtualLists.java
+@@ -17,7 +17,7 @@
+ import java.util.List;
+ import java.util.Map;
+ import java.util.Set;
+-import net.minecraft.client.gui.GuiGraphicsExtractor;
++import net.minecraft.client.gui.GuiGraphics;
+ import net.minecraft.client.renderer.texture.DynamicTexture;
+ 
+ /**
+@@ -201,7 +201,7 @@
+      * Blits the visible rows of every list, optionally limited to a native cover layer.
+      * Returns true when the cached window changed and interaction geometry must be refreshed.
+      */
+-    boolean render(GuiGraphicsExtractor graphics, long now, UiRect overlayClip, float layoutScale) {
++    boolean render(GuiGraphics graphics, long now, UiRect overlayClip, float layoutScale) {
+         boolean interactionsChanged = false;
+         for (Layer layer : layers.values()) {
+             if (ensureRows(layer, now)) interactionsChanged = true;
+@@ -237,7 +237,7 @@
+                     graphics.pose().translate(destination.x(), destination.y());
+                     graphics.pose().scale(destination.width() / drawWidth, destination.height() / drawHeight);
+                     try {
+-                        graphics.blit(layer.atlas.getTextureView(), layer.sampler,
++                        PortBlit.draw(graphics, layer.atlas.getTextureView(), layer.sampler,
+                             0, 0, drawWidth, drawHeight, 0, 1, v0, v1);
+                     } finally {
+                         graphics.pose().popMatrix();
+@@ -268,7 +268,7 @@
+         );
+     }
+ 
+-    private static void drawScrollbar(GuiGraphicsExtractor graphics, Layer layer, float layoutScale) {
++    private static void drawScrollbar(GuiGraphics graphics, Layer layer, float layoutScale) {
+         UiRect viewport = layer.request.viewport;
+         if (layer.request.maxOffset() <= 0) return;
+         float trackHeight = Math.max(0, viewport.height() - 8);
+--- a/main/dev/pane/ui/internal/NativeOpacity.java
++++ b/main/dev/pane/ui/internal/NativeOpacity.java
+@@ -1,6 +1,6 @@
+ package dev.pane.ui.internal;
+ 
+-import net.minecraft.client.renderer.state.gui.pip.OversizedItemRenderState;
++import net.minecraft.client.gui.render.state.pip.OversizedItemRenderState;
+ 
+ /**
+  * Internal extraction scope; state metadata survives deferred rendering without a side cache.
+--- a/test/dev/pane/ui/UiHudReplacementsTest.java
++++ b/test/dev/pane/ui/UiHudReplacementsTest.java
+@@ -21,7 +21,7 @@
+             if(!wrappers.containsKey(id))throw new IllegalArgumentException("Missing element");
+             wrappers.put(id,wrappers.get(id).andThen(wrapper));installs++;
+         }
+-        void draw(Identifier id){wrappers.get(id).apply((g,d)->calls.add("vanilla")).extractRenderState(null,null);}
++        void draw(Identifier id){wrappers.get(id).apply((g,d)->calls.add("vanilla")).render(null,null);}
+     }
+     @Test void overlappingOwnersAndRepeatedTogglesDoNotStackWrappersOrRestoreTooEarly(){
+         var registry=new Registry();var claims=new UiHudReplacements(registry::install);
+@@ -35,9 +35,9 @@
+     }
+     @Test void preservesEarlierAndLaterModWrappersWithoutReinstallingRegistry(){
+         var registry=new Registry();var claims=new UiHudReplacements(registry::install);Object owner=new Object();
+-        registry.install(HOTBAR, original->(g,d)->{registry.calls.add("before");original.extractRenderState(g,d);});
++        registry.install(HOTBAR, original->(g,d)->{registry.calls.add("before");original.render(g,d);});
+         claims.replace(owner,Set.of(HOTBAR),()->true);
+-        registry.install(HOTBAR, original->(g,d)->{registry.calls.add("after");original.extractRenderState(g,d);});
++        registry.install(HOTBAR, original->(g,d)->{registry.calls.add("after");original.render(g,d);});
+         registry.draw(HOTBAR);assertEquals(List.of("after"),registry.calls);
+         registry.calls.clear();claims.remove(owner);registry.draw(HOTBAR);
+         assertEquals(List.of("after","before","vanilla"),registry.calls);assertEquals(3,registry.installs);

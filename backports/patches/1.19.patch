@@ -1,0 +1,29 @@
+--- a/main/dev/pane/ui/PortGraphics.java
++++ b/main/dev/pane/ui/PortGraphics.java
+@@ -16,8 +16,11 @@
+     public int guiWidth() { return Minecraft.getInstance().getWindow().getGuiScaledWidth(); }
+     public int guiHeight() { return Minecraft.getInstance().getWindow().getGuiScaledHeight(); }
+     public void flush() { Minecraft.getInstance().renderBuffers().bufferSource().endBatch(); }
+-    public void enableScissor(int x0, int y0, int x1, int y1) { GuiComponent.enableScissor(x0,y0,x1,y1); }
+-    public void disableScissor() { GuiComponent.disableScissor(); }
++    public void enableScissor(int x0, int y0, int x1, int y1) { var window = Minecraft.getInstance().getWindow();
++        double scale = window.getGuiScale();
++        int x = (int)(x0 * scale), y = (int)(window.getHeight() - y1 * scale);
++        com.mojang.blaze3d.systems.RenderSystem.enableScissor(x, y, Math.max(0, (int)((x1 - x0) * scale)), Math.max(0, (int)((y1 - y0) * scale))); }
++    public void disableScissor() { com.mojang.blaze3d.systems.RenderSystem.disableScissor(); }
+     public void fill(int x0, int y0, int x1, int y1, int color) { GuiComponent.fill(pose, x0,y0,x1,y1,color); }
+     public void fillGradient(int x0, int y0, int x1, int y1, int top, int bottom) {
+         Gradient.paint(pose, x0, y0, x1, y1, top, bottom);
+--- a/main/dev/pane/ui/UiScreen.java
++++ b/main/dev/pane/ui/UiScreen.java
+@@ -820,8 +820,8 @@
+         }
+         toastOverlay.show(toast, document.toastSettings().maxVisible(), System.nanoTime());
+         // Acknowledgements are spoken as they appear, after whatever the narrator is saying.
+-        if (client != null && client.getNarrator().isActive())
+-            client.getNarrator().sayNow(CommonComponents.joinForNarration(Component.literal(toast.title()), Component.literal(toast.message())));
++        if (client != null && net.minecraft.client.gui.chat.NarratorChatListener.INSTANCE.isActive())
++            net.minecraft.client.gui.chat.NarratorChatListener.INSTANCE.sayNow(CommonComponents.joinForNarration(Component.literal(toast.title()), Component.literal(toast.message())));
+     }
+ 
+     /** This client reports only committed input characters. */

@@ -1,0 +1,107 @@
+--- a/main/dev/pane/mixin/GameRendererWorldFrameMixin.java
++++ b/main/dev/pane/mixin/GameRendererWorldFrameMixin.java
+@@ -1,7 +1,6 @@
+ package dev.pane.mixin;
+ 
+ import dev.pane.ui.internal.WorldFrameCapture;
+-import net.minecraft.client.DeltaTracker;
+ import net.minecraft.client.renderer.GameRenderer;
+ import org.spongepowered.asm.mixin.Mixin;
+ import org.spongepowered.asm.mixin.injection.At;
+@@ -10,8 +9,8 @@
+ 
+ @Mixin(GameRenderer.class)
+ abstract class GameRendererWorldFrameMixin {
+-    @Inject(method = "render", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/Gui;render(Lnet/minecraft/client/gui/GuiGraphics;Lnet/minecraft/client/DeltaTracker;)V"))
+-    private void panelib$captureWorld(DeltaTracker deltaTracker, boolean advanceGameTime, CallbackInfo info) {
++    @Inject(method = "render", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/Gui;render(Lnet/minecraft/client/gui/GuiGraphics;F)V"))
++    private void panelib$captureWorld(CallbackInfo info) {
+         WorldFrameCapture.beforeGui(net.minecraft.client.Minecraft.getInstance().getMainRenderTarget());
+     }
+ }
+--- a/main/dev/pane/ui/HudHooks.java
++++ b/main/dev/pane/ui/HudHooks.java
+@@ -24,7 +24,7 @@
+         "demo_timer",
+         "player_health",
+         "mount_health"
+-    ).collect(java.util.stream.Collectors.toUnmodifiableMap(name -> name, ResourceLocation::withDefaultNamespace));
++    ).collect(java.util.stream.Collectors.toUnmodifiableMap(name -> name, ResourceLocation::new));
+     static boolean supports(ResourceLocation id) { return id.equals(ELEMENTS.get(id.getPath())); }
+     public static boolean hidden(String name) { return UiHud.Registry.replacements.hidden(ELEMENTS.get(name)); }
+ }
+--- a/main/dev/pane/ui/PaneClientResources.java
++++ b/main/dev/pane/ui/PaneClientResources.java
+@@ -15,7 +15,7 @@
+         UiHud.Registry.install();
+         ResourceManagerHelper.get(PackType.CLIENT_RESOURCES).registerReloadListener(new SimpleSynchronousResourceReloadListener() {
+             @Override public ResourceLocation getFabricId() {
+-                return ResourceLocation.fromNamespaceAndPath("panelib", "decoded_textures");
++                return new ResourceLocation("panelib", "decoded_textures");
+             }
+             @Override public Collection<ResourceLocation> getFabricDependencies() {
+                 return List.of(ResourceReloadListenerKeys.TEXTURES);
+--- a/main/dev/pane/ui/PlayerPreviewRenderer.java
++++ b/main/dev/pane/ui/PlayerPreviewRenderer.java
+@@ -58,7 +58,7 @@
+             graphics.flush();
+             com.mojang.blaze3d.platform.Lighting.setupForEntityInInventory();
+             var buffers = client.renderBuffers().bufferSource();
+-            model.renderToBuffer(pose, buffers.getBuffer(RenderType.entityTranslucent(chosen.texture())), 0xF000F0, OverlayTexture.NO_OVERLAY);
++            model.renderToBuffer(pose, buffers.getBuffer(RenderType.entityTranslucent(chosen.texture())), 0xF000F0, OverlayTexture.NO_OVERLAY, 1, 1, 1, 1);
+             buffers.endBatch();
+         } finally {
+             com.mojang.blaze3d.platform.Lighting.setupFor3DItems();
+--- a/main/dev/pane/ui/UiRetainedTexture.java
++++ b/main/dev/pane/ui/UiRetainedTexture.java
+@@ -33,7 +33,7 @@
+     }
+ 
+     static ResourceLocation register(DynamicTexture texture) {
+-        ResourceLocation id = ResourceLocation.fromNamespaceAndPath("panelib", "surface/" + nextId++);
++        ResourceLocation id = new ResourceLocation("panelib", "surface/" + nextId++);
+         Minecraft.getInstance().getTextureManager().register(id, texture);
+         texture.setFilter(true, false);
+         return id;
+--- a/main/dev/pane/ui/UiScreen.java
++++ b/main/dev/pane/ui/UiScreen.java
+@@ -1613,7 +1613,7 @@
+         Minecraft client = Minecraft.getInstance();
+         java.net.URI uri;
+         try { uri = new java.net.URI(link.url()); } catch (java.net.URISyntaxException exception) { return false; }
+-        if (client.options.chatLinksPrompt().get()) net.minecraft.client.gui.screens.ConfirmLinkScreen.confirmLinkNow(this, uri, false);
++        if (client.options.chatLinksPrompt().get()) net.minecraft.client.gui.screens.ConfirmLinkScreen.confirmLinkNow(this, uri.toString());
+         else net.minecraft.Util.getPlatform().openUri(uri);
+         return true;
+     }
+--- a/test/dev/pane/ui/UiHudReplacementsTest.java
++++ b/test/dev/pane/ui/UiHudReplacementsTest.java
+@@ -9,8 +9,8 @@
+ import static org.junit.jupiter.api.Assertions.*;
+ 
+ class UiHudReplacementsTest {
+-    private static final ResourceLocation HOTBAR = ResourceLocation.fromNamespaceAndPath("minecraft", "hotbar");
+-    private static final ResourceLocation HEALTH = ResourceLocation.fromNamespaceAndPath("minecraft", "health_bar");
++    private static final ResourceLocation HOTBAR = new ResourceLocation("minecraft", "hotbar");
++    private static final ResourceLocation HEALTH = new ResourceLocation("minecraft", "health_bar");
+     // Fabric composes functions, applying them to the live vanilla callback at extraction time.
+     private static final class Registry {
+         final Map<ResourceLocation, Function<Layer,Layer>> wrappers = new HashMap<>();
+@@ -21,7 +21,7 @@
+             if(!wrappers.containsKey(id))throw new IllegalArgumentException("Missing element");
+             wrappers.put(id,wrappers.get(id).andThen(wrapper));installs++;
+         }
+-        void draw(ResourceLocation id){wrappers.get(id).apply((g,d)->calls.add("vanilla")).render(null,null);}
++        void draw(ResourceLocation id){wrappers.get(id).apply((g,d)->calls.add("vanilla")).render(null,0);}
+     }
+     @Test void overlappingOwnersAndRepeatedTogglesDoNotStackWrappersOrRestoreTooEarly(){
+         var registry=new Registry();var claims=new UiHudReplacements(registry::install);
+@@ -48,7 +48,7 @@
+         claims.replace(owner,Set.of(HEALTH),()->true);
+         registry.draw(HOTBAR);registry.draw(HEALTH);assertEquals(List.of("vanilla"),registry.calls);
+         assertThrows(IllegalArgumentException.class,()->claims.replace(owner,new LinkedHashSet<>(List.of(HOTBAR,
+-            ResourceLocation.fromNamespaceAndPath("missing","element"))),()->true));
++            new ResourceLocation("missing","element"))),()->true));
+         registry.calls.clear();registry.draw(HOTBAR);registry.draw(HEALTH);assertEquals(List.of("vanilla"),registry.calls);
+         claims.replace(owner,Set.of(),()->true);registry.draw(HEALTH);assertEquals(2,registry.calls.size());
+     }

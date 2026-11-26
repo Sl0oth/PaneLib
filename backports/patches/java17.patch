@@ -1,0 +1,936 @@
+--- a/main/dev/pane/ui/NativeTextRenderer.java
++++ b/main/dev/pane/ui/NativeTextRenderer.java
+@@ -36,7 +36,7 @@
+     }
+ 
+     static int fadedColor(int color, float opacity) {
+-        return Math.round((color >>> 24) * Math.clamp(opacity, 0, 1)) << 24 | color & 0xFFFFFF;
++        return Math.round((color >>> 24) * dev.pane.ui.UiClamp.clamp(opacity, 0, 1)) << 24 | color & 0xFFFFFF;
+     }
+ 
+     boolean render(GuiGraphics graphics, String id, NativeBounds box, double guiScale,
+--- a/main/dev/pane/ui/PlayerPreviewRenderer.java
++++ b/main/dev/pane/ui/PlayerPreviewRenderer.java
+@@ -34,7 +34,7 @@
+         }
+         return new Frame(x, y, width, height, size,
+             width * (options.feetX() - .5F) / size, height * (options.feetY() - .5F) / size,
+-            Math.clamp(yaw, -90, 90), Math.clamp(pitch, -90, 90));
++            dev.pane.ui.UiClamp.clamp(yaw, -90, 90), dev.pane.ui.UiClamp.clamp(pitch, -90, 90));
+     }
+ 
+     static void render(GuiGraphics graphics, Frame frame, PlayerSkin skin, UiPlayerPreview options) {
+--- a/main/dev/pane/ui/UiBands.java
++++ b/main/dev/pane/ui/UiBands.java
+@@ -229,7 +229,7 @@
+         for (int i = 1; i < bands; i++) {
+             int edge = top + (int) ((long) (bottom - top) * i / bands);
+             if (grid > 0) edge = origin + Math.floorDiv(edge - origin, grid) * grid;
+-            edges[i] = Math.clamp(edge, edges[i - 1], edges[bands]);
++            edges[i] = dev.pane.ui.UiClamp.clamp(edge, edges[i - 1], edges[bands]);
+         }
+         Graphics2D[] workers = new Graphics2D[bands];
+         try {
+--- a/main/dev/pane/ui/UiCanvas.java
++++ b/main/dev/pane/ui/UiCanvas.java
+@@ -160,7 +160,7 @@
+         graphics.setColor(awtColor(color));
+         float limit = Math.min(width, height) / 2;
+         UiBands.fill(graphics, cornerShape(x, y, width, height, topLeft, topRight, bottomRight, bottomLeft),
+-            y + Math.clamp(Math.max(topLeft, topRight), 0, limit), y + height - Math.clamp(Math.max(bottomLeft, bottomRight), 0, limit));
++            y + dev.pane.ui.UiClamp.clamp(Math.max(topLeft, topRight), 0, limit), y + height - dev.pane.ui.UiClamp.clamp(Math.max(bottomLeft, bottomRight), 0, limit));
+     }
+ 
+     /** Outlines a rounded rectangle; the stroke lies wholly inside the given bounds. */
+@@ -430,7 +430,7 @@
+         for (int i = 0; i < samples; i++) {
+             double distance = i / 16D - .5, clear = 1;
+             for (int ring = 0; ring < grow.length; ring++)
+-                clear *= 1 - opacity * alpha[ring] / 255D * Math.clamp(.5 - distance + grow[ring] * scale, 0, 1);
++                clear *= 1 - opacity * alpha[ring] / 255D * dev.pane.ui.UiClamp.clamp(.5 - distance + grow[ring] * scale, 0, 1);
+             lookup[i] = (int) Math.round((1 - clear) * 255) << 24 | color & 0xFFFFFF;
+         }
+         if (caster != null) {
+@@ -460,7 +460,7 @@
+                 }
+                 double qx = Math.abs(area.x + column + .5 - centerX) - innerW, dx = Math.max(qx, 0);
+                 double distance = Math.sqrt(dx * dx + dy * dy) + Math.min(Math.max(qx, qy), 0) - corner;
+-                pixels[row * stride + column] = lookup[(int) Math.clamp(Math.round((distance + .5) * 16), 0, samples - 1)];
++                pixels[row * stride + column] = lookup[(int) dev.pane.ui.UiClamp.clamp(Math.round((distance + .5) * 16), 0, samples - 1)];
+             }
+         }
+         Graphics2D output = (Graphics2D) graphics.create();
+@@ -519,11 +519,11 @@
+                             double px = band.x + column + .5;
+                             double cqx = Math.abs(px - cx) - cInnerW, cdx = Math.max(cqx, 0);
+                             double casterDistance = Math.sqrt(cdx * cdx + cdy * cdy) + Math.min(Math.max(cqx, cqy), 0) - casterCorner;
+-                            double visible = Math.clamp(casterDistance + .5, 0, 1);
++                            double visible = dev.pane.ui.UiClamp.clamp(casterDistance + .5, 0, 1);
+                             if (visible <= 0) continue;
+                             double qx = Math.abs(px - centerX) - innerW, dx = Math.max(qx, 0);
+                             double distance = Math.sqrt(dx * dx + dy * dy) + Math.min(Math.max(qx, qy), 0) - corner;
+-                            int value = lookup[(int) Math.clamp(Math.round((distance + .5) * 16), 0, samples - 1)];
++                            int value = lookup[(int) dev.pane.ui.UiClamp.clamp(Math.round((distance + .5) * 16), 0, samples - 1)];
+                             pixels[row * bandWidth + column] = visible >= 1 ? value : (int) Math.round((value >>> 24) * visible) << 24 | value & 0xFFFFFF;
+                         }
+                     });
+--- /dev/null
++++ b/main/dev/pane/ui/UiClamp.java
+@@ -0,0 +1,18 @@
++package dev.pane.ui;
++
++/** Math.clamp overloads used by the Java 17 build. */
++public final class UiClamp {
++    private UiClamp() {}
++    public static int clamp(long value, int low, int high) {
++        if (low > high) throw new IllegalArgumentException("Inverted range");
++        return (int) Math.max(low, Math.min(value, high));
++    }
++    public static float clamp(float value, float low, float high) {
++        if (Float.compare(low, high) > 0 || Float.isNaN(low) || Float.isNaN(high)) throw new IllegalArgumentException("Invalid range");
++        return Math.max(low, Math.min(value, high));
++    }
++    public static double clamp(double value, double low, double high) {
++        if (Double.compare(low, high) > 0 || Double.isNaN(low) || Double.isNaN(high)) throw new IllegalArgumentException("Invalid range");
++        return Math.max(low, Math.min(value, high));
++    }
++}
+--- a/main/dev/pane/ui/UiContext.java
++++ b/main/dev/pane/ui/UiContext.java
+@@ -1262,7 +1262,7 @@
+     public String tabs(String id, String key, List<UiSelectOption> items, float x, float y,
+                        float width, float height, String fallback) {
+         if (items == null || items.isEmpty()) return fallback == null ? "" : fallback;
+-        String selected = stringValue(key, fallback == null ? items.getFirst().value() : fallback);
++        String selected = stringValue(key, fallback == null ? items.get(0).value() : fallback);
+         state.putIfAbsent(key, selected);
+         float itemWidth = width / items.size();
+         canvas.roundRect(theme.surface(), x, y, width, height, Math.min(theme.smallRadius(), height / 2));
+@@ -1717,7 +1717,7 @@
+     private record Selection(String value, String label, String itemId, List<UiMenuItem> items) { }
+ 
+     private Selection selection(String key, String fallback, List<UiSelectOption> options) {
+-        String selected = stringValue(key, fallback == null ? options.getFirst().value() : fallback);
++        String selected = stringValue(key, fallback == null ? options.get(0).value() : fallback);
+         state.putIfAbsent(key, selected);
+         String label = selected;
+         String selectedItemId = null;
+--- a/main/dev/pane/ui/UiDialogLayout.java
++++ b/main/dev/pane/ui/UiDialogLayout.java
+@@ -26,7 +26,7 @@
+         return lines.isEmpty()?1:Math.max(1,lines.get(Math.min(firstVisible(offset),lines.size()-1)).height());
+     }
+     float maxOffset() { return Math.max(0, contentHeight-content.height()); }
+-    float clamp(float offset) { return Math.clamp(offset,0,maxOffset()); }
++    float clamp(float offset) { return dev.pane.ui.UiClamp.clamp(offset,0,maxOffset()); }
+     static UiDialogLayout measure(UiCanvas canvas, UiDialog dialog, String family, float screenWidth, float screenHeight) {
+         UiDialogStyle style=dialog.style()==null?DEFAULT_STYLE:dialog.style();
+         var titleText=new Typography(family(style.titleFontFamily(),style.fontFamily(),family),style.titleSize(),style.titleFontStyle(),style.titleLineSpacing());
+--- a/main/dev/pane/ui/UiDocument.java
++++ b/main/dev/pane/ui/UiDocument.java
+@@ -47,7 +47,7 @@
+         for (UiPage page : pages) {
+             if (!pageIds.add(page.id())) throw new IllegalArgumentException("Duplicate page ID: " + page.id());
+         }
+-        initialPageId = builder.initialPageId == null ? pages.getFirst().id() : builder.initialPageId;
++        initialPageId = builder.initialPageId == null ? pages.get(0).id() : builder.initialPageId;
+         if (page(initialPageId) == null) throw new IllegalStateException("Unknown initial page: " + initialPageId);
+     }
+ 
+--- a/main/dev/pane/ui/UiEditorViewport.java
++++ b/main/dev/pane/ui/UiEditorViewport.java
+@@ -23,14 +23,14 @@
+             if(caretTop<offset)offset=caretTop;
+             else if(caretTop+caretHeight>offset+nextHeight)offset=caretTop+caretHeight-nextHeight;
+         }
+-        offset=Math.clamp(offset,0,maximum);
++        offset=dev.pane.ui.UiClamp.clamp(offset,0,maximum);
+         value=nextValue;cursor=nextCursor;upstream=nextUpstream;wasFocused=focused;
+         width=nextWidth;height=nextHeight;reveal=false;stale=false;pointerPlacement=false;
+         previousCaretTop=caretTop;previousCaretHeight=caretHeight;previousLineHeight=lineHeight;
+         return offset;
+     }
+     boolean scroll(double amount) {
+-        float next=(float)Math.clamp(offset-amount*step,0,maximum);
++        float next=(float)dev.pane.ui.UiClamp.clamp(offset-amount*step,0,maximum);
+         if(next==offset)return false;
+         offset=next;stale=true;return true;
+     }
+--- a/main/dev/pane/ui/UiHudInput.java
++++ b/main/dev/pane/ui/UiHudInput.java
+@@ -105,7 +105,7 @@
+             String key = parts[3];
+             double current = values.get(key) instanceof Number n && Double.isFinite(n.doubleValue()) ? n.doubleValue() : minimum;
+             double step = Math.abs(delta);
+-            double next = Math.clamp(minimum + Math.rint((current + delta - minimum) / step) * step, minimum, maximum);
++            double next = dev.pane.ui.UiClamp.clamp(minimum + Math.rint((current + delta - minimum) / step) * step, minimum, maximum);
+             return Objects.equals(values.put(key, next), next) ? null : key;
+         }
+         if (action.startsWith("select:")) {
+--- a/main/dev/pane/ui/UiInputRegion.java
++++ b/main/dev/pane/ui/UiInputRegion.java
+@@ -55,13 +55,13 @@
+     Caret verticalCaret(int cursor, boolean upstream, int direction, float preferredX) {
+         if (lines.isEmpty()) return new Caret(verticalCaret(cursor, direction, preferredX), false);
+         int current = visualLine(cursor, upstream);
+-        int next = Math.clamp(current + direction, 0, lines.size() - 1);
++        int next = dev.pane.ui.UiClamp.clamp(current + direction, 0, lines.size() - 1);
+         return next == current ? new Caret(cursor, upstream) : nearest(lines.get(next), preferredX);
+     }
+     Caret pageCaret(int cursor, boolean upstream, int direction, float preferredX, float viewportHeight) {
+         if (lines.isEmpty()) return verticalCaret(cursor, upstream, direction, preferredX);
+         int current = visualLine(cursor, upstream);
+-        float lineHeight = lines.size() > 1 ? Math.abs(lines.get(1).y() - lines.getFirst().y()) : viewportHeight;
++        float lineHeight = lines.size() > 1 ? Math.abs(lines.get(1).y() - lines.get(0).y()) : viewportHeight;
+         float distance = Math.max(lineHeight, viewportHeight - lineHeight);
+         float targetY = lines.get(current).y() + direction * distance;
+         int best = current;
+@@ -98,15 +98,15 @@
+     Caret caretPositionAt(float x, float y) {
+         if (toLocal != null) { var point = local(x, y); x = point.x; y = point.y; }
+         if (lines.isEmpty()) return new Caret(caretAt(x, y), false);
+-        UiTextLine best = lines.getFirst();
++        UiTextLine best = lines.get(0);
+         for (UiTextLine line : lines) if (Math.abs(line.y() - y) < Math.abs(best.y() - y)) best = line;
+         return nearest(best, x);
+     }
+ 
+-    float caretX(int cursor) { return caretXs[Math.clamp(cursor, 0, caretXs.length - 1)]; }
++    float caretX(int cursor) { return caretXs[dev.pane.ui.UiClamp.clamp(cursor, 0, caretXs.length - 1)]; }
+ 
+     int lineEdge(int cursor, boolean end) {
+-        cursor = Math.clamp(cursor, 0, caretYs.length - 1);
++        cursor = dev.pane.ui.UiClamp.clamp(cursor, 0, caretYs.length - 1);
+         int result = cursor;
+         for (int i = 0; i < caretYs.length; i++) {
+             if (Float.isFinite(caretXs[i]) && caretYs[i] == caretYs[cursor]
+@@ -116,7 +116,7 @@
+     }
+ 
+     int verticalCaret(int cursor, int direction, float preferredX) {
+-        cursor = Math.clamp(cursor, 0, caretYs.length - 1);
++        cursor = dev.pane.ui.UiClamp.clamp(cursor, 0, caretYs.length - 1);
+         float y = caretYs[cursor], nextY = direction < 0 ? -Float.MAX_VALUE : Float.MAX_VALUE;
+         for (int i = 0; i < caretYs.length; i++) {
+             if (!Float.isFinite(caretXs[i])) continue;
+--- a/main/dev/pane/ui/UiInteractionState.java
++++ b/main/dev/pane/ui/UiInteractionState.java
+@@ -114,7 +114,7 @@
+             double delta = start(reachable, across) < start(viewport, across) ? start(reachable, across) - start(viewport, across)
+                 : end(reachable, across) > end(viewport, across) ? end(reachable, across) - end(viewport, across) : 0;
+             if (size(reachable, across) > size(viewport, across)) delta = start(reachable, across) - start(viewport, across);
+-            double next = Math.clamp(ancestor.offset + delta, 0, ancestor.region.maxOffset());
++            double next = dev.pane.ui.UiClamp.clamp(ancestor.offset + delta, 0, ancestor.region.maxOffset());
+             reachable = move(reachable, across, (float) (ancestor.offset - next));
+         }
+         targets.put(hit.id(), new Target(new UiHitRegion(hit.id(), hit.action(), bounds.x(), bounds.y(),
+@@ -149,7 +149,7 @@
+             double delta = start(bounds, across) - padding < start(viewport, across) ? start(bounds, across) - padding - start(viewport, across)
+                 : end(bounds, across) + padding > end(viewport, across) ? end(bounds, across) + padding - end(viewport, across) : 0;
+             if (size(bounds, across) > size(viewport, across)) delta = start(bounds, across) - start(viewport, across);
+-            double next = Math.clamp(old + delta, 0, scroll.maxOffset());
++            double next = dev.pane.ui.UiClamp.clamp(old + delta, 0, scroll.maxOffset());
+             if (next != old) {
+                 scrollEnds.navigate(scroll.id(), next);
+                 offsets.put(scroll.id(), next); changed.add(scroll.id());
+--- a/main/dev/pane/ui/UiPopupLayout.java
++++ b/main/dev/pane/ui/UiPopupLayout.java
+@@ -13,8 +13,8 @@
+         float available = Math.max(.01F, screenHeight - marginY * 2);
+         float content = itemCount * rowHeight;
+         float desiredHeight = content + style.paddingY() * 2;
+-        float below = Math.clamp(anchor.bottom() + 5, marginY, screenHeight - marginY);
+-        float above = Math.clamp(anchor.y() - 5, marginY, screenHeight - marginY);
++        float below = dev.pane.ui.UiClamp.clamp(anchor.bottom() + 5, marginY, screenHeight - marginY);
++        float above = dev.pane.ui.UiClamp.clamp(anchor.y() - 5, marginY, screenHeight - marginY);
+         float belowSpace = screenHeight - marginY - below, aboveSpace = above - marginY;
+         float height, y;
+         if (desiredHeight <= belowSpace) { height = desiredHeight; y = below; }
+@@ -25,12 +25,12 @@
+             y = useBelow ? below : above - height;
+         } else { height = Math.min(available, desiredHeight); y = marginY; }
+         float pad = Math.min(style.paddingY(), height / 4);
+-        float x = Math.clamp(anchor.x(), marginX, Math.max(marginX, screenWidth - width - marginX));
++        float x = dev.pane.ui.UiClamp.clamp(anchor.x(), marginX, Math.max(marginX, screenWidth - width - marginX));
+         UiRect frame = new UiRect(x, y, width, height);
+         return new UiPopupLayout(frame, new UiRect(x, y + pad, width, height - pad * 2), content, rowHeight);
+     }
+     float maxOffset() { return Math.max(0, contentHeight - viewport.height()); }
+-    float clamp(float offset) { return Math.clamp(offset, 0, maxOffset()); }
++    float clamp(float offset) { return dev.pane.ui.UiClamp.clamp(offset, 0, maxOffset()); }
+     float reveal(float offset, int row) {
+         float top = row * rowHeight, bottom = top + rowHeight;
+         if (top < offset) offset = top;
+--- a/main/dev/pane/ui/UiScreen.java
++++ b/main/dev/pane/ui/UiScreen.java
+@@ -476,7 +476,7 @@
+         focusScopes.addLast(new FocusScope(id, allowed, restore, onEscape == null ? () -> { } : onEscape));
+         pressedId = null; draggingSlider = null; draggingTextInput = null; draggingKey = null;
+         focus(null);
+-        pendingFocus = new FocusRestore(initialFocus == null ? controls.getFirst() : initialFocus, -1, -1);
++        pendingFocus = new FocusRestore(initialFocus == null ? controls.get(0) : initialFocus, -1, -1);
+         requestFullRepaint();
+     }
+     /** Opens a modal focus scope: Tab and the pointer reach only {@code controls} until {@link #popFocusScope} closes it. */
+@@ -1888,7 +1888,7 @@
+             double current = state.get(key) instanceof Number n && Double.isFinite(n.doubleValue()) ? n.doubleValue() : minimum;
+             // Whole steps of the step size from the minimum, so repeated clicks never drift.
+             double step = Math.abs(delta);
+-            double next = Math.clamp(minimum + Math.rint((current + delta - minimum) / step) * step, minimum, maximum);
++            double next = dev.pane.ui.UiClamp.clamp(minimum + Math.rint((current + delta - minimum) / step) * step, minimum, maximum);
+             Object previous = state.put(key, next);
+             repaintForKey(key);
+             if (!Objects.equals(previous, next)) eventListener.onEvent("value", key, Double.toString(next));
+@@ -1939,7 +1939,7 @@
+         SliderRange range = SliderRange.from(target);
+         Object stored = state.get(range.key());
+         double current = stored instanceof Number n && Double.isFinite(n.doubleValue())
+-            ? Math.clamp(n.doubleValue(), range.minimum(), range.maximum()) : range.minimum();
++            ? dev.pane.ui.UiClamp.clamp(n.doubleValue(), range.minimum(), range.maximum()) : range.minimum();
+         double step = (range.maximum() - range.minimum()) / 100;
+         double next;
+         switch (event.key()) {
+@@ -1951,7 +1951,7 @@
+             case GLFW.GLFW_KEY_END -> next = range.maximum();
+             default -> { return false; }
+         }
+-        setSliderValue(range, Math.clamp(next, range.minimum(), range.maximum()));
++        setSliderValue(range, dev.pane.ui.UiClamp.clamp(next, range.minimum(), range.maximum()));
+         return true;
+     }
+ 
+@@ -2252,7 +2252,7 @@
+         int step = page && menuLayout != null ? Math.max(1, (int)(menuLayout.viewport().height() / menuLayout.rowHeight())) : 1;
+         int next = key == GLFW.GLFW_KEY_HOME ? 0 : key == GLFW.GLFW_KEY_END ? items.size() - 1
+             : current < 0 ? (reverse ? items.size() - 1 : 0)
+-            : page ? Math.clamp(current + (reverse ? -step : step), 0, items.size() - 1)
++            : page ? dev.pane.ui.UiClamp.clamp(current + (reverse ? -step : step), 0, items.size() - 1)
+             : Math.floorMod(current + (reverse ? -1 : 1), items.size());
+         // Disabled rows are skipped in the direction of travel; a menu with none enabled keeps focus.
+         boolean forward = !reverse || key == GLFW.GLFW_KEY_HOME;
+--- a/main/dev/pane/ui/UiScrollEndState.java
++++ b/main/dev/pane/ui/UiScrollEndState.java
+@@ -46,7 +46,7 @@
+         }
+         if (entry.navigationTarget != null && Math.abs(offset - entry.navigationTarget) < .001)
+             entry.navigationTarget = null;
+-        return Math.clamp(offset, 0, maximum);
++        return dev.pane.ui.UiClamp.clamp(offset, 0, maximum);
+     }
+     Set<String> takeResolved() { Set<String> result = Set.copyOf(resolved); resolved.clear(); return result; }
+     /** Page/removal boundaries cancel unfinished commands but retain each ID's offset semantics. */
+--- a/main/dev/pane/ui/UiShapedText.java
++++ b/main/dev/pane/ui/UiShapedText.java
+@@ -39,7 +39,7 @@
+         for(int i=0;i<=length;i++)carets[i]=positions[i*2];
+         return new UiShapedText(glyphs,ascent,carets);
+     }
+-    float x(int index){return carets[Math.clamp(index,0,carets.length-1)];}
++    float x(int index){return carets[dev.pane.ui.UiClamp.clamp(index,0,carets.length-1)];}
+     float width(){return glyphs!=null?carets[carets.length-1]:layout==null?0:layout.getAdvance();}
+     record Line(int start,int end,UiShapedText text) { }
+ }
+--- a/main/dev/pane/ui/UiTextBoundary.java
++++ b/main/dev/pane/ui/UiTextBoundary.java
+@@ -36,8 +36,8 @@
+             for (int at = iterator.first(); at != java.text.BreakIterator.DONE; at = iterator.next())
+                 boundaries.set(at);
+         }
+-        int floor(int index) { return boundaries.previousSetBit(Math.clamp(index, 0, length)); }
+-        int ceil(int index) { return boundaries.nextSetBit(Math.clamp(index, 0, length)); }
++        int floor(int index) { return boundaries.previousSetBit(dev.pane.ui.UiClamp.clamp(index, 0, length)); }
++        int ceil(int index) { return boundaries.nextSetBit(dev.pane.ui.UiClamp.clamp(index, 0, length)); }
+         int previous(int index) { int at = floor(index); return at == 0 ? 0 : boundaries.previousSetBit(at - 1); }
+         int next(int index) { int at = floor(index); return at == length ? length : boundaries.nextSetBit(at + 1); }
+         boolean contains(int index) { return index >= 0 && index <= length && boundaries.get(index); }
+--- a/main/dev/pane/ui/UiTextLine.java
++++ b/main/dev/pane/ui/UiTextLine.java
+@@ -4,7 +4,7 @@
+ record UiTextLine(int start, int end, float[] xs, float y) {
+     UiTextLine { xs = xs.clone(); }
+     @Override public float[] xs() { return xs.clone(); }
+-    float x(int index) { return xs[Math.clamp(index - start, 0, xs.length - 1)]; }
++    float x(int index) { return xs[dev.pane.ui.UiClamp.clamp(index - start, 0, xs.length - 1)]; }
+     UiTextLine translate(float dx, float dy) {
+         if (dx == 0 && dy == 0) return this;
+         if (dx == 0) return new UiTextLine(start, end, xs, y + dy);
+--- a/main/dev/pane/ui/UiTimeline.java
++++ b/main/dev/pane/ui/UiTimeline.java
+@@ -31,7 +31,7 @@
+     /** Total length in milliseconds. */
+     public int durationMillis() { return duration; }
+     /** The value at the end. */
+-    public float endValue() { return steps.isEmpty() ? from : steps.getLast().target; }
++    public float endValue() { return steps.isEmpty() ? from : steps.get(steps.size() - 1).target; }
+     float startValue() { return from; }
+     UiTimeline from(float value) { return new UiTimeline(value, steps); }
+ 
+--- a/main/dev/pane/ui/UiToastOverlay.java
++++ b/main/dev/pane/ui/UiToastOverlay.java
+@@ -35,7 +35,7 @@
+     /** Supplying an id already shown replaces that toast; the oldest leave beyond {@code maxVisible}. */
+     void show(UiToast toast, int maxVisible, long now) {
+         toasts.removeIf(candidate -> candidate.toast().id().equals(toast.id()));
+-        while (toasts.size() >= maxVisible) toasts.removeFirst();
++        while (toasts.size() >= maxVisible) toasts.remove(0);
+         toasts.add(new Active(toast, now));
+         dirty = true;
+     }
+--- a/main/dev/pane/ui/internal/NativeOpacity.java
++++ b/main/dev/pane/ui/internal/NativeOpacity.java
+@@ -13,7 +13,7 @@
+     /** Runs {@code draw} with native draws recorded at the current opacity times {@code opacity}. */
+     public static void with(float opacity, Runnable draw) {
+         float previous = CURRENT.get();
+-        CURRENT.set(previous * Math.clamp(opacity, 0, 1));
++        CURRENT.set(previous * dev.pane.ui.UiClamp.clamp(opacity, 0, 1));
+         try { draw.run(); } finally { CURRENT.set(previous); }
+     }
+     /** The opacity a deferred Minecraft draw state was recorded with, or 1. */
+--- a/test/dev/pane/ui/EditorPaintBenchmark.java
++++ b/test/dev/pane/ui/EditorPaintBenchmark.java
+@@ -34,7 +34,7 @@
+         boolean cpuAvailable = bean.isCurrentThreadCpuTimeSupported() && bean.isThreadCpuTimeEnabled();
+         boolean allocationAvailable = allocations != null && allocations.isThreadAllocatedMemorySupported()
+             && allocations.isThreadAllocatedMemoryEnabled();
+-        long thread = Thread.currentThread().threadId();
++        long thread = Thread.currentThread().getId();
+         String metadata = "{\"type\":\"environment\",\"java\":" + quote(System.getProperty("java.runtime.version"))
+             + ",\"os\":" + quote(System.getProperty("os.name")) + ",\"arch\":" + quote(System.getProperty("os.arch"))
+             + ",\"font\":" + quote(new Font(FAMILY, Font.PLAIN, 12).getFontName(Locale.ROOT))
+--- a/test/dev/pane/ui/PagePaintBenchmark.java
++++ b/test/dev/pane/ui/PagePaintBenchmark.java
+@@ -21,7 +21,7 @@
+         int measured = args.length > 1 ? Integer.parseInt(args[1]) : 60;
+         var bean = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
+         if (!bean.isThreadAllocatedMemoryEnabled()) bean.setThreadAllocatedMemoryEnabled(true);
+-        long thread = Thread.currentThread().threadId();
++        long thread = Thread.currentThread().getId();
+         var image = new BufferedImage((int) (LAYOUT_W * QUALITY), (int) (LAYOUT_H * QUALITY), BufferedImage.TYPE_INT_ARGB);
+         int[] pixels = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
+         var state = new HashMap<String, Object>();
+--- a/test/dev/pane/ui/PixelTransferBenchmark.java
++++ b/test/dev/pane/ui/PixelTransferBenchmark.java
+@@ -12,7 +12,7 @@
+         var memory = (com.sun.management.ThreadMXBean) ManagementFactory.getThreadMXBean();
+         boolean allocations = memory.isThreadAllocatedMemorySupported();
+         if (allocations && !memory.isThreadAllocatedMemoryEnabled()) memory.setThreadAllocatedMemoryEnabled(true);
+-        long thread = Thread.currentThread().threadId();
++        long thread = Thread.currentThread().getId();
+         System.out.printf("PIXEL_ENV java=%s os=%s arch=%s warmup=%d samples=%d batch=%d%n",
+             System.getProperty("java.runtime.version"),System.getProperty("os.name"),System.getProperty("os.arch"),ROUNDS,ROUNDS,BATCH);
+         var random = new Random(25);
+--- a/test/dev/pane/ui/UiCanvasTextTest.java
++++ b/test/dev/pane/ui/UiCanvasTextTest.java
+@@ -21,7 +21,7 @@
+             UiCanvas canvas = new UiCanvas(graphics);
+             List<String> lines = canvas.wrapText("one two three\nfour supercalifragilistic", 42, 10,
+                 Font.PLAIN, UiCanvas.SANS);
+-            assertEquals("one two", lines.getFirst());
++            assertEquals("one two", lines.get(0));
+             assertFalse(lines.stream().anyMatch(line -> canvas.textWidth(line, 10, Font.PLAIN) > 42.01F));
+         } finally {
+             graphics.dispose();
+@@ -50,7 +50,7 @@
+     void richTextIsOptInAndPreservesMinecraftStyles() {
+         UiRichText plain = UiRichText.plain("§aLiteral &ltext");
+         assertEquals("§aLiteral &ltext", plain.plainText());
+-        assertEquals("§aLiteral &ltext", plain.spans().getFirst().text());
++        assertEquals("§aLiteral &ltext", plain.spans().get(0).text());
+ 
+         UiRichText legacy = UiRichText.legacy("§aGreen §lBold §oItalic §nUnder §mStrike §rPlain ✦");
+         assertEquals("Green Bold Italic Under Strike Plain ✦", legacy.plainText());
+--- a/test/dev/pane/ui/UiContextTransformTest.java
++++ b/test/dev/pane/ui/UiContextTransformTest.java
+@@ -88,14 +88,14 @@
+                     inner -> inner.hit("clipped", "go", 60, 60, 40, 40));
+             }));
+             assertEquals(0xFFFFFFFF, image.getRGB(110, 10));
+-            assertEquals(105, hits.getFirst().x());
++            assertEquals(105, hits.get(0).x());
+             assertEquals(2, hits.size());
+-            assertEquals(20, hits.getLast().width());
+-            assertEquals(new UiRect(100, 0, 80, 80), scrolls.getFirst().viewport());
+-            org.junit.jupiter.api.Assertions.assertTrue(scrolls.getFirst().contains(110, 10));
+-            org.junit.jupiter.api.Assertions.assertFalse(scrolls.getFirst().contains(10, 10));
+-            org.junit.jupiter.api.Assertions.assertFalse(scrolls.getLast().contains(190, 90));
+-            assertEquals(120, scrolls.getLast().maxOffset()); // Clipping must not change scroll range.
++            assertEquals(20, hits.get(hits.size() - 1).width());
++            assertEquals(new UiRect(100, 0, 80, 80), scrolls.get(0).viewport());
++            org.junit.jupiter.api.Assertions.assertTrue(scrolls.get(0).contains(110, 10));
++            org.junit.jupiter.api.Assertions.assertFalse(scrolls.get(0).contains(10, 10));
++            org.junit.jupiter.api.Assertions.assertFalse(scrolls.get(scrolls.size() - 1).contains(190, 90));
++            assertEquals(120, scrolls.get(scrolls.size() - 1).maxOffset()); // Clipping must not change scroll range.
+         } finally { graphics.dispose(); }
+     }
+ 
+@@ -118,8 +118,8 @@
+             context.withLayer(new UiLayer(), 0, new UiRect(0, 0, 40, 40),
+                 group -> group.hit("hidden", "open", 0, 0, 10, 10));
+             assertEquals(1, hits.size());
+-            assertEquals(15, hits.getFirst().x());
+-            assertEquals(9, hits.getFirst().y());
++            assertEquals(15, hits.get(0).x());
++            assertEquals(9, hits.get(0).y());
+             assertEquals(128, image.getRGB(16, 10) >>> 24, 1);
+         } finally { graphics.dispose(); }
+     }
+@@ -146,10 +146,10 @@
+             });
+ 
+             assertEquals(0xFFFFFFFF, image.getRGB(13, 10));
+-            assertEquals(new UiHitRegion("card", "open", 13, 10, 4, 5, 13, 4), hits.getFirst());
++            assertEquals(new UiHitRegion("card", "open", 13, 10, 4, 5, 13, 4), hits.get(0));
+             assertEquals(new NativeBounds(13, 10, 4, 5), nativeBounds.get("item"));
+             assertEquals(new UiRect(12, 9, 8, 9), nativeOverlayLayers.get("sheet"));
+-            assertEquals(new UiTooltip("card", "Open card", new UiRect(13, 10, 4, 5)), tooltips.getFirst());
++            assertEquals(new UiTooltip("card", "Open card", new UiRect(13, 10, 4, 5)), tooltips.get(0));
+         } finally {
+             graphics.dispose();
+         }
+--- a/test/dev/pane/ui/UiControlCustomizationTest.java
++++ b/test/dev/pane/ui/UiControlCustomizationTest.java
+@@ -34,8 +34,8 @@
+             ui.withTranslation(20,10,child -> child.paintedButton("field","Archive","archive",10,10,70,30,4,true,(c,s)->{
+                 assertTrue(s.focused());assertTrue(s.hovered());assertTrue(s.pressed());c.fill(0xFFFFFFFF,10,10,70,30);
+             }));
+-            assertEquals(30,hits.getFirst().x());assertEquals("archive",hits.getFirst().action());
+-            assertEquals("Archive",tips.getFirst().text());assertEquals("Archive",interactions.buttons.get("field").label());
++            assertEquals(30,hits.get(0).x());assertEquals("archive",hits.get(0).action());
++            assertEquals("Archive",tips.get(0).text());assertEquals("Archive",interactions.buttons.get("field").label());
+             ui.paintedButton("off","Disabled","off",100,10,70,30,4,false,(c,s)->{
+                 assertFalse(s.hovered());assertFalse(s.pressed());assertFalse(s.focused());c.fill(0xFFFFFFFF,100,10,70,30);
+             });
+@@ -76,7 +76,7 @@
+                 new UiTextInputState(null,0,0),null),output);
+             assertEquals("Row action",output.buttons().get("row2").label());
+             assertEquals(UiNarration.of(UiNarration.Role.BUTTON,"Row action"),output.narrations().get("row2"),"a row's controls carry their narration out of the row");
+-            assertEquals("row2",output.hits().getFirst().id());
++            assertEquals("row2",output.hits().get(0).id());
+         } finally {g.dispose();}
+     }
+     private record Rendered(BufferedImage image,float[] carets) {}
+@@ -87,7 +87,7 @@
+             if(kind==0)ui.textField("field","value","",10,10,160,40,"abc",30,style);
+             else if(kind==1)ui.passwordField("field","value","",10,10,160,40,"abc",30,style);
+             else ui.textArea("field","value","",10,10,160,80,"abc",30,style);
+-            return new Rendered(image,inputs.getFirst().caretXs());
++            return new Rendered(image,inputs.get(0).caretXs());
+         } finally {g.dispose();}
+     }
+     private UiContext context(UiCanvas c,List<UiHitRegion> hits,List<UiInputRegion> inputs,List<UiTooltip> tips,boolean focus) {
+--- a/test/dev/pane/ui/UiDialogTypographyTest.java
++++ b/test/dev/pane/ui/UiDialogTypographyTest.java
+@@ -46,7 +46,7 @@
+                 String text=line.text().stripTrailing();
+                 assertTrue(typography.width(c,text)<=l.content().width()-6+.01F||text.codePointCount(0,text.length())<=1);
+             }
+-            assertEquals(l.lines().getLast().top()+l.lines().getLast().height(),l.contentHeight());
++            assertEquals(l.lines().get(l.lines().size() - 1).top()+l.lines().get(l.lines().size() - 1).height(),l.contentHeight());
+             assertTrue(l.maxOffset()>0);assertEquals(l.maxOffset(),l.clamp(Float.MAX_VALUE));
+         });
+     }
+--- a/test/dev/pane/ui/UiEaseOfUseTest.java
++++ b/test/dev/pane/ui/UiEaseOfUseTest.java
+@@ -78,7 +78,7 @@
+             explicit.ui().textField("name", "name", "Name", 10, 10, 200, 30, "Steve", 256, input);
+             explicit.ui().dropdown("kind", "kind", 10, 60, 200, 30, "a", options, menu);
+             assertArrayEquals(explicit.pixels(), themed.pixels());
+-            assertSame(menu, themed.menus.getFirst().style());
++            assertSame(menu, themed.menus.get(0).style());
+         }
+     }
+ 
+--- a/test/dev/pane/ui/UiFormControlsTest.java
++++ b/test/dev/pane/ui/UiFormControlsTest.java
+@@ -202,7 +202,7 @@
+         try (var p = new Paint()) {
+             p.ui().form("settings", new UiRect(10, 10, 400, 200), UiFormControlsTest::rows);
+             assertEquals(1, p.scrolls.size());
+-            var region = p.scrolls.getFirst();
++            var region = p.scrolls.get(0);
+             assertEquals("settings", region.id());
+             assertTrue(region.contentHeight() > 400, "content height is the measured rows: " + region.contentHeight());
+             assertFalse(p.inked(0, 215, 420, 600), "nothing is painted below the form's bounds");
+--- a/test/dev/pane/ui/UiGlassTest.java
++++ b/test/dev/pane/ui/UiGlassTest.java
+@@ -99,7 +99,7 @@
+             });
+         });
+         assertEquals(2, reads.size(), "glass and blur outside the clip still report what they read");
+-        assertTrue(reads.getFirst().contains(new Rectangle(30, 20, 100, 60)), "lens read covers the lens");
++        assertTrue(reads.get(0).contains(new Rectangle(30, 20, 100, 60)), "lens read covers the lens");
+     }
+ 
+     @Test
+--- a/test/dev/pane/ui/UiGraphemeTest.java
++++ b/test/dev/pane/ui/UiGraphemeTest.java
+@@ -28,7 +28,7 @@
+             String value = text.toString();
+             tests.add(DynamicTest.dynamicTest("Unicode 16 case " + (tests.size() + 1), () -> {
+                 for (int i = -1; i <= value.length() + 1; i++) {
+-                    int at = Math.clamp(i, 0, value.length());
++                    int at = dev.pane.ui.UiClamp.clamp(i, 0, value.length());
+                     int floor = boundaries.floor(at);
+                     assertEquals(floor, UiTextBoundary.floor(value, i), body + " floor " + i);
+                     assertEquals(boundaries.ceiling(at), UiTextBoundary.ceil(value, i), body + " ceil " + i);
+@@ -103,7 +103,7 @@
+                 if(kind==0) ui.textField("field","value","",10,10,260,40,value,100,UiInputStyle.defaults());
+                 else if(kind==1) ui.passwordField("field","value","",10,10,260,40,value,100,UiInputStyle.defaults());
+                 else ui.textArea("field","value","",10,10,80,100,value,100,UiInputStyle.defaults());
+-                var input=inputs.getFirst(); float[] xs=input.caretXs();
++                var input=inputs.get(0); float[] xs=input.caretXs();
+                 for(int i=0;i<xs.length;i++) assertEquals(valid.contains(i),Float.isFinite(xs[i]),"kind="+kind+" index="+i);
+                 for(float y=12;y<100;y+=7) for(float x=12;x<270;x+=3)
+                     assertTrue(valid.contains(input.caretPositionAt(x,y).index()));
+--- a/test/dev/pane/ui/UiHorizontalScrollTest.java
++++ b/test/dev/pane/ui/UiHorizontalScrollTest.java
+@@ -39,7 +39,7 @@
+     @Test void contentMovesSidewaysWithTheOffsetAndIsClippedToTheViewport() {
+         try (var p = new Paint()) {
+             strip(p.ui());
+-            var region = p.scrolls.getFirst();
++            var region = p.scrolls.get(0);
+             assertTrue(region.horizontal());
+             assertEquals(800, region.maxOffset());
+             assertEquals(0xFF000000 | 20, p.image.getRGB(60, 50), "first card at the left edge");
+@@ -62,7 +62,7 @@
+     @Test void fittingContentDoesNotScrollOrDrawABar() {
+         try (var p = new Paint()) {
+             p.ui().scrollHorizontal("fits", new UiRect(10, 10, 300, 40), 200, inner -> { });
+-            assertEquals(0, p.scrolls.getFirst().maxOffset());
++            assertEquals(0, p.scrolls.get(0).maxOffset());
+             for (int x = 10; x < 310; x++) assertEquals(0, p.image.getRGB(x, 47) >>> 24);
+         }
+     }
+@@ -131,7 +131,7 @@
+             assertEquals(new UiRect(10, 20, 300, 20), painted.get(0).bounds());
+             assertEquals(new UiRect(10, 45, 300, 30), painted.get(1).bounds());
+             assertEquals(new UiRect(10, 80, 300, 40), painted.get(2).bounds());
+-            var region = p.scrolls.getFirst();
++            var region = p.scrolls.get(0);
+             assertEquals("feed", region.id());
+             // 250 groups of (20+30+40+50) plus 999 gaps.
+             assertEquals(250 * 140 + 999 * 5, region.contentHeight(), .01F);
+@@ -143,7 +143,7 @@
+ 
+             p.interactions.offsets.put("feed", 1e9);
+             paint.run();
+-            assertEquals(999, painted.getLast().index(), "the end of the list is reachable");
++            assertEquals(999, painted.get(painted.size() - 1).index(), "the end of the list is reachable");
+             assertTrue(painted.size() <= 7);
+         }
+     }
+@@ -151,7 +151,7 @@
+     @Test void variableListHandlesEmptyAndOddHeights() {
+         try (var p = new Paint()) {
+             p.ui().variableList("none", new UiRect(0, 0, 100, 100), 0, i -> 10, 4, (row, item) -> fail("no rows"));
+-            assertEquals(0, p.scrolls.getFirst().contentHeight());
++            assertEquals(0, p.scrolls.get(0).contentHeight());
+             float[] tops = UiContext.variableTops(4, i -> i == 1 ? Double.NaN : i == 2 ? -5 : 10, 2);
+             assertArrayEquals(new float[]{0, 12, 14, 16, 28}, tops);
+             assertEquals(0, UiContext.firstVariableRow(tops, 4, 2, 0));
+--- a/test/dev/pane/ui/UiIconButtonTest.java
++++ b/test/dev/pane/ui/UiIconButtonTest.java
+@@ -39,7 +39,7 @@
+             float w=ui.buttonWidth("Run",UiIcon.PLAY,STYLE);
+             assertTrue(w>ui.buttonWidth("Run",null,STYLE),"the icon adds width");
+             ui.button("run","Run",UiIcon.PLAY,"run",10,10,w,30,STYLE,true);
+-            assertEquals("run",p.hits.getFirst().action());
++            assertEquals("run",p.hits.get(0).action());
+             float iconLeft=10+(w-(w-2*Math.max(8,12)))/2; // content starts at the side padding
+             assertTrue(p.inked((int)iconLeft,14,(int)iconLeft+12,36),"icon painted at the start of the content");
+             assertTrue(p.inked((int)(10+w/2),14,(int)(10+w-8),36),"label painted after the icon");
+@@ -67,8 +67,8 @@
+             float w=ui.menuButtonWidth("More",null,STYLE);
+             assertTrue(w>ui.buttonWidth("More",null,STYLE),"room for the arrow");
+             ui.menuButton("more","More",null,10,10,w,30,STYLE,true,ITEMS);
+-            assertEquals(UiContext.internalAction("menu:more"),p.hits.getFirst().action());
+-            assertEquals(new UiRect(10,10,w,30),p.menus.getFirst().anchor());
++            assertEquals(UiContext.internalAction("menu:more"),p.hits.get(0).action());
++            assertEquals(new UiRect(10,10,w,30),p.menus.get(0).anchor());
+             assertEquals("More",p.interactions.buttons.get("more").label());
+             float arrowLeft=10+w-Math.max(8,12)-Math.round(12*.8F);
+             assertTrue(p.inked((int)arrowLeft,14,(int)(10+w-6),36),"arrow painted at the trailing edge");
+@@ -88,7 +88,7 @@
+             var ui=p.ui();
+             assertThrows(IllegalArgumentException.class,()->ui.iconButton("x"," ",UiIcon.REFRESH,"r",10,10,30,STYLE,true));
+             ui.iconButton("refresh","Reload this folder",UiIcon.REFRESH,"refresh",10,10,30,STYLE,true);
+-            assertEquals("refresh",p.hits.getFirst().action());
++            assertEquals("refresh",p.hits.get(0).action());
+             assertTrue(p.tips.stream().anyMatch(t->t.id().equals("refresh")&&t.text().equals("Reload this folder")));
+             assertTrue(p.inked(17,17,33,33),"icon centred in the square");
+         }
+--- a/test/dev/pane/ui/UiInputGeometryTest.java
++++ b/test/dev/pane/ui/UiInputGeometryTest.java
+@@ -44,7 +44,7 @@
+         assertEquals(1, input.lines().size());
+         assertThrows(UnsupportedOperationException.class, () -> input.lines().clear());
+         Arrays.fill(input.caretXs(), 999); Arrays.fill(input.caretYs(), 999);
+-        Arrays.fill(input.lines().getFirst().xs(), 999);
++        Arrays.fill(input.lines().get(0).xs(), 999);
+         assertEquals(10, input.caretX(0)); assertEquals(30, input.caretX(2, false));
+         assertEquals(new UiInputRegion.Caret(0, false), input.caretPositionAt(10, 20));
+         assertEquals(new UiInputRegion.Caret(2, true), input.caretPositionAt(30, 20));
+@@ -148,7 +148,7 @@
+                     child -> child.scroll("parent", new UiRect(35, 40, 100, 40), 200, editor));
+             }
+             assertEquals(1, inputs.size()); assertEquals(1, retained.inputs.size());
+-            return new Painted(inputs.getFirst(), retained.inputs.get("editor"));
++            return new Painted(inputs.get(0), retained.inputs.get("editor"));
+         } finally { graphics.dispose(); }
+     }
+ }
+--- a/test/dev/pane/ui/UiInputStyleTest.java
++++ b/test/dev/pane/ui/UiInputStyleTest.java
+@@ -21,7 +21,7 @@
+             var inputs=new ArrayList<UiInputRegion>();
+             var ui=context(new UiCanvas(g,image),inputs,new UiTextInputState("field",4,4));
+             ui.passwordField("field","key","",10,10,300,42,"A😀B",50,UiInputStyle.defaults());
+-            var input=inputs.getFirst();
++            var input=inputs.get(0);
+             assertTrue(Float.isNaN(input.caretXs()[2]));
+             for(int i:new int[]{0,1,3,4})assertEquals(i,input.caretAt(input.caretXs()[i],30));
+         } finally {g.dispose();}
+@@ -33,7 +33,7 @@
+             var ui=context(canvas,inputs,new UiTextInputState("field",4,4));
+             var style=UiInputStyle.defaults().font(UiCanvas.MONO,18,Font.BOLD).padding(14,5);
+             ui.textField("field","key","",10,10,300,42,"A😀B",50,style);
+-            var input=inputs.getFirst();float[] x=input.caretXs();
++            var input=inputs.get(0);float[] x=input.caretXs();
+             assertEquals(24,x[0],.01);assertTrue(Float.isNaN(x[2]));
+             var expected=new java.awt.font.TextLayout("A😀B",new Font(UiCanvas.MONO,Font.BOLD,18),g.getFontRenderContext());
+             assertEquals(24+expected.getCaretInfo(java.awt.font.TextHitInfo.leading(3))[0],x[3],.01);
+@@ -46,7 +46,7 @@
+             var inputs=new ArrayList<UiInputRegion>();String v="One 😀 two three\nfour\nfive\nsix\nseven";
+             var ui=context(new UiCanvas(g,image),inputs,new UiTextInputState("area",v.length(),v.length()));
+             ui.textArea("area","key","",10,10,150,70,v,100,UiInputStyle.defaults().font(UiCanvas.MONO,16,Font.PLAIN).lineHeight(25));
+-            var input=inputs.getFirst(); assertTrue(Float.isNaN(input.caretXs()[5]));
++            var input=inputs.get(0); assertTrue(Float.isNaN(input.caretXs()[5]));
+             assertTrue(input.caretYs()[v.length()]<=74);
+             assertEquals(v.length(), input.caretAt(input.caretXs()[v.length()],input.caretYs()[v.length()]));
+         } finally {g.dispose();}
+--- a/test/dev/pane/ui/UiLiveInputTest.java
++++ b/test/dev/pane/ui/UiLiveInputTest.java
+@@ -72,7 +72,7 @@
+         paint(ui -> ui.withTranslation(20, 30, moved ->
+             moved.dragArea("bar", "win", 0, 0, 200, 40, new UiRect(-10, -10, 220, 160))));
+         assertEquals(new UiRect(10, 20, 220, 160), interactions.live.dragBounds.get("bar"));
+-        assertEquals("\u0000pane:drag:" + UiValueKey.encode("win"), hits.getFirst().action());
++        assertEquals("\u0000pane:drag:" + UiValueKey.encode("win"), hits.get(0).action());
+     }
+ 
+     @Test
+@@ -93,8 +93,8 @@
+     void paintedSliderUsesItsWholeRectangleAsTheTrack() {
+         var states = new ArrayList<UiSliderState>();
+         paint(ui -> ui.paintedSlider("bright", "brightness", 40, 10, 200, 26, 0, 10, 2.5, (canvas, state) -> states.add(state)));
+-        assertEquals(.25F, states.getFirst().position(), 1e-6);
+-        var hit = hits.getFirst();
++        assertEquals(.25F, states.get(0).position(), 1e-6);
++        var hit = hits.get(0);
+         assertEquals(40, hit.x());
+         assertEquals(200, hit.width());
+         assertTrue(hit.action().contains("slider:brightness:0.0:10.0"));
+--- a/test/dev/pane/ui/UiMenuRowsTest.java
++++ b/test/dev/pane/ui/UiMenuRowsTest.java
+@@ -65,7 +65,7 @@
+             ui.contextMenu("missing", List.of(new UiMenuItem("x", "X", "x")), UiMenuStyle.defaults());
+         } finally { graphics.dispose(); }
+         assertEquals(1, menus.size(), "only a painted control gets a context menu");
+-        assertEquals(UiMenu.CONTEXT_PREFIX + "desk", menus.getFirst().id());
+-        assertEquals(new UiRect(0, 0, 400, 300), menus.getFirst().anchor());
++        assertEquals(UiMenu.CONTEXT_PREFIX + "desk", menus.get(0).id());
++        assertEquals(new UiRect(0, 0, 400, 300), menus.get(0).anchor());
+     }
+ }
+--- a/test/dev/pane/ui/UiMotionTest.java
++++ b/test/dev/pane/ui/UiMotionTest.java
+@@ -50,7 +50,7 @@
+                 group.canvas().fill(0xFFFFFFFF, 20, 20, 20, 20);
+                 group.hit("card", "open", 20, 20, 20, 20);
+             });
+-            var hit = hits.getFirst();
++            var hit = hits.get(0);
+             assertTrue(hit.contains(40, 35));
+             assertFalse(hit.contains(hit.x() + .1, hit.y() + .1));
+             assertEquals(0xFFFFFFFF, image.getRGB(40, 35));
+--- a/test/dev/pane/ui/UiPopupTriggerTest.java
++++ b/test/dev/pane/ui/UiPopupTriggerTest.java
+@@ -34,11 +34,11 @@
+                     assertTrue(state.hovered()&&state.pressed()&&state.focused());assertEquals("Server options",state.label());
+                     g.fill(0xFF778899,20,20,100,30);
+                 });
+-            assertEquals(UiContext.internalAction("menu:menu"),p.hits.getFirst().action());
++            assertEquals(UiContext.internalAction("menu:menu"),p.hits.get(0).action());
+             assertEquals("Server options",p.interactions.buttons.get("menu").label());
+             assertEquals(0xFF778899,p.image.getRGB(25,25));
+             assertNotEquals(0,p.image.getRGB(50,18),"automatic focus ring drawn after custom painter");
+-            assertEquals(new UiRect(20,20,100,30),p.menus.getFirst().anchor());
++            assertEquals(new UiRect(20,20,100,30),p.menus.get(0).anchor());
+         }
+     }
+     @Test void disabledAndEmptyMenusPaintButRegisterNoPopupOrInput() {
+@@ -59,7 +59,7 @@
+             ui.dialogButton("styled","Launch",10,10,100,30,UiButtonStyle.builder().background(0xFF225577).borderWidth(0).build(),DIALOG);
+             ui.paintedDialogButton("custom","Launch with crew",10,60,100,30,0,true,DIALOG,(g,state)->{});
+             ui.paintedDialogButton("off","Unavailable",10,110,100,30,0,false,DIALOG,(g,state)->{});
+-            assertEquals(2,p.dialogs.size());assertSame(DIALOG,p.dialogs.getFirst().dialog());
++            assertEquals(2,p.dialogs.size());assertSame(DIALOG,p.dialogs.get(0).dialog());
+             assertEquals(2,p.hits.size());assertEquals(UiContext.internalAction("dialog:custom"),p.hits.get(1).action());
+             assertEquals(0xFF225577,p.image.getRGB(15,15));
+         }
+@@ -70,9 +70,9 @@
+             String value=p.ui(null,null,null).dropdown("role","binding:key",10,10,130,36,"b",OPTIONS,
+                 UiButtonStyle.builder().fontFamily(Font.MONOSPACED).textSize(16).background(0xFF665522).borderWidth(0).build(),popup);
+             assertEquals("b",value);assertEquals("Beta",p.interactions.buttons.get("role").label());
+-            assertEquals("b",p.values.get("binding:key"));assertEquals("option-1",p.menus.getFirst().selectedItemId());
+-            assertSame(popup,p.menus.getFirst().style());assertEquals(0xFF665522,p.image.getRGB(15,15));
+-            assertTrue(p.menus.getFirst().items().get(1).action().startsWith(UiContext.internalAction("dropdown:")));
++            assertEquals("b",p.values.get("binding:key"));assertEquals("option-1",p.menus.get(0).selectedItemId());
++            assertSame(popup,p.menus.get(0).style());assertEquals(0xFF665522,p.image.getRGB(15,15));
++            assertTrue(p.menus.get(0).items().get(1).action().startsWith(UiContext.internalAction("dropdown:")));
+         }
+     }
+     @Test void selectorTypographyUsesSuppliedFontAndCannotPaintPastTrigger() {
+@@ -104,7 +104,7 @@
+             var ui=p.ui(null,null,null);p.interactions.offsets.put("scroll",20D);
+             ui.withTranslation(10,8,moved->moved.scroll("scroll",new UiRect(20,20,100,60),150,row->
+                 row.paintedMenuButton("scrolled","Options",20,30,90,30,0,true,ITEMS,UiMenuStyle.defaults(),(g,state)->{})));
+-            var anchor=p.menus.getFirst().anchor();var hit=p.hits.getFirst();
++            var anchor=p.menus.get(0).anchor();var hit=p.hits.get(0);
+             assertEquals(new UiRect(30,28,90,20),anchor);
+             assertEquals(anchor,new UiRect(hit.x(),hit.y(),hit.width(),hit.height()));
+         }
+--- a/test/dev/pane/ui/UiScrollEndTest.java
++++ b/test/dev/pane/ui/UiScrollEndTest.java
+@@ -70,7 +70,7 @@
+             });
+             assertEquals(220,state.offsets.get("chat"));
+             assertEquals(0xFFFF8800,image.getRGB(25,65));
+-            assertEquals(60,hits.getFirst().y());
++            assertEquals(60,hits.get(0).y());
+             assertEquals(60,nativeBounds.get("last-item").y());
+         } finally {g.dispose();}
+     }
+--- a/test/dev/pane/ui/UiShapedButtonTest.java
++++ b/test/dev/pane/ui/UiShapedButtonTest.java
+@@ -41,7 +41,7 @@
+             UiPath wedge = ui.canvas().path().arc(100, 100, 80, -30, 60).arc(100, 100, 40, 30, -60).close();
+             ui.shapedButton("wedge", "Wedge", "pick", wedge, true, (canvas, state) -> assertTrue(state.focused()));
+         } finally { graphics.dispose(); }
+-        var wedge = hits.getFirst();
++        var wedge = hits.get(0);
+         assertTrue(wedge.contains(160, 100), "inside the ring segment, due east");
+         assertFalse(wedge.contains(120, 100), "inside the hole");
+         assertFalse(wedge.contains(100, 40), "outside the swept angle");
+--- a/test/dev/pane/ui/UiShapedTextTest.java
++++ b/test/dev/pane/ui/UiShapedTextTest.java
+@@ -68,7 +68,7 @@
+                     reconstructed.append(value,line.start(),line.end());previousEnd=line.end();
+                 }
+                 assertEquals(value,reconstructed.toString());
+-                assertEquals(value.length(),lines.getLast().end());
++                assertEquals(value.length(),lines.get(lines.size() - 1).end());
+             }
+             assertEquals(0,canvas.shapeText("",12,Font.PLAIN,UiCanvas.SANS).x(0));
+         } finally {graphics.dispose();}
+--- a/test/dev/pane/ui/UiTextViewTest.java
++++ b/test/dev/pane/ui/UiTextViewTest.java
+@@ -33,7 +33,7 @@
+     @Test void viewRegistersAReadOnlyMultilineInputShowingItsText() {
+         try(var p=new Paint()) {
+             p.ui().textView("log","first\nsecond",10,10,200,80);
+-            var input=p.inputs.getFirst();
++            var input=p.inputs.get(0);
+             assertTrue(input.readOnly()&&input.multiline());
+             assertEquals("first\nsecond",p.values.get(input.key()));
+         }
+@@ -42,17 +42,17 @@
+     @Test void theCallersTextWinsOverAnythingStoredForTheView() {
+         try(var p=new Paint()) {
+             p.ui().textView("log","one",10,10,200,80);
+-            p.values.put(p.inputs.getFirst().key(),"edited elsewhere");
++            p.values.put(p.inputs.get(0).key(),"edited elsewhere");
+             p.inputs.clear();
+             p.ui().textView("log","two",10,10,200,80);
+-            assertEquals("two",p.values.get(p.inputs.getFirst().key()));
++            assertEquals("two",p.values.get(p.inputs.get(0).key()));
+         }
+     }
+ 
+     @Test void editableAreasStayEditable() {
+         try(var p=new Paint()) {
+             p.ui().textArea("notes","notes","",10,10,200,80,"hi");
+-            assertFalse(p.inputs.getFirst().readOnly());
++            assertFalse(p.inputs.get(0).readOnly());
+         }
+     }
+ 
+@@ -61,11 +61,11 @@
+         float plainStart,numberedStart;
+         try(var p=new Paint()) {
+             p.ui().textView("code",wrapped,10,10,160,200,MONO,false);
+-            plainStart=p.inputs.getFirst().caretX(0);
++            plainStart=p.inputs.get(0).caretX(0);
+         }
+         try(var p=new Paint()) {
+             p.ui().textView("code",wrapped,10,10,160,200,MONO,true);
+-            numberedStart=p.inputs.getFirst().caretX(0);
++            numberedStart=p.inputs.get(0).caretX(0);
+             assertTrue(numberedStart>plainStart+6,"the gutter pushes the text right");
+             int background=p.image.getRGB(12,200);
+             float top=10+UiInputStyle.defaults().paddingY();
+@@ -85,7 +85,7 @@
+         var green=new UiRichText.Span("DONE ok",0xFF20FF20,false,false,false,false,false);
+         try(var p=new Paint()) {
+             p.ui().textView("log",UiRichText.of(List.of(red,green)),10,10,300,120,MONO,false,UiScrollFollow.NONE);
+-            assertEquals("ERROR bad\nDONE ok",p.values.get(p.inputs.getFirst().key()));
++            assertEquals("ERROR bad\nDONE ok",p.values.get(p.inputs.get(0).key()));
+             float top=10+UiInputStyle.defaults().paddingY();
+             assertTrue(p.pixelsLike(10,(int)top,310,(int)top+16,UiTextViewTest::reddish)>0,"the first line is red");
+             assertEquals(0,p.pixelsLike(10,(int)top,310,(int)top+16,UiTextViewTest::greenish),"no green on the red line");
+@@ -96,7 +96,7 @@
+     @Test void linksAreDrawnInTheAccentAndUnderlined() {
+         try(var p=new Paint()) {
+             p.ui().textView("log","see https://example.com/docs now",10,10,300,60,MONO,false,UiScrollFollow.NONE);
+-            var input=p.inputs.getFirst();
++            var input=p.inputs.get(0);
+             float top=10+UiInputStyle.defaults().paddingY();
+             int linkX0=(int)input.caretX(4),linkX1=(int)input.caretX(28);
+             assertTrue(p.pixelsLike(linkX0,(int)top,linkX1,(int)top+16,UiTextViewTest::amber)>20,"the link uses the accent");
+@@ -109,7 +109,7 @@
+         assertEquals(List.of("https://a.dev/x","http://b.io/y"),
+             UiTextLinks.find("Go to https://a.dev/x. Or (http://b.io/y), or not http:// at all.").stream().map(UiTextLinks.Link::url).toList());
+         assertEquals("https://en.wikipedia.org/wiki/Mod_(video_games)",
+-            UiTextLinks.find("read https://en.wikipedia.org/wiki/Mod_(video_games).").getFirst().url());
++            UiTextLinks.find("read https://en.wikipedia.org/wiki/Mod_(video_games).").get(0).url());
+         var link=UiTextLinks.at("x https://a.dev y",5);
+         assertNotNull(link);
+         assertEquals(2,link.start());
+--- a/test/dev/pane/ui/UiTransformedControlsTest.java
++++ b/test/dev/pane/ui/UiTransformedControlsTest.java
+@@ -63,9 +63,9 @@
+         try (var p = new Paint()) {
+             p.state.put("name", "Hello world");
+             p.ui().textField("name", "name", "", 20, 20, 200, 24, "", 40);
+-            UiInputRegion plain = p.inputs.getFirst();
++            UiInputRegion plain = p.inputs.get(0);
+             p.ui().withTransform(UiTransform.identity().scale(2), 0, 0, group -> group.textField("name", "name", "", 20, 20, 200, 24, "", 40));
+-            UiInputRegion scaled = p.inputs.getFirst();
++            UiInputRegion scaled = p.inputs.get(0);
+             assertEquals(new UiRect(40, 40, 400, 48), scaled.bounds(), "bounds are the box covered on the page");
+             assertEquals(scaled.bounds(), p.interactions.inputs.get("name").bounds(), "the keyboard sees the same input");
+             for (int caret : new int[]{0, 3, 5, 11}) {
+@@ -90,9 +90,9 @@
+             p.interactions.inputStyle = UiInputStyle.defaults().padding(30, 6);
+             p.state.put("name", "Hi");
+             p.ui().textField("name", "", 20, 60, 200, "");
+-            float plainCaret = p.inputs.getFirst().caretX(0);
++            float plainCaret = p.inputs.get(0).caretX(0);
+             p.ui().withTransform(UiTransform.identity(), 0, 0, group -> group.textField("name", "", 20, 60, 200, ""));
+-            assertEquals(plainCaret, p.inputs.getFirst().caretX(0), .01, "the document's input style applies inside a group");
++            assertEquals(plainCaret, p.inputs.get(0).caretX(0), .01, "the document's input style applies inside a group");
+             assertTrue(plainCaret >= 50, "the 30-point padding is in effect");
+         }
+     }

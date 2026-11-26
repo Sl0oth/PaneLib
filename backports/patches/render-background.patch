@@ -1,0 +1,6 @@
+--- a/main/dev/pane/ui/UiScreen.java
++++ b/main/dev/pane/ui/UiScreen.java
+@@ -1207,2 +1207,3 @@
+     public void render(GuiGraphics graphics, int mouseX, int mouseY, float tickDelta) {
++        renderBackground(graphics, mouseX, mouseY, tickDelta);
+         frameCount++;

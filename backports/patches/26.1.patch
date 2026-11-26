@@ -1,0 +1,174 @@
+--- a/main/dev/pane/mixin/GameRendererWorldFrameMixin.java
++++ b/main/dev/pane/mixin/GameRendererWorldFrameMixin.java
+@@ -10,8 +10,8 @@
+ 
+ @Mixin(GameRenderer.class)
+ abstract class GameRendererWorldFrameMixin {
+-    @Inject(method = "render", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/render/GuiRenderer;render()V"))
++    @Inject(method = "render", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/render/GuiRenderer;render(Lcom/mojang/blaze3d/buffers/GpuBufferSlice;)V"))
+     private void panelib$captureWorld(DeltaTracker deltaTracker, boolean advanceGameTime, CallbackInfo info) {
+-        WorldFrameCapture.beforeGui(((GameRenderer) (Object) this).mainRenderTarget());
++        WorldFrameCapture.beforeGui(net.minecraft.client.Minecraft.getInstance().getMainRenderTarget());
+     }
+ }
+--- a/main/dev/pane/mixin/GuiItemOpacityMixin.java
++++ b/main/dev/pane/mixin/GuiItemOpacityMixin.java
+@@ -11,7 +11,7 @@
+ @Mixin(GuiRenderer.class)
+ abstract class GuiItemOpacityMixin {
+     @ModifyArg(method = "submitBlitFromItemAtlas", at = @At(value = "INVOKE", target =
+-        "Lnet/minecraft/client/renderer/state/gui/BlitRenderState;<init>(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/client/gui/render/TextureSetup;Lorg/joml/Matrix3x2fc;IIIIFFFFILnet/minecraft/client/gui/navigation/ScreenRectangle;Lnet/minecraft/client/gui/navigation/ScreenRectangle;)V"), index = 11)
++        "Lnet/minecraft/client/renderer/state/gui/BlitRenderState;<init>(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/client/gui/render/TextureSetup;Lorg/joml/Matrix3x2f;IIIIFFFFILnet/minecraft/client/gui/navigation/ScreenRectangle;Lnet/minecraft/client/gui/navigation/ScreenRectangle;)V"), index = 11)
+     private int panelib$tint(int color, @Local(argsOnly = true) GuiItemRenderState item) {
+         return NativeOpacity.tint(color, NativeOpacity.of(item));
+     }
+--- a/main/dev/pane/mixin/GuiPictureOpacityMixin.java
++++ b/main/dev/pane/mixin/GuiPictureOpacityMixin.java
+@@ -11,7 +11,7 @@
+ @Mixin(PictureInPictureRenderer.class)
+ abstract class GuiPictureOpacityMixin {
+     @ModifyArg(method = "blitTexture", at = @At(value = "INVOKE", target =
+-        "Lnet/minecraft/client/renderer/state/gui/BlitRenderState;<init>(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/client/gui/render/TextureSetup;Lorg/joml/Matrix3x2fc;IIIIFFFFILnet/minecraft/client/gui/navigation/ScreenRectangle;Lnet/minecraft/client/gui/navigation/ScreenRectangle;)V"), index = 11)
++        "Lnet/minecraft/client/renderer/state/gui/BlitRenderState;<init>(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/client/gui/render/TextureSetup;Lorg/joml/Matrix3x2f;IIIIFFFFILnet/minecraft/client/gui/navigation/ScreenRectangle;Lnet/minecraft/client/gui/navigation/ScreenRectangle;)V"), index = 11)
+     private int panelib$tint(int color, @Local(argsOnly = true) PictureInPictureRenderState state) {
+         return NativeOpacity.tint(color, NativeOpacity.of(state));
+     }
+--- a/main/dev/pane/ui/PlayerPreviewRenderer.java
++++ b/main/dev/pane/ui/PlayerPreviewRenderer.java
+@@ -4,7 +4,7 @@
+ import net.minecraft.client.model.HumanoidModel;
+ import net.minecraft.client.renderer.entity.state.AvatarRenderState;
+ import net.minecraft.client.resources.DefaultPlayerSkin;
+-import net.minecraft.world.entity.EntityTypes;
++import net.minecraft.world.entity.EntityType;
+ import net.minecraft.world.entity.Pose;
+ import net.minecraft.world.entity.player.PlayerSkin;
+ import org.joml.Quaternionf;
+@@ -37,7 +37,7 @@
+     static void render(GuiGraphicsExtractor graphics, Frame frame, PlayerSkin skin, UiPlayerPreview options) {
+         // Explicit standing state: no live entity, entity mutation, world access or animation clock.
+         var state = new AvatarRenderState();
+-        state.entityType = EntityTypes.PLAYER;
++        state.entityType = EntityType.PLAYER;
+         state.boundingBoxWidth = .6F;
+         state.boundingBoxHeight = 1.8F;
+         state.eyeHeight = 1.62F;
+--- a/main/dev/pane/ui/UiHud.java
++++ b/main/dev/pane/ui/UiHud.java
+@@ -118,7 +118,7 @@
+     }
+ 
+     private boolean takesInput(Minecraft client) {
+-        var screen = client.gui.screen();
++        var screen = client.screen;
+         return interactiveOn != null && screen != null && visible && surface != null && interactiveOn.test(screen);
+     }
+     /** A GUI-pixel point in the HUD's own points, from where it was last drawn. */
+@@ -179,8 +179,8 @@
+ 
+     private boolean eligible(Minecraft client) {
+         return !closed && enabled && id != null && client.level != null && client.player != null
+-            && !client.gui.hud.isHidden() && (showOnScreens || client.gui.screen() == null
+-                || interactiveOn != null && interactiveOn.test(client.gui.screen()));
++            && !client.options.hideGui && (showOnScreens || client.screen == null
++                || interactiveOn != null && interactiveOn.test(client.screen));
+     }
+     private boolean replacementActive() {
+         if (!eligible(Minecraft.getInstance())) return false;
+@@ -357,7 +357,7 @@
+             Map<String, NativeBounds> slots = nativePlacement.resolve(nativeSlots, presented, width, height, guiScale);
+             var context = new NativeOverlayContext(graphics, "hud", slots, guiScale,
+                 (int) client.mouseHandler.getScaledXPos(client.getWindow()),
+-                (int) client.mouseHandler.getScaledYPos(client.getWindow()), client.gui.screen() != null, nativeText);
++                (int) client.mouseHandler.getScaledYPos(client.getWindow()), client.screen != null, nativeText);
+             graphics.nextStratum();
+             graphics.enableScissor((int) Math.floor(presented.x()), (int) Math.floor(presented.y()),
+                 (int) Math.ceil(presented.right()), (int) Math.ceil(presented.bottom()));
+--- a/main/dev/pane/ui/UiHudEditor.java
++++ b/main/dev/pane/ui/UiHudEditor.java
+@@ -19,7 +19,7 @@
+  *
+  * <pre>{@code
+  * hud.setEditable("Health", defaultPlacement, placement -> config.save("health", placement));
+- * Minecraft.getInstance().gui.setScreen(new UiHudEditor(parentScreen));
++ * Minecraft.getInstance().setScreen(new UiHudEditor(parentScreen));
+  * }</pre>
+  */
+ public final class UiHudEditor extends UiScreen {
+@@ -243,7 +243,7 @@
+     @Override
+     public void onClose() {
+         finish();
+-        Minecraft.getInstance().gui.setScreen(parent);
++        Minecraft.getInstance().setScreen(parent);
+     }
+ 
+     @Override
+--- a/main/dev/pane/ui/UiRetainedTexture.java
++++ b/main/dev/pane/ui/UiRetainedTexture.java
+@@ -1,6 +1,6 @@
+ package dev.pane.ui;
+ 
+-import com.mojang.blaze3d.GpuFormat;
++import com.mojang.blaze3d.textures.TextureFormat;
+ import com.mojang.blaze3d.systems.RenderSystem;
+ import com.mojang.blaze3d.textures.GpuTexture;
+ import com.mojang.blaze3d.textures.GpuTextureView;
+@@ -29,7 +29,7 @@
+     UiRetainedTexture(String label, int width, int height) {
+         var device = RenderSystem.getDevice();
+         texture = device.createTexture(() -> label, GpuTexture.USAGE_COPY_DST | GpuTexture.USAGE_TEXTURE_BINDING,
+-            GpuFormat.RGBA8_UNORM, width, height, 1, 1);
++            TextureFormat.RGBA8, width, height, 1, 1);
+         view = device.createTextureView(texture);
+         image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+         pixels = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
+@@ -60,7 +60,7 @@
+         for (int from = top; from < bottom; from += rows) {
+             int count = Math.min(rows, bottom - from);
+             UiPixelTransfer.pack(pixels, image.getWidth(), left, from, columns, count, packed);
+-            encoder.writeToTexture(texture, band.slice(0, columns * count * 4), 0, 0, left, from, columns, count);
++            encoder.writeToTexture(texture, band.slice(0, columns * count * 4), com.mojang.blaze3d.platform.NativeImage.Format.RGBA, 0, 0, left, from, columns, count);
+         }
+         return columns * (bottom - top);
+     }
+--- a/main/dev/pane/ui/UiScreen.java
++++ b/main/dev/pane/ui/UiScreen.java
+@@ -377,7 +377,7 @@
+         var document = UiDocument.builder(title).theme(chosen)
+             .page(new UiPage("main", title, "", chosen.accent(), painter)).build();
+         Minecraft client = Minecraft.getInstance();
+-        Screen current = client == null ? null : client.gui.screen();
++        Screen current = client == null ? null : client.screen;
+         return new UiScreen(document, NativeOverlayRenderer.NONE, UiEventListener.NONE,
+             UiScreenOptions.builder().parent(current).build());
+     }
+@@ -389,7 +389,7 @@
+ 
+     /** Shows this screen and returns it. Call on the client thread. */
+     public UiScreen open() {
+-        Minecraft.getInstance().gui.setScreen(this);
++        Minecraft.getInstance().setScreen(this);
+         return this;
+     }
+ 
+@@ -3334,7 +3334,7 @@
+ 
+     /** Restores the configured parent, or closes to the game when no parent was supplied. */
+     public void closeToParent() {
+-        if (minecraft != null) minecraft.gui.setScreen(options.parent());
++        if (minecraft != null) minecraft.setScreen(options.parent());
+     }
+ 
+     /** Escape/back entry point. Consumer handling runs first, then the configured parent fallback. */
+--- a/main/dev/pane/ui/UiVirtualLists.java
++++ b/main/dev/pane/ui/UiVirtualLists.java
+@@ -178,7 +178,7 @@
+         upload.flip();
+         row.atlasSlot = Math.floorMod(row.index, layer.atlasRows);
+         RenderSystem.getDevice().createCommandEncoder().writeToTexture(
+-            layer.atlas.getTexture(), upload, 0, 0, 0, row.atlasSlot * layer.atlasSlotHeight,
++            layer.atlas.getTexture(), upload, com.mojang.blaze3d.platform.NativeImage.Format.RGBA, 0, 0, 0, row.atlasSlot * layer.atlasSlotHeight,
+             pixelWidth, uploadHeight
+         );
+         row.buttons = Map.copyOf(rowButtons);

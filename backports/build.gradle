@@ -1,0 +1,124 @@
+plugins {
+    id 'net.fabricmc.fabric-loom' version '1.17.21' apply false
+    id 'net.fabricmc.fabric-loom-remap' version '1.17.21' apply false
+}
+
+def target = providers.gradleProperty('mc').get()
+def targets = new groovy.json.JsonSlurper().parse(file('targets.json'))
+def config = targets[target]
+if (!config) throw new GradleException("Unknown Minecraft target: ${target}")
+def mapped = target.startsWith('1.')
+apply plugin: mapped ? 'net.fabricmc.fabric-loom-remap' : 'net.fabricmc.fabric-loom'
+def jvm = config.java as int
+group = 'dev.pane'
+version = "1.0.0-beta.4+mc${target}"
+base.archivesName = 'panelib'
+layout.buildDirectory = file("build/${target}")
+repositories { mavenCentral() }
+dependencies {
+    minecraft "com.mojang:minecraft:${target}"
+    if (mapped) mappings loom.officialMojangMappings()
+    add(mapped ? 'modImplementation' : 'implementation', 'net.fabricmc:fabric-loader:0.20.1')
+    add(mapped ? 'modImplementation' : 'implementation', "net.fabricmc.fabric-api:fabric-api:${config.api}")
+    productionRuntimeMods "net.fabricmc.fabric-api:fabric-api:${config.api}"
+    if (config.legacyWindow && System.getProperty('os.name').startsWith('Mac')) {
+        productionRuntimeMods 'net.fabricmc:fabric-loom-native-support:1.0.1'
+    }
+    testImplementation platform('org.junit:junit-bom:5.12.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+def generated = layout.buildDirectory.dir('generated/port')
+def prepare = tasks.register('preparePort', Exec) {
+    inputs.dir('../pane/src/main/java/dev/pane/ui')
+    inputs.dir('../pane/src/main/java/dev/pane/mixin')
+    inputs.dir('../pane/src/test/java')
+    inputs.dir('smoke/java')
+    inputs.dir('patches')
+    inputs.file('prepare.py')
+    inputs.file('targets.json')
+    inputs.property('target', target)
+    outputs.dir(generated)
+    commandLine 'python3', 'prepare.py', target, generated.get().asFile
+}
+sourceSets {
+    main {
+        java.setSrcDirs([generated.map { it.dir('main') }])
+        resources.setSrcDirs(['../pane/src/main/resources', 'resources'] + (config.patches.contains('unicode16-editor') ? ['unicode/resources'] : []))
+    }
+    test {
+        java.setSrcDirs([generated.map { it.dir('test') }])
+        resources.setSrcDirs(['../pane/src/test/resources'])
+    }
+    smoke {
+        java.setSrcDirs([generated.map { it.dir('smoke') }])
+        resources.setSrcDirs(['smoke/resources'])
+        compileClasspath += sourceSets.main.compileClasspath + sourceSets.main.output
+    }
+}
+tasks.withType(JavaCompile).configureEach { dependsOn prepare; options.release = jvm }
+java { toolchain.languageVersion = JavaLanguageVersion.of(25); withSourcesJar() }
+tasks.named('sourcesJar') { dependsOn prepare }
+processResources {
+    inputs.property('platform', groovy.json.JsonOutput.toJson(config))
+    inputs.properties(mc: target, jvm: jvm, version: project.version)
+    filesMatching('fabric.mod.json') { expand(version: project.version) }
+    doLast {
+        def metadata = new File(destinationDir, 'fabric.mod.json')
+        def mod = new groovy.json.JsonSlurper().parse(metadata)
+        mod.depends.minecraft = target
+        mod.depends.java = ">=${jvm}"
+        mod.depends.fabricloader = '>=0.20.1'
+        if (config.apiId) mod.depends[config.apiId] = mod.depends.remove('fabric-api')
+        metadata.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(mod)) + '\n'
+        def mixinFile = new File(destinationDir, 'panelib.mixins.json')
+        def mixins = new groovy.json.JsonSlurper().parse(mixinFile)
+        mixins.compatibilityLevel = "JAVA_${jvm}"
+        if (config.immediate) mixins.client.removeAll(['NativeDrawOpacityMixin', 'GuiItemOpacityMixin', 'GuiPictureOpacityMixin'])
+        if (config.mouseMixin) mixins.client.add('HudMouseMixin')
+        if (config.pose) mixins.client.remove('GuiGraphicsBlitInvoker')
+        if (config.playerAccessor) mixins.client.add('PlayerRenderersAccessor')
+        if (config.hotbarPart) mixins.client.add('HotbarPartMixin')
+        if (config.hudMixin) mixins.client.add('VanillaHudMixin')
+        mixinFile.text = groovy.json.JsonOutput.prettyPrint(groovy.json.JsonOutput.toJson(mixins)) + '\n'
+    }
+}
+test {
+    useJUnitPlatform()
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(jvm) }
+}
+tasks.withType(Jar).configureEach { from '../LICENSE'; preserveFileTimestamps = false; reproducibleFileOrder = true }
+def smokeJar = tasks.register('smokeJar', Jar) {
+    from sourceSets.smoke.output
+    archiveClassifier = 'smoke-dev'
+    destinationDirectory = layout.buildDirectory.dir('fixture')
+}
+def packagedSmoke = smokeJar
+if (mapped) packagedSmoke = tasks.register('remapSmokeJar', net.fabricmc.loom.task.RemapJarTask) {
+    dependsOn smokeJar
+    classpath.from(sourceSets.main.output)
+    inputFile = smokeJar.flatMap { it.archiveFile }
+    archiveClassifier = 'smoke'
+    destinationDirectory = layout.buildDirectory.dir('fixture')
+    addNestedDependencies = false
+}
+tasks.register('runPackagedSmoke', net.fabricmc.loom.task.prod.ClientProductionRunTask) {
+    def candidate = providers.gradleProperty('candidate').map { file(it) }.orNull
+    def profile = layout.buildDirectory.dir(candidate ? 'upload-run' : 'run')
+    runDir = profile
+    javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(jvm) }
+    mods.setFrom(configurations.productionRuntimeMods, candidate ?: tasks.named(mapped ? 'remapJar' : 'jar'), packagedSmoke)
+    timeout = java.time.Duration.ofMinutes(4)
+    jvmArgs.addAll('-Xmx2G')
+    doFirst {
+        def dir = profile.get().asFile
+        dir.mkdirs()
+        new File(dir, 'panelib-smoke.pass').delete()
+        new File(dir, 'options.txt').text = 'onboardAccessibility:false\nsoundCategory_master:0.0\n'
+    }
+    doLast {
+        if (!new File(profile.get().asFile, 'panelib-smoke.pass').exists())
+            throw new GradleException('Packaged client did not finish the PaneLib screen fixture')
+    }
+}

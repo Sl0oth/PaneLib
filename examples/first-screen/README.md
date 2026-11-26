@@ -1,5 +1,7 @@
 # First PaneLib screen
 
+This starter targets the published Minecraft 26.2 release. For a full-source backport, use the [version-matched starter](../../backports/full-source-candidates/START-HERE.md).
+
 This is a complete, independent Fabric 26.2 mod. It opens a five-control settings screen at the
 Minecraft title screen, saves settings to `config/pane-example.properties`, and restores its parent
 on Cancel/Escape. H opens it again in-game. No world is needed for the first launch. On a fresh Minecraft profile, finish its accessibility

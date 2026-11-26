@@ -1,0 +1,640 @@
+--- a/main/dev/pane/mixin/GameRendererWorldFrameMixin.java
++++ b/main/dev/pane/mixin/GameRendererWorldFrameMixin.java
+@@ -10,7 +10,7 @@
+ 
+ @Mixin(GameRenderer.class)
+ abstract class GameRendererWorldFrameMixin {
+-    @Inject(method = "render", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/render/GuiRenderer;render(Lcom/mojang/blaze3d/buffers/GpuBufferSlice;)V"))
++    @Inject(method = "render", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/Gui;render(Lnet/minecraft/client/gui/GuiGraphics;Lnet/minecraft/client/DeltaTracker;)V"))
+     private void panelib$captureWorld(DeltaTracker deltaTracker, boolean advanceGameTime, CallbackInfo info) {
+         WorldFrameCapture.beforeGui(net.minecraft.client.Minecraft.getInstance().getMainRenderTarget());
+     }
+--- a/main/dev/pane/mixin/GuiGraphicsBlitInvoker.java
++++ b/main/dev/pane/mixin/GuiGraphicsBlitInvoker.java
+@@ -1,7 +1,7 @@
+ package dev.pane.mixin;
+ 
+-import com.mojang.blaze3d.pipeline.RenderPipeline;
+-import com.mojang.blaze3d.textures.GpuTextureView;
++import java.util.function.Function;
++import net.minecraft.resources.ResourceLocation;
+ import net.minecraft.client.gui.GuiGraphics;
+ import org.spongepowered.asm.mixin.Mixin;
+ import org.spongepowered.asm.mixin.gen.Invoker;
+@@ -13,7 +13,7 @@
+ @Mixin(GuiGraphics.class)
+ public interface GuiGraphicsBlitInvoker {
+     /** Minecraft's own blit with an explicit colour; internal. */
+-    @Invoker("submitBlit")
+-    void panelib$innerBlit(RenderPipeline pipeline, GpuTextureView texture, int x0, int y0, int x1, int y1,
++    @Invoker("innerBlit")
++    void panelib$innerBlit(Function<ResourceLocation, net.minecraft.client.renderer.RenderType> pipeline, ResourceLocation texture, int x0, int y0, int x1, int y1,
+                            float u0, float u1, float v0, float v1, int color);
+ }
+--- a/main/dev/pane/mixin/GuiItemOpacityMixin.java
++++ /dev/null
+@@ -1,18 +0,0 @@
+-package dev.pane.mixin;
+-
+-import com.llamalad7.mixinextras.sugar.Local;
+-import dev.pane.ui.internal.NativeOpacity;
+-import net.minecraft.client.gui.render.GuiRenderer;
+-import net.minecraft.client.gui.render.state.GuiItemRenderState;
+-import org.spongepowered.asm.mixin.Mixin;
+-import org.spongepowered.asm.mixin.injection.At;
+-import org.spongepowered.asm.mixin.injection.ModifyArg;
+-
+-@Mixin(GuiRenderer.class)
+-abstract class GuiItemOpacityMixin {
+-    @ModifyArg(method = "submitBlitFromItemAtlas", at = @At(value = "INVOKE", target =
+-        "Lnet/minecraft/client/gui/render/state/BlitRenderState;<init>(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/client/gui/render/TextureSetup;Lorg/joml/Matrix3x2f;IIIIFFFFILnet/minecraft/client/gui/navigation/ScreenRectangle;Lnet/minecraft/client/gui/navigation/ScreenRectangle;)V"), index = 11)
+-    private int panelib$tint(int color, @Local(argsOnly = true) GuiItemRenderState item) {
+-        return NativeOpacity.tint(color, NativeOpacity.of(item));
+-    }
+-}
+--- a/main/dev/pane/mixin/GuiPictureOpacityMixin.java
++++ /dev/null
+@@ -1,18 +0,0 @@
+-package dev.pane.mixin;
+-
+-import com.llamalad7.mixinextras.sugar.Local;
+-import dev.pane.ui.internal.NativeOpacity;
+-import net.minecraft.client.gui.render.pip.PictureInPictureRenderer;
+-import net.minecraft.client.gui.render.state.pip.PictureInPictureRenderState;
+-import org.spongepowered.asm.mixin.Mixin;
+-import org.spongepowered.asm.mixin.injection.At;
+-import org.spongepowered.asm.mixin.injection.ModifyArg;
+-
+-@Mixin(PictureInPictureRenderer.class)
+-abstract class GuiPictureOpacityMixin {
+-    @ModifyArg(method = "blitTexture", at = @At(value = "INVOKE", target =
+-        "Lnet/minecraft/client/gui/render/state/BlitRenderState;<init>(Lcom/mojang/blaze3d/pipeline/RenderPipeline;Lnet/minecraft/client/gui/render/TextureSetup;Lorg/joml/Matrix3x2f;IIIIFFFFILnet/minecraft/client/gui/navigation/ScreenRectangle;Lnet/minecraft/client/gui/navigation/ScreenRectangle;)V"), index = 11)
+-    private int panelib$tint(int color, @Local(argsOnly = true) PictureInPictureRenderState state) {
+-        return NativeOpacity.tint(color, NativeOpacity.of(state));
+-    }
+-}
+--- a/main/dev/pane/mixin/NativeDrawOpacityMixin.java
++++ /dev/null
+@@ -1,19 +0,0 @@
+-package dev.pane.mixin;
+-
+-import dev.pane.ui.internal.NativeOpacity;
+-import dev.pane.ui.internal.NativeOpacityAccess;
+-import net.minecraft.client.gui.render.state.GuiItemRenderState;
+-import net.minecraft.client.gui.render.state.pip.GuiEntityRenderState;
+-import org.spongepowered.asm.mixin.Mixin;
+-import org.spongepowered.asm.mixin.Unique;
+-import org.spongepowered.asm.mixin.injection.At;
+-import org.spongepowered.asm.mixin.injection.Inject;
+-import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
+-
+-@Mixin({GuiItemRenderState.class, GuiEntityRenderState.class})
+-abstract class NativeDrawOpacityMixin implements NativeOpacityAccess {
+-    @Unique private float panelib$opacity;
+-    @Inject(method = "<init>", at = @At("RETURN"))
+-    private void panelib$captureOpacity(CallbackInfo ci) { panelib$opacity = NativeOpacity.current(); }
+-    @Override public float panelibOpacity() { return panelib$opacity; }
+-}
+--- a/main/dev/pane/ui/NativeOverlayContext.java
++++ b/main/dev/pane/ui/NativeOverlayContext.java
+@@ -103,11 +103,11 @@
+         renderedItemCount++;
+         // A vanilla item is 16x16; 18 leaves the slot padding vanilla containers use.
+         float itemScale = Math.max(.35F, Math.min(w, h) / 18.0F);
+-        graphics.pose().pushMatrix();
+-        graphics.pose().translate(x + w / 2.0F, y + h / 2.0F);
+-        graphics.pose().scale(itemScale, itemScale);
++        graphics.pose().pushPose();
++        graphics.pose().translate(x + w / 2.0F, y + h / 2.0F, 0);
++        graphics.pose().scale(itemScale, itemScale, 1);
+         graphics.renderItem(stack, -8, -8);
+-        graphics.pose().popMatrix();
++        graphics.pose().popPose();
+     }
+ 
+     /**
+--- a/main/dev/pane/ui/NativeTextRenderer.java
++++ b/main/dev/pane/ui/NativeTextRenderer.java
+@@ -53,13 +53,13 @@
+         // Establish scissor before the glyph pose; Minecraft intersects it with the parent's clip.
+         graphics.enableScissor((int) Math.floor(frame.x()), (int) Math.floor(frame.y()),
+             (int) Math.ceil(frame.x() + frame.width()), (int) Math.ceil(frame.y() + frame.height()));
+-        graphics.pose().pushMatrix();
++        graphics.pose().pushPose();
+         try {
+-            graphics.pose().translate(frame.x() + offset * frame.scale(), frame.y());
+-            graphics.pose().scale(frame.scale(), frame.scale());
++            graphics.pose().translate(frame.x() + offset * frame.scale(), frame.y(), 0);
++            graphics.pose().scale(frame.scale(), frame.scale(), 1);
+             graphics.drawString(font, line.text(), 0, 0, color, style.shadow());
+         } finally {
+-            graphics.pose().popMatrix();
++            graphics.pose().popPose();
+             graphics.disableScissor();
+         }
+         return true;
+--- a/main/dev/pane/ui/PaneClientResources.java
++++ b/main/dev/pane/ui/PaneClientResources.java
+@@ -12,6 +12,7 @@
+ 
+ public final class PaneClientResources implements ClientModInitializer {
+     @Override public void onInitializeClient() {
++        UiHud.Registry.install();
+         ResourceManagerHelper.get(PackType.CLIENT_RESOURCES).registerReloadListener(new SimpleSynchronousResourceReloadListener() {
+             @Override public ResourceLocation getFabricId() {
+                 return ResourceLocation.fromNamespaceAndPath("panelib", "decoded_textures");
+--- a/main/dev/pane/ui/PlayerPreviewRenderer.java
++++ b/main/dev/pane/ui/PlayerPreviewRenderer.java
+@@ -54,8 +54,27 @@
+         state.rightArmPose = state.leftArmPose = HumanoidModel.ArmPose.EMPTY;
+         // Other fresh-state fields remain neutral: no name, shadow, fire, equipment or movement.
+         var camera = new Quaternionf().rotateX((float) Math.toRadians(options.cameraPitch()));
+-        graphics.submitEntityRenderState(state, frame.size(), new Vector3f(frame.offsetX(), frame.offsetY(), 0),
+-            new Quaternionf().rotateZ((float) Math.PI).mul(camera), camera,
+-            frame.x(), frame.y(), frame.x() + frame.width(), frame.y() + frame.height());
++        var client = net.minecraft.client.Minecraft.getInstance();
++        var dispatcher = client.getEntityRenderDispatcher();
++        var pose = graphics.pose();
++        org.joml.Quaternionf previous = new Quaternionf(dispatcher.cameraOrientation());
++        graphics.enableScissor(frame.x(), frame.y(), frame.x() + frame.width(), frame.y() + frame.height());
++        pose.pushPose();
++        try {
++            pose.translate(frame.x() + frame.width() / 2F, frame.y() + frame.height() / 2F, 50);
++            pose.scale(frame.size(), frame.size(), -frame.size());
++            pose.translate(frame.offsetX(), frame.offsetY(), 0);
++            pose.mulPose(new Quaternionf().rotateZ((float) Math.PI).mul(camera));
++            graphics.flush();
++            com.mojang.blaze3d.platform.Lighting.setupForEntityInInventory();
++            dispatcher.overrideCameraOrientation(new Quaternionf(camera).conjugate().rotateY((float) Math.PI));
++            graphics.drawSpecial(buffers -> dispatcher.render(state, 0, 0, 0, pose, buffers, 0xF000F0));
++            graphics.flush();
++        } finally {
++            dispatcher.overrideCameraOrientation(previous);
++            com.mojang.blaze3d.platform.Lighting.setupFor3DItems();
++            pose.popPose();
++            graphics.disableScissor();
++        }
+     }
+ }
+--- a/main/dev/pane/ui/PortBlit.java
++++ b/main/dev/pane/ui/PortBlit.java
+@@ -1,15 +1,15 @@
+ package dev.pane.ui;
+ 
+-import com.mojang.blaze3d.textures.GpuTextureView;
++import net.minecraft.resources.ResourceLocation;
+ import dev.pane.mixin.GuiGraphicsBlitInvoker;
+ import net.minecraft.client.gui.GuiGraphics;
+-import net.minecraft.client.renderer.RenderPipelines;
++import net.minecraft.client.renderer.RenderType;
+ 
+ /** Submits the retained surface with its two GUI corners and normalized texture coordinates. */
+ final class PortBlit {
+-    static void draw(GuiGraphics graphics, GpuTextureView texture,
++    static void draw(GuiGraphics graphics, ResourceLocation texture,
+                      int x0, int y0, int x1, int y1, float u0, float u1, float v0, float v1) {
+-        ((GuiGraphicsBlitInvoker) graphics).panelib$innerBlit(RenderPipelines.GUI_TEXTURED,
++        ((GuiGraphicsBlitInvoker) graphics).panelib$innerBlit(RenderType::guiTextured,
+             texture, x0, y0, x1, y1, u0, u1, v0, v1, -1);
+     }
+ }
+--- a/main/dev/pane/ui/UiGpuLayers.java
++++ b/main/dev/pane/ui/UiGpuLayers.java
+@@ -11,7 +11,7 @@
+ import java.util.Objects;
+ import java.util.function.Consumer;
+ import net.minecraft.client.gui.GuiGraphics;
+-import net.minecraft.client.renderer.RenderPipelines;
++import net.minecraft.client.renderer.RenderType;
+ 
+ /**
+  * Retained groups composited by the GPU. Each keeps its own texture, rasterized only when its
+@@ -155,21 +155,21 @@
+                 graphics.enableScissor(x0, y0, x1, y1);
+             }
+             var pose = graphics.pose();
+-            pose.pushMatrix();
++            pose.pushPose();
+             try {
+                 float pivotX = layer.screen.centerX(), pivotY = layer.screen.centerY();
+-                pose.scale(1 / layoutScale, 1 / layoutScale);
+-                pose.translate(transform.x() + layer.liveX + pivotX, transform.y() + layer.liveY + pivotY);
+-                pose.rotate((float) Math.toRadians(transform.rotationDegrees()));
+-                pose.scale(transform.scaleX(), transform.scaleY());
+-                pose.translate(layer.screen.x() - pivotX, layer.screen.y() - pivotY);
+-                pose.scale(1 / layer.quality, 1 / layer.quality);
++                pose.scale(1 / layoutScale, 1 / layoutScale, 1);
++                pose.translate(transform.x() + layer.liveX + pivotX, transform.y() + layer.liveY + pivotY, 0);
++                pose.mulPose(com.mojang.math.Axis.ZP.rotationDegrees(transform.rotationDegrees()));
++                pose.scale(transform.scaleX(), transform.scaleY(), 1);
++                pose.translate(layer.screen.x() - pivotX, layer.screen.y() - pivotY, 0);
++                pose.scale(1 / layer.quality, 1 / layer.quality, 1);
+                 int alpha = Math.round(transform.opacity() * 255);
+-                ((GuiGraphicsBlitInvoker) graphics).panelib$innerBlit(RenderPipelines.GUI_TEXTURED,
++                ((GuiGraphicsBlitInvoker) graphics).panelib$innerBlit(RenderType::guiTextured,
+                     layer.surface.view(), 0, 0, layer.surface.image.getWidth(),
+                     layer.surface.image.getHeight(), 0, 1, 0, 1, alpha << 24 | 0xFFFFFF);
+             } finally {
+-                pose.popMatrix();
++                pose.popPose();
+                 if (layer.clip != null) graphics.disableScissor();
+             }
+         }
+--- a/main/dev/pane/ui/UiHud.java
++++ b/main/dev/pane/ui/UiHud.java
+@@ -5,8 +5,9 @@
+ import java.util.*;
+ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
+-import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElementRegistry;
+-import net.fabricmc.fabric.api.client.rendering.v1.hud.VanillaHudElements;
++import net.fabricmc.fabric.api.client.rendering.v1.HudLayerRegistrationCallback;
++import net.fabricmc.fabric.api.client.rendering.v1.LayeredDrawerWrapper;
++import net.fabricmc.fabric.api.client.rendering.v1.IdentifiedLayer;
+ import net.minecraft.client.Minecraft;
+ import net.minecraft.client.gui.GuiGraphics;
+ import net.minecraft.resources.ResourceLocation;
+@@ -343,13 +344,13 @@
+         float y = Math.max(0, Math.min(graphics.guiHeight() - target.height(), clock.value("\0hud:y", target.y(), 320, UiEasing.SPRING)));
+         presentationAnimating = clock.active();
+         lastBounds = new UiRect(x, y, target.width(), target.height());
+-        graphics.pose().pushMatrix();
+-        graphics.pose().translate(x, y + (1 - opacity) * 6 / pointsPerGui);
+-        graphics.pose().scale(target.width() / width, target.height() / height);
+-        ((dev.pane.mixin.GuiGraphicsBlitInvoker) graphics).panelib$innerBlit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED,
++        graphics.pose().pushPose();
++        graphics.pose().translate(x, y + (1 - opacity) * 6 / pointsPerGui, 0);
++        graphics.pose().scale(target.width() / width, target.height() / height, 1);
++        ((dev.pane.mixin.GuiGraphicsBlitInvoker) graphics).panelib$innerBlit(net.minecraft.client.renderer.RenderType::guiTextured,
+             surface.view(), 0, 0, width, height, 0, 1, 0, 1,
+             Math.round(Math.max(0, Math.min(1, opacity)) * 255) << 24 | 0xFFFFFF);
+-        graphics.pose().popMatrix();
++        graphics.pose().popPose();
+         if (nativeOverlay != NativeOverlayRenderer.NONE && !nativeSlots.isEmpty()) {
+             double guiScale = client.getWindow().getGuiScale();
+             UiRect presented = new UiRect(x, y + (1 - opacity) * 6 / pointsPerGui, target.width(), target.height());
+@@ -357,11 +358,19 @@
+             var context = new NativeOverlayContext(graphics, "hud", slots, guiScale,
+                 (int) client.mouseHandler.getScaledXPos(client.getWindow()),
+                 (int) client.mouseHandler.getScaledYPos(client.getWindow()), client.screen != null, nativeText);
+-            graphics.nextStratum();
++            graphics.flush();
+             graphics.enableScissor((int) Math.floor(presented.x()), (int) Math.floor(presented.y()),
+                 (int) Math.ceil(presented.right()), (int) Math.ceil(presented.bottom()));
+             try {
+-                dev.pane.ui.internal.NativeOpacity.with(lastOpacity, () -> nativeOverlay.render(context));
++                graphics.flush();
++                var old = RenderSystem.getShaderColor().clone();
++                try {
++                    RenderSystem.setShaderColor(old[0], old[1], old[2], old[3] * lastOpacity);
++                    dev.pane.ui.internal.NativeOpacity.with(lastOpacity, () -> nativeOverlay.render(context));
++                    graphics.flush();
++                } finally {
++                    RenderSystem.setShaderColor(old[0], old[1], old[2], old[3]);
++                }
+             } finally { graphics.disableScissor(); }
+             nativeItemCount = context.renderedItemCount();
+             nativeEntityCount = context.renderedEntityCount();
+@@ -423,9 +432,13 @@
+         if (client != null && !client.isSameThread() && !RenderSystem.isOnRenderThread()) throw new IllegalStateException("HUD updates belong on the Minecraft client thread");
+     }
+ 
+-    private static final class Registry {
++    static final class Registry {
+         static final Map<ResourceLocation, UiHud> huds = new LinkedHashMap<>();
+-        static final UiHudReplacements replacements = new UiHudReplacements(HudElementRegistry::replaceElement);
++        static LayeredDrawerWrapper drawer;
++        static final UiHudReplacements replacements = new UiHudReplacements((id, wrap) -> {
++            if (drawer == null) throw new IllegalStateException("HUD layers have not initialized");
++            drawer.replaceLayer(id, original -> IdentifiedLayer.of(id, wrap.apply(original)));
++        });
+         static boolean installed;
+         static Object world;
+         /** The HUD drawn last is on top, so it is asked first. */
+@@ -437,10 +450,13 @@
+         static void install() {
+             if (installed) return;
+             installed = true;
+-            HudElementRegistry.attachElementBefore(VanillaHudElements.CHAT,
++            HudLayerRegistrationCallback.EVENT.register(layers -> {
++                drawer = layers;
++                layers.attachLayerBefore(IdentifiedLayer.CHAT,
+                 ResourceLocation.fromNamespaceAndPath("panelib", "retained_huds"), (graphics, delta) -> {
+                     for (UiHud hud : huds.values()) hud.extract(graphics);
+                 });
++            });
+             net.fabricmc.fabric.api.client.screen.v1.ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+                 net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents.allowMouseClick(screen).register((shown, x, y, button) ->
+                     !mouse(client, x, y, button, true));
+--- a/main/dev/pane/ui/UiHudReplacements.java
++++ b/main/dev/pane/ui/UiHudReplacements.java
+@@ -2,15 +2,15 @@
+ 
+ import java.util.*;
+ import java.util.function.*;
+-import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
++import net.minecraft.client.gui.LayeredDraw.Layer;
+ import net.minecraft.resources.ResourceLocation;
+ 
+ /** One delegating wrapper per element, with removable owner claims. Client-thread only. */
+ final class UiHudReplacements {
+-    private final BiConsumer<ResourceLocation, Function<HudElement, HudElement>> install;
++    private final BiConsumer<ResourceLocation, Function<Layer, Layer>> install;
+     private final Map<ResourceLocation, Map<Object, BooleanSupplier>> claims = new LinkedHashMap<>();
+ 
+-    UiHudReplacements(BiConsumer<ResourceLocation, Function<HudElement, HudElement>> install) {
++    UiHudReplacements(BiConsumer<ResourceLocation, Function<Layer, Layer>> install) {
+         this.install = install;
+     }
+ 
+--- a/main/dev/pane/ui/UiRetainedTexture.java
++++ b/main/dev/pane/ui/UiRetainedTexture.java
+@@ -1,9 +1,10 @@
+ package dev.pane.ui;
+ 
+-import com.mojang.blaze3d.textures.TextureFormat;
++import net.minecraft.client.Minecraft;
++import net.minecraft.client.renderer.texture.DynamicTexture;
+ import com.mojang.blaze3d.systems.RenderSystem;
+ import com.mojang.blaze3d.textures.GpuTexture;
+-import com.mojang.blaze3d.textures.GpuTextureView;
++import net.minecraft.resources.ResourceLocation;
+ import java.awt.image.BufferedImage;
+ import java.awt.image.DataBufferInt;
+ import java.nio.ByteBuffer;
+@@ -21,23 +22,30 @@
+     /** Render thread only. The GPU backends copy a band before the upload call returns. */
+     private static ByteBuffer band;
+ 
+-    final GpuTexture texture;
+-    private final GpuTextureView view;
++    private static long nextId;
++    final DynamicTexture texture;
++    private final ResourceLocation view;
+     final BufferedImage image;
+     final int[] pixels;
+ 
+     UiRetainedTexture(String label, int width, int height) {
+-        var device = RenderSystem.getDevice();
+-        texture = device.createTexture(() -> label, GpuTexture.USAGE_COPY_DST | GpuTexture.USAGE_TEXTURE_BINDING,
+-            TextureFormat.RGBA8, width, height, 1, 1);
+-        texture.setAddressMode(com.mojang.blaze3d.textures.AddressMode.CLAMP_TO_EDGE);
+-        texture.setTextureFilter(com.mojang.blaze3d.textures.FilterMode.LINEAR, false);
+-        view = device.createTextureView(texture);
++        texture = new DynamicTexture(() -> label, width, height, true);
++        view = register(texture);
+         image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+         pixels = ((DataBufferInt) image.getRaster().getDataBuffer()).getData();
+     }
+ 
+-    GpuTextureView view() { return view; }
++    static ResourceLocation register(DynamicTexture texture) {
++        ResourceLocation id = ResourceLocation.fromNamespaceAndPath("panelib", "surface/" + nextId++);
++        Minecraft.getInstance().getTextureManager().register(id, texture);
++        texture.getTexture().setAddressMode(com.mojang.blaze3d.textures.AddressMode.CLAMP_TO_EDGE);
++        texture.getTexture().setTextureFilter(com.mojang.blaze3d.textures.FilterMode.LINEAR, false);
++        return id;
++    }
++
++    static void release(ResourceLocation id) { Minecraft.getInstance().getTextureManager().release(id); }
++
++    ResourceLocation view() { return view; }
+ 
+     boolean matches(int width, int height) { return image.getWidth() == width && image.getHeight() == height; }
+     void clear() {
+@@ -62,7 +70,7 @@
+         for (int from = top; from < bottom; from += rows) {
+             int count = Math.min(rows, bottom - from);
+             UiPixelTransfer.pack(pixels, image.getWidth(), left, from, columns, count, packed);
+-            encoder.writeToTexture(texture, packed.slice(0, columns * count), com.mojang.blaze3d.platform.NativeImage.Format.RGBA, 0, 0, left, from, columns, count);
++            encoder.writeToTexture(texture.getTexture(), packed.slice(0, columns * count), com.mojang.blaze3d.platform.NativeImage.Format.RGBA, 0, left, from, columns, count);
+         }
+         return columns * (bottom - top);
+     }
+@@ -70,5 +78,5 @@
+     /** Rows of {@code columns} pixels that fit one band; at least one. */
+     static int rowsPerBand(int columns) { return Math.max(1, BAND_PIXELS / Math.max(1, columns)); }
+ 
+-    void close() { view.close(); texture.close(); }
++    void close() { release(view); }
+ }
+--- a/main/dev/pane/ui/UiScreen.java
++++ b/main/dev/pane/ui/UiScreen.java
+@@ -822,7 +822,7 @@
+         toastOverlay.show(toast, document.toastSettings().maxVisible(), System.nanoTime());
+         // Acknowledgements are spoken as they appear, after whatever the narrator is saying.
+         if (client != null && client.getNarrator().isActive())
+-            client.getNarrator().saySystemQueued(CommonComponents.joinForNarration(Component.literal(toast.title()), Component.literal(toast.message())));
++            client.getNarrator().say(CommonComponents.joinForNarration(Component.literal(toast.title()), Component.literal(toast.message())));
+     }
+ 
+     /** This client reports only committed input characters. */
+@@ -1187,7 +1187,7 @@
+                     extractMinecraftBackdrop(graphics, tickDelta);
+                 } else {
+                     extractParentBackground(parent, graphics, mouseX, mouseY, tickDelta);
+-                    graphics.nextStratum();
++                    graphics.flush();
+                     parent.render(graphics, mouseX, mouseY, tickDelta);
+                 }
+             }
+@@ -1292,15 +1292,15 @@
+         long compositeStarted = System.nanoTime();
+         PortBlit.draw(graphics, surface.view(), 0, 0, width, height, 0, 1, 0, 1);
+         if (virtual.active && !virtual.layers.isEmpty()) {
+-            graphics.nextStratum();
++            graphics.flush();
+             if (virtual.render(graphics, now, null, layoutScale)) refreshVirtualInteractions();
+         }
+         if (!gpuLayers.isEmpty()) {
+-            graphics.nextStratum();
++            graphics.flush();
+             gpuLayers.render(graphics, layoutScale, now);
+         }
+         if (nativeOverlay != NativeOverlayRenderer.NONE) {
+-            graphics.nextStratum();
++            graphics.flush();
+             long nativeStarted = System.nanoTime();
+             NativeOverlayContext nativeContext = new NativeOverlayContext(
+                 graphics, pageId, combinedNativeBounds(), guiScale(), mouseX, mouseY,
+@@ -1318,12 +1318,12 @@
+             lastNativeTextCount = 0;
+         }
+         if (!virtual.nativeOverlayLayers.isEmpty()) {
+-            graphics.nextStratum();
++            graphics.flush();
+             for (UiRect cover : List.copyOf(virtual.nativeOverlayLayers.values()))
+                 if (virtual.render(graphics, now, cover, layoutScale)) refreshVirtualInteractions();
+         }
+         if (!nativeOverlayLayers.isEmpty()) {
+-            graphics.nextStratum();
++            graphics.flush();
+             renderNativeOverlayLayers(graphics);
+         }
+         renderPopupOverlay(graphics);
+@@ -1401,7 +1401,7 @@
+     private void extractMinecraftBackdrop(GuiGraphics graphics, float tickDelta) {
+         if (minecraft != null && minecraft.level == null) {
+             renderPanorama(graphics, tickDelta);
+-            renderBlurredBackground(graphics);
++            renderBlurredBackground();
+             renderMenuBackground(graphics);
+         } else {
+             renderTransparentBackground(graphics);
+@@ -3048,10 +3048,10 @@
+             if (hoverDirty) { hoverDirty = false; updateHover(mouseX * layoutScale, mouseY * layoutScale, false); }
+         }
+         if (popupSurface == null || popupLayoutBounds == null || openMenuId == null && openDialogId == null) return;
+-        graphics.nextStratum();
++        graphics.flush();
+         if (openDialogId != null && popupBackdrop != 0) {
+             graphics.fill(0, 0, width, height, popupBackdrop);
+-            graphics.nextStratum();
++            graphics.flush();
+         }
+         PortBlit.draw(graphics, popupSurface.view(),
+             Math.round(popupLayoutBounds.x() / layoutScale), Math.round(popupLayoutBounds.y() / layoutScale),
+--- a/main/dev/pane/ui/UiToastOverlay.java
++++ b/main/dev/pane/ui/UiToastOverlay.java
+@@ -124,7 +124,7 @@
+ 
+     void render(GuiGraphics extractor, float layoutScale) {
+         if (toasts.isEmpty() || surface == null || layoutBounds == null) return;
+-        extractor.nextStratum();
++        extractor.flush();
+         PortBlit.draw(extractor, surface.view(),
+             Math.round(layoutBounds.x() / layoutScale), Math.round(layoutBounds.y() / layoutScale),
+             Math.round(layoutBounds.right() / layoutScale), Math.round(layoutBounds.bottom() / layoutScale), 0, 1, 0, 1);
+--- a/main/dev/pane/ui/UiTooltipOverlay.java
++++ b/main/dev/pane/ui/UiTooltipOverlay.java
+@@ -25,7 +25,7 @@
+             else rebuild(tooltip, measureImage, quality, layoutWidth, layoutHeight, theme, style);
+         }
+         if (surface == null || bounds == null) return false;
+-        graphics.nextStratum();
++        graphics.flush();
+         PortBlit.draw(graphics, surface.view(),
+             Math.round(bounds.x() / layoutScale), Math.round(bounds.y() / layoutScale),
+             Math.round(bounds.right() / layoutScale), Math.round(bounds.bottom() / layoutScale), 0, 1, 0, 1);
+--- a/main/dev/pane/ui/UiVirtualLists.java
++++ b/main/dev/pane/ui/UiVirtualLists.java
+@@ -177,7 +177,7 @@
+         upload.flip();
+         row.atlasSlot = Math.floorMod(row.index, layer.atlasRows);
+         RenderSystem.getDevice().createCommandEncoder().writeToTexture(
+-            layer.atlas.getTexture(), upload.order(java.nio.ByteOrder.nativeOrder()).asIntBuffer(), com.mojang.blaze3d.platform.NativeImage.Format.RGBA, 0, 0, 0, row.atlasSlot * layer.atlasSlotHeight,
++            layer.atlas.getTexture(), upload.order(java.nio.ByteOrder.nativeOrder()).asIntBuffer(), com.mojang.blaze3d.platform.NativeImage.Format.RGBA, 0, 0, row.atlasSlot * layer.atlasSlotHeight,
+             pixelWidth, uploadHeight
+         );
+         row.buttons = Map.copyOf(rowButtons);
+@@ -221,8 +221,8 @@
+             // Scroll once at the parent transform. Previously each row independently rounded
+             // (baseY - offset), so adjacent rows changed pixel spacing on different frames and
+             // appeared to move in a wave. Float transforms preserve one coherent list plane.
+-            graphics.pose().pushMatrix();
+-            graphics.pose().translate(0, -(float) (layer.offset() / layoutScale));
++            graphics.pose().pushPose();
++            graphics.pose().translate(0, -(float) (layer.offset() / layoutScale), 0);
+             try {
+                 for (int index = first; index < last; index++) {
+                     Row row = layer.rows.get(index);
+@@ -232,18 +232,18 @@
+                     float sourceTop = row.atlasSlot * layer.atlasSlotHeight + ATLAS_GUTTER;
+                     float v0 = sourceTop / atlasHeight;
+                     float v1 = (sourceTop + layer.atlasRowHeight) / atlasHeight;
+-                    graphics.pose().pushMatrix();
+-                    graphics.pose().translate(destination.x(), destination.y());
+-                    graphics.pose().scale(destination.width() / drawWidth, destination.height() / drawHeight);
++                    graphics.pose().pushPose();
++                    graphics.pose().translate(destination.x(), destination.y(), 0);
++                    graphics.pose().scale(destination.width() / drawWidth, destination.height() / drawHeight, 1);
+                     try {
+-                        PortBlit.draw(graphics, layer.atlas.getTextureView(),
++                        PortBlit.draw(graphics, layer.atlasId,
+                             0, 0, drawWidth, drawHeight, 0, 1, v0, v1);
+                     } finally {
+-                        graphics.pose().popMatrix();
++                        graphics.pose().popPose();
+                     }
+                 }
+             } finally {
+-                graphics.pose().popMatrix();
++                graphics.pose().popPose();
+             }
+             if (overlayClip == null) drawScrollbar(graphics, layer, layoutScale);
+             graphics.disableScissor();
+@@ -355,6 +355,7 @@
+         final Map<Integer, Row> rows = new LinkedHashMap<>();
+         final ArrayDeque<Row> recycledRows = new ArrayDeque<>();
+         DynamicTexture atlas;
++        net.minecraft.resources.ResourceLocation atlasId;
+         int atlasWidth;
+         int atlasRowHeight;
+         int atlasSlotHeight;
+@@ -385,13 +386,12 @@
+                 (int) Math.ceil(request.viewport.height() / request.stride()) + 18));
+             if (atlas != null && atlasWidth == pixelWidth && atlasRowHeight == pixelRowHeight
+                 && atlasRows == capacity) return;
+-            if (atlas != null) atlas.close();
++            if (atlas != null) UiRetainedTexture.release(atlasId);
+             atlasSlotHeight = pixelRowHeight + ATLAS_GUTTER * 2;
+             atlas = new DynamicTexture(() -> "pane-virtual-list-" + request.id,
+                 pixelWidth, Math.multiplyExact(atlasSlotHeight, capacity), true);
+             atlasAllocations++;
+-            atlas.getTexture().setAddressMode(com.mojang.blaze3d.textures.AddressMode.CLAMP_TO_EDGE);
+-            atlas.getTexture().setTextureFilter(FilterMode.LINEAR, false);
++            atlasId = UiRetainedTexture.register(atlas);
+             atlasWidth = pixelWidth;
+             atlasRowHeight = pixelRowHeight;
+             atlasRows = capacity;
+@@ -415,7 +415,7 @@
+             rows.clear();
+             recycledRows.forEach(Row::close);
+             recycledRows.clear();
+-            if (atlas != null) atlas.close();
++            if (atlas != null) UiRetainedTexture.release(atlasId);
+             atlas = null;
+         }
+     }
+--- a/main/dev/pane/ui/internal/NativeOpacity.java
++++ b/main/dev/pane/ui/internal/NativeOpacity.java
+@@ -1,6 +1,5 @@
+ package dev.pane.ui.internal;
+ 
+-import net.minecraft.client.gui.render.state.pip.OversizedItemRenderState;
+ 
+ /**
+  * Internal extraction scope; state metadata survives deferred rendering without a side cache.
+@@ -19,7 +18,6 @@
+     }
+     /** The opacity a deferred Minecraft draw state was recorded with, or 1. */
+     public static float of(Object state) {
+-        if (state instanceof OversizedItemRenderState oversized) return of(oversized.guiItemRenderState());
+         return state instanceof NativeOpacityAccess tagged ? tagged.panelibOpacity() : 1;
+     }
+     /** Both RGB and alpha must be attenuated for Minecraft's premultiplied GUI pipelines. */
+--- a/test/dev/pane/ui/UiHudReplacementsTest.java
++++ b/test/dev/pane/ui/UiHudReplacementsTest.java
+@@ -3,7 +3,7 @@
+ import java.util.*;
+ import java.util.concurrent.atomic.*;
+ import java.util.function.Function;
+-import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
++import net.minecraft.client.gui.LayeredDraw.Layer;
+ import net.minecraft.resources.ResourceLocation;
+ import org.junit.jupiter.api.Test;
+ import static org.junit.jupiter.api.Assertions.*;
+@@ -13,11 +13,11 @@
+     private static final ResourceLocation HEALTH = ResourceLocation.fromNamespaceAndPath("minecraft", "health_bar");
+     // Fabric composes functions, applying them to the live vanilla callback at extraction time.
+     private static final class Registry {
+-        final Map<ResourceLocation, Function<HudElement,HudElement>> wrappers = new HashMap<>();
++        final Map<ResourceLocation, Function<Layer,Layer>> wrappers = new HashMap<>();
+         final List<String> calls = new ArrayList<>();
+         int installs;
+         Registry(){wrappers.put(HOTBAR,Function.identity());wrappers.put(HEALTH,Function.identity());}
+-        void install(ResourceLocation id, Function<HudElement,HudElement> wrapper){
++        void install(ResourceLocation id, Function<Layer,Layer> wrapper){
+             if(!wrappers.containsKey(id))throw new IllegalArgumentException("Missing element");
+             wrappers.put(id,wrappers.get(id).andThen(wrapper));installs++;
+         }

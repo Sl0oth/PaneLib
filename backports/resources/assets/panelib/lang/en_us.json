@@ -1,0 +1,18 @@
+{
+  "panelib.backport.gui.narrate.tab": "%s tab",
+  "panelib.backport.narration.button.usage.focused": "Press Enter to activate",
+  "panelib.backport.narration.button.usage.hovered": "Left click to activate",
+  "panelib.backport.narration.checkbox": "Checkbox: %s",
+  "panelib.backport.narration.checkbox.usage.focused.check": "Press Enter to check",
+  "panelib.backport.narration.checkbox.usage.focused.uncheck": "Press Enter to uncheck",
+  "panelib.backport.narration.checkbox.usage.hovered.check": "Left click to check",
+  "panelib.backport.narration.checkbox.usage.hovered.uncheck": "Left click to uncheck",
+  "panelib.backport.narration.link.usage.focused": "Press Enter to follow the link",
+  "panelib.backport.narration.link.usage.hovered": "Left click to follow the link",
+  "panelib.backport.narration.selection.usage": "Press the up and down buttons to move to another entry",
+  "panelib.backport.narration.slider.usage.focused": "Press the left or right keyboard buttons to change the value",
+  "panelib.backport.narration.slider.usage.hovered": "Drag the slider to change its value",
+  "panelib.backport.narrator.position.list": "Selected list row %s out of %s",
+  "panelib.backport.narrator.position.screen": "Screen element %s out of %s",
+  "panelib.backport.narrator.position.tab": "Selected tab %s out of %s"
+}

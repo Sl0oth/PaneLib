@@ -1,0 +1,282 @@
+{
+  "26.1": {
+    "jar": "panelib-1.0.0-beta.4+mc26.1-to-26.1.2.fabric.jar",
+    "sha256": "ac79c6af005e1a7f6874553844fb0d8213e8a216af90eefb3e6bee40c4a051db",
+    "java": 25,
+    "api": "0.145.1+26.1",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "26.1.1": {
+    "jar": "panelib-1.0.0-beta.4+mc26.1-to-26.1.2.fabric.jar",
+    "sha256": "ac79c6af005e1a7f6874553844fb0d8213e8a216af90eefb3e6bee40c4a051db",
+    "java": 25,
+    "api": "0.145.4+26.1.1",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "26.1.2": {
+    "jar": "panelib-1.0.0-beta.4+mc26.1-to-26.1.2.fabric.jar",
+    "sha256": "ac79c6af005e1a7f6874553844fb0d8213e8a216af90eefb3e6bee40c4a051db",
+    "java": 25,
+    "api": "0.155.3+26.1.2",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.21.11": {
+    "jar": "panelib-1.0.0-beta.4+mc1.21.11.jar",
+    "sha256": "e94d2294e2f88384566779078f402d06796c99077cc9293a2ebf2f943c4b7a52",
+    "java": 21,
+    "api": "0.141.6+1.21.11",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.21.9": {
+    "jar": "panelib-1.0.0-beta.4+mc1.21.9-to-1.21.10.fabric.jar",
+    "sha256": "6ef05a2678bfc731f871414c78cec550caf13cd1cd2c302819bb1ba0766714a4",
+    "java": 21,
+    "api": "0.134.1+1.21.9",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.21.10": {
+    "jar": "panelib-1.0.0-beta.4+mc1.21.9-to-1.21.10.fabric.jar",
+    "sha256": "6ef05a2678bfc731f871414c78cec550caf13cd1cd2c302819bb1ba0766714a4",
+    "java": 21,
+    "api": "0.138.4+1.21.10",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.21.7": {
+    "jar": "panelib-1.0.0-beta.4+mc1.21.7-to-1.21.8.fabric.jar",
+    "sha256": "f6c89128065eddadd97d42a28cd444189f084b5fecfa34e8c02610f3ecfff874",
+    "java": 21,
+    "api": "0.129.0+1.21.7",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.21.8": {
+    "jar": "panelib-1.0.0-beta.4+mc1.21.7-to-1.21.8.fabric.jar",
+    "sha256": "f6c89128065eddadd97d42a28cd444189f084b5fecfa34e8c02610f3ecfff874",
+    "java": 21,
+    "api": "0.136.1+1.21.8",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.21.6": {
+    "jar": "panelib-1.0.0-beta.4+mc1.21.6.jar",
+    "sha256": "a620549a3713da834c00ab123b19fd972563663e3a562c613930fdb4995b336c",
+    "java": 21,
+    "api": "0.128.2+1.21.6",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.21.5": {
+    "jar": "panelib-1.0.0-beta.4+mc1.21.5.jar",
+    "sha256": "bb859ecc584d6c9dd0f01adf744d07beaa41fb973e557932eb700de2800a3353",
+    "java": 21,
+    "api": "0.128.2+1.21.5",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.21.4": {
+    "jar": "panelib-1.0.0-beta.4+mc1.21.4.jar",
+    "sha256": "0d9187d3e0989da5a7b2434df9356d6353f312eb21ef302c35f97250ee805e57",
+    "java": 21,
+    "api": "0.119.4+1.21.4",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.21.2": {
+    "jar": "panelib-1.0.0-beta.4+mc1.21.2-to-1.21.3.fabric.jar",
+    "sha256": "2836adee40bd77eb134559254a3667acf280a1d9fbd5a31831355c0af1bf6190",
+    "java": 21,
+    "api": "0.106.1+1.21.2",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.21.3": {
+    "jar": "panelib-1.0.0-beta.4+mc1.21.2-to-1.21.3.fabric.jar",
+    "sha256": "2836adee40bd77eb134559254a3667acf280a1d9fbd5a31831355c0af1bf6190",
+    "java": 21,
+    "api": "0.114.1+1.21.3",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.21": {
+    "jar": "panelib-1.0.0-beta.4+mc1.21-to-1.21.1.fabric.jar",
+    "sha256": "92c11cc753a92625757f88020fdee46999916283924df69edc5b7baa6a772d07",
+    "java": 21,
+    "api": "0.102.0+1.21",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.21.1": {
+    "jar": "panelib-1.0.0-beta.4+mc1.21-to-1.21.1.fabric.jar",
+    "sha256": "92c11cc753a92625757f88020fdee46999916283924df69edc5b7baa6a772d07",
+    "java": 21,
+    "api": "0.116.17+1.21.1",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.20.5": {
+    "jar": "panelib-1.0.0-beta.4+mc1.20.5-to-1.20.6.fabric.jar",
+    "sha256": "ca1275598e7c349c231890650a237d92b708815f428215bef4082bb2a344dbe9",
+    "java": 21,
+    "api": "0.97.8+1.20.5",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.20.6": {
+    "jar": "panelib-1.0.0-beta.4+mc1.20.5-to-1.20.6.fabric.jar",
+    "sha256": "ca1275598e7c349c231890650a237d92b708815f428215bef4082bb2a344dbe9",
+    "java": 21,
+    "api": "0.100.8+1.20.6",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.20.3": {
+    "jar": "panelib-1.0.0-beta.4+mc1.20.3-to-1.20.4.fabric.jar",
+    "sha256": "3421dad3f1e3200b10462dc1544393282838b57cb3b3906d25358b0dc22c6588",
+    "java": 17,
+    "api": "0.91.1+1.20.3",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.20.4": {
+    "jar": "panelib-1.0.0-beta.4+mc1.20.3-to-1.20.4.fabric.jar",
+    "sha256": "3421dad3f1e3200b10462dc1544393282838b57cb3b3906d25358b0dc22c6588",
+    "java": 17,
+    "api": "0.97.3+1.20.4",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.20.2": {
+    "jar": "panelib-1.0.0-beta.4+mc1.20.2.jar",
+    "sha256": "02528a7fc1b7d382c007997bb3f07968487bbaabc436c30f34294f017b0e4be7",
+    "java": 17,
+    "api": "0.91.6+1.20.2",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.20": {
+    "jar": "panelib-1.0.0-beta.4+mc1.20-to-1.20.1.fabric.jar",
+    "sha256": "08c669c16f50a2299da55bca22830c01b62d552c5922c834559254f79a21f97a",
+    "java": 17,
+    "api": "0.83.0+1.20",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.20.1": {
+    "jar": "panelib-1.0.0-beta.4+mc1.20-to-1.20.1.fabric.jar",
+    "sha256": "08c669c16f50a2299da55bca22830c01b62d552c5922c834559254f79a21f97a",
+    "java": 17,
+    "api": "0.92.12+1.20.1",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.19.4": {
+    "jar": "panelib-1.0.0-beta.4+mc1.19.4.jar",
+    "sha256": "427c3d2726df7a8e0616eccefc8b06c06606f696049cbfaeca5fc5430dabb1da",
+    "java": 17,
+    "api": "0.87.2+1.19.4",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.19.3": {
+    "jar": "panelib-1.0.0-beta.4+mc1.19.3.jar",
+    "sha256": "05139d08c5093e33c0232d18408279e51575d13e747e597d5e9bb1ba7efd8738",
+    "java": 17,
+    "api": "0.76.1+1.19.3",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.19.2": {
+    "jar": "panelib-1.0.0-beta.4+mc1.19.2.jar",
+    "sha256": "4aefd452a1855eadc2e60b435c29e5d767aac0640fb7d9aeecaf4ed89c42b1d7",
+    "java": 17,
+    "api": "0.77.0+1.19.2",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.19.1": {
+    "jar": "panelib-1.0.0-beta.4+mc1.19.1.jar",
+    "sha256": "d77181fc5e6bd9790320f3cf05832d5d12275a1c916849bb24e96951b6f95468",
+    "java": 17,
+    "api": "0.58.5+1.19.1",
+    "api_id": "fabric",
+    "native": false
+  },
+  "1.19": {
+    "jar": "panelib-1.0.0-beta.4+mc1.19.jar",
+    "sha256": "bdb6e1df681c54a423fff682fc28efde2b0e9056235d681028c33de2c836173d",
+    "java": 17,
+    "api": "0.58.0+1.19",
+    "api_id": "fabric",
+    "native": false
+  },
+  "1.18.2": {
+    "jar": "panelib-1.0.0-beta.4+mc1.18.2.jar",
+    "sha256": "81875ba132f14e6b9bf3a58ccbdbcb8bf6aaafa468c8bcbc03128833a51af9bb",
+    "java": 17,
+    "api": "0.77.0+1.18.2",
+    "api_id": "fabric-api",
+    "native": false
+  },
+  "1.18": {
+    "jar": "panelib-1.0.0-beta.4+mc1.18-to-1.18.1.fabric.jar",
+    "sha256": "b654ecb2bd78b06788a9e913b3aeaa21c523e07a7b72b744182978290f97f6c5",
+    "java": 17,
+    "api": "0.44.0+1.18",
+    "api_id": "fabric",
+    "native": false
+  },
+  "1.18.1": {
+    "jar": "panelib-1.0.0-beta.4+mc1.18-to-1.18.1.fabric.jar",
+    "sha256": "b654ecb2bd78b06788a9e913b3aeaa21c523e07a7b72b744182978290f97f6c5",
+    "java": 17,
+    "api": "0.46.6+1.18",
+    "api_id": "fabric",
+    "native": false
+  },
+  "1.17.1": {
+    "jar": "panelib-1.0.0-beta.4+mc1.17.1.jar",
+    "sha256": "69801e577dea28b1b08a58ffc21e6c49d7976bde6e368140b8a568fa1997e747",
+    "java": 17,
+    "api": "0.46.1+1.17",
+    "api_id": "fabric",
+    "native": true
+  },
+  "1.17": {
+    "jar": "panelib-1.0.0-beta.4+mc1.17.jar",
+    "sha256": "c1d0132509f950f5d5655082f0d38accabec2b79680495d6434ad4ff5fcf4a54",
+    "java": 17,
+    "api": "0.36.0+1.17",
+    "api_id": "fabric",
+    "native": true
+  },
+  "1.16.5": {
+    "jar": "panelib-1.0.0-beta.4+mc1.16.5.jar",
+    "sha256": "7b57b3eb38f438292f7a8d2bb31c159ded9e4737f90c0d852d2b32e4948b2eb5",
+    "java": 17,
+    "api": "0.42.0+1.16",
+    "api_id": "fabric",
+    "native": true
+  },
+  "1.16.4": {
+    "jar": "panelib-1.0.0-beta.4+mc1.16.4.jar",
+    "sha256": "2ab0392b5400bdc189ac210aa1b2df443ea8ccf48e709dd7e7a9442c1a8b6d4d",
+    "java": 17,
+    "api": "0.29.3+1.16",
+    "api_id": "fabric",
+    "native": true
+  },
+  "1.16.3": {
+    "jar": "panelib-1.0.0-beta.4+mc1.16.3.jar",
+    "sha256": "a514e69cc173a33b257d2135e6c62da3210c90439ee171f783693b90e58043b8",
+    "java": 17,
+    "api": "0.25.0+build.415-1.16",
+    "api_id": "fabric",
+    "native": true
+  }
+}

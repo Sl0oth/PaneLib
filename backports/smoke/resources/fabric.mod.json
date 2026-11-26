@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "id": "panelib_port_smoke",
+  "version": "1.0",
+  "name": "PaneLib backport fixture",
+  "environment": "client",
+  "entrypoints": {"client": ["dev.pane.backport.ScreenSmoke"]},
+  "depends": {"panelib": "*"}
+}

@@ -1,0 +1,8 @@
+--- a/main/dev/pane/ui/UiHud.java
++++ b/main/dev/pane/ui/UiHud.java
+@@ -437,4 +437,5 @@
+         static LayeredDrawerWrapper drawer;
+         static final UiHudReplacements replacements = new UiHudReplacements((id, wrap) -> {
++            if (HudPartHooks.HOTBAR.equals(id)) return;
+             if (drawer == null) throw new IllegalStateException("HUD layers have not initialized");
+             drawer.replaceLayer(id, original -> IdentifiedLayer.of(id, wrap.apply(original)));

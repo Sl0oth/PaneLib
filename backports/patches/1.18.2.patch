@@ -1,0 +1,201 @@
+--- a/main/dev/pane/ui/NativeTextRenderer.java
++++ b/main/dev/pane/ui/NativeTextRenderer.java
+@@ -8,7 +8,7 @@
+ import net.minecraft.locale.Language;
+ import net.minecraft.network.chat.Component;
+ import net.minecraft.network.chat.FormattedText;
+-import net.minecraft.network.chat.contents.TranslatableContents;
++import net.minecraft.network.chat.TranslatableComponent;
+ import net.minecraft.util.FormattedCharSequence;
+ 
+ /** Bounded, owner-local line layout cache. Minecraft continues drawing the glyphs every frame. */
+@@ -76,7 +76,7 @@
+             && old.available() == available && old.shadow() == style.shadow() && old.overflow() == style.overflow()) return old;
+         // MutableComponent caches visual order independently of later edits. Snapshot changed
+         // values (including children/translation arguments) instead of inheriting stale output.
+-        Component component = literal == null ? snapshot((Component) input) : Component.literal(literal);
++        Component component = literal == null ? snapshot((Component) input) : new net.minecraft.network.chat.TextComponent(literal);
+         FormattedCharSequence source = component.getVisualOrderText();
+         FormattedCharSequence text = source;
+         int width = font.width(source);
+@@ -97,10 +97,10 @@
+ 
+     private static Component snapshot(Component input) {
+         var result = input.plainCopy();
+-        if (input.getContents() instanceof TranslatableContents translated) {
++        if (input instanceof TranslatableComponent translated) {
+             Object[] args = translated.getArgs().clone();
+             for (int i = 0; i < args.length; i++) if (args[i] instanceof Component child) args[i] = snapshot(child);
+-            result = Component.translatable(translated.getKey(), args);
++            result = new net.minecraft.network.chat.TranslatableComponent(translated.getKey(), args);
+         }
+         result.setStyle(input.getStyle());
+         for (Component child : input.getSiblings()) result.append(snapshot(child));
+--- a/main/dev/pane/ui/PortBlit.java
++++ b/main/dev/pane/ui/PortBlit.java
+@@ -19,7 +19,7 @@
+         buffer.vertex(matrix, x1, y1, 0).uv(u1, v1).color(color).endVertex();
+         buffer.vertex(matrix, x1, y0, 0).uv(u1, v0).color(color).endVertex();
+         buffer.vertex(matrix, x0, y0, 0).uv(u0, v0).color(color).endVertex();
+-        com.mojang.blaze3d.vertex.BufferUploader.drawWithShader(buffer.end());
++        com.mojang.blaze3d.vertex.Tesselator.getInstance().end();
+     }
+ 
+     static void draw(PortGraphics graphics, ResourceLocation texture,
+--- a/main/dev/pane/ui/PortGraphics.java
++++ b/main/dev/pane/ui/PortGraphics.java
+@@ -16,8 +16,11 @@
+     public int guiWidth() { return Minecraft.getInstance().getWindow().getGuiScaledWidth(); }
+     public int guiHeight() { return Minecraft.getInstance().getWindow().getGuiScaledHeight(); }
+     public void flush() { Minecraft.getInstance().renderBuffers().bufferSource().endBatch(); }
+-    public void enableScissor(int x0, int y0, int x1, int y1) { GuiComponent.enableScissor(x0,y0,x1,y1); }
+-    public void disableScissor() { GuiComponent.disableScissor(); }
++    public void enableScissor(int x0, int y0, int x1, int y1) { var window = Minecraft.getInstance().getWindow();
++        double scale = window.getGuiScale();
++        int x = (int)(x0 * scale), y = (int)(window.getHeight() - y1 * scale);
++        com.mojang.blaze3d.systems.RenderSystem.enableScissor(x, y, Math.max(0, (int)((x1 - x0) * scale)), Math.max(0, (int)((y1 - y0) * scale))); }
++    public void disableScissor() { com.mojang.blaze3d.systems.RenderSystem.disableScissor(); }
+     public void fill(int x0, int y0, int x1, int y1, int color) { GuiComponent.fill(pose, x0,y0,x1,y1,color); }
+     public void fillGradient(int x0, int y0, int x1, int y1, int top, int bottom) {
+         Gradient.paint(pose, x0, y0, x1, y1, top, bottom);
+--- a/main/dev/pane/ui/UiCanvas.java
++++ b/main/dev/pane/ui/UiCanvas.java
+@@ -1933,7 +1933,7 @@
+     }
+ 
+     private static BufferedImage readMinecraftResource(ResourceLocation texture) {
+-        try (InputStream input = Minecraft.getInstance().getResourceManager().open(texture)) {
++        try (InputStream input = Minecraft.getInstance().getResourceManager().getResource(texture).getInputStream()) {
+             return ImageIO.read(input);
+         } catch (IOException | RuntimeException ignored) {
+             return null;
+--- a/main/dev/pane/ui/UiNarration.java
++++ b/main/dev/pane/ui/UiNarration.java
+@@ -75,24 +75,24 @@
+      */
+     List<Part> parts(boolean focused) {
+         var parts = new ArrayList<Part>();
+-        Component name = Component.literal(label);
+-        Component on = Component.translatable("options.on"), off = Component.translatable("options.off");
++        Component name = new net.minecraft.network.chat.TextComponent(label);
++        Component on = new net.minecraft.network.chat.TranslatableComponent("options.on"), off = new net.minecraft.network.chat.TranslatableComponent("options.off");
+         boolean checked = "true".equals(state) || "on".equalsIgnoreCase(state);
+         Component title = switch (role) {
+-            case BUTTON, MENU -> state == null || state.isEmpty() ? Component.translatable("gui.narrate.button", name)
+-                : Component.translatable("gui.narrate.button", CommonComponents.joinForNarration(name, Component.literal(state)));
+-            case LINK -> Component.translatable("gui.narrate.button", name);
+-            case CHECKBOX -> CommonComponents.joinForNarration(Component.translatable("narration.checkbox", name), checked ? on : off);
+-            case TOGGLE -> CommonComponents.joinForNarration(label.isEmpty() ? Component.empty() : name, checked ? on : off);
+-            case RADIO, TAB -> checked ? CommonComponents.joinForNarration(Component.translatable("gui.narrate.tab", name), Component.translatable("gui.yes"))
+-                : Component.translatable("gui.narrate.tab", name);
++            case BUTTON, MENU -> state == null || state.isEmpty() ? new net.minecraft.network.chat.TranslatableComponent("gui.narrate.button", name)
++                : new net.minecraft.network.chat.TranslatableComponent("gui.narrate.button", CommonComponents.joinForNarration(name, new net.minecraft.network.chat.TextComponent(state)));
++            case LINK -> new net.minecraft.network.chat.TranslatableComponent("gui.narrate.button", name);
++            case CHECKBOX -> CommonComponents.joinForNarration(new net.minecraft.network.chat.TranslatableComponent("narration.checkbox", name), checked ? on : off);
++            case TOGGLE -> CommonComponents.joinForNarration(label.isEmpty() ? new net.minecraft.network.chat.TextComponent("") : name, checked ? on : off);
++            case RADIO, TAB -> checked ? CommonComponents.joinForNarration(new net.minecraft.network.chat.TranslatableComponent("gui.narrate.tab", name), new net.minecraft.network.chat.TranslatableComponent("gui.yes"))
++                : new net.minecraft.network.chat.TranslatableComponent("gui.narrate.tab", name);
+             // Minecraft's own sliders read "Volume: 50% slider".
+-            case SLIDER -> Component.translatable("gui.narrate.slider", state == null ? name
+-                : Component.literal(label.isEmpty() ? state : label + ": " + state));
+-            case TEXT_FIELD -> Component.translatable("gui.narrate.editBox", name, state == null ? "" : state);
++            case SLIDER -> new net.minecraft.network.chat.TranslatableComponent("gui.narrate.slider", state == null ? name
++                : new net.minecraft.network.chat.TextComponent(label.isEmpty() ? state : label + ": " + state));
++            case TEXT_FIELD -> new net.minecraft.network.chat.TranslatableComponent("gui.narrate.editBox", name, state == null ? "" : state);
+             // A password's characters are never spoken.
+-            case PASSWORD -> Component.translatable("gui.narrate.editBox", name, "");
+-            case LIST_ROW -> state == null ? name : CommonComponents.joinForNarration(name, Component.literal(state));
++            case PASSWORD -> new net.minecraft.network.chat.TranslatableComponent("gui.narrate.editBox", name, "");
++            case LIST_ROW -> state == null ? name : CommonComponents.joinForNarration(name, new net.minecraft.network.chat.TextComponent(state));
+             case TEXT -> name;
+         };
+         parts.add(new Part(NarratedElementType.TITLE, title));
+@@ -102,7 +102,7 @@
+                 case LIST_ROW -> "narrator.position.list";
+                 default -> "narrator.position.screen";
+             };
+-            parts.add(new Part(NarratedElementType.POSITION, Component.translatable(key, position, count)));
++            parts.add(new Part(NarratedElementType.POSITION, new net.minecraft.network.chat.TranslatableComponent(key, position, count)));
+         }
+         String usage = switch (role) {
+             case BUTTON, MENU -> focused ? "narration.button.usage.focused" : "narration.button.usage.hovered";
+@@ -113,7 +113,7 @@
+             case LIST_ROW -> focused ? "narration.selection.usage" : null;
+             default -> null;
+         };
+-        if (usage != null) parts.add(new Part(NarratedElementType.USAGE, Component.translatable(usage)));
++        if (usage != null) parts.add(new Part(NarratedElementType.USAGE, new net.minecraft.network.chat.TranslatableComponent(usage)));
+         return parts;
+     }
+ }
+--- a/main/dev/pane/ui/UiScreen.java
++++ b/main/dev/pane/ui/UiScreen.java
+@@ -297,7 +297,7 @@
+ 
+     private UiScreen(UiDocument document, NativeOverlayRenderer nativeOverlay,
+                      UiEventListener eventListener, UiScreenOptions options, UiScreenEventHandler handler) {
+-        super(Component.literal(document.title()));
++        super(new net.minecraft.network.chat.TextComponent(document.title()));
+         this.document = Objects.requireNonNull(document, "document");
+         this.nativeOverlay = nativeOverlay == null ? NativeOverlayRenderer.NONE : nativeOverlay;
+         UiEventListener listener = handler == null ? (eventListener == null ? UiEventListener.NONE : eventListener)
+@@ -820,8 +820,8 @@
+         }
+         toastOverlay.show(toast, document.toastSettings().maxVisible(), System.nanoTime());
+         // Acknowledgements are spoken as they appear, after whatever the narrator is saying.
+-        if (client != null && client.getNarrator().isActive())
+-            client.getNarrator().sayNow(CommonComponents.joinForNarration(Component.literal(toast.title()), Component.literal(toast.message())));
++        if (client != null && net.minecraft.client.gui.chat.NarratorChatListener.INSTANCE.isActive())
++            net.minecraft.client.gui.chat.NarratorChatListener.INSTANCE.sayNow(CommonComponents.joinForNarration(new net.minecraft.network.chat.TextComponent(toast.title()), new net.minecraft.network.chat.TextComponent(toast.message())));
+     }
+ 
+     /** This client reports only committed input characters. */
+@@ -835,7 +835,7 @@
+     public Component getNarrationMessage() {
+         UiPage page = document.page(pageId);
+         if (document.pages().size() < 2 || page == null || page.navigationLabel().isBlank()) return getTitle();
+-        return CommonComponents.joinForNarration(getTitle(), Component.literal(page.navigationLabel()));
++        return CommonComponents.joinForNarration(getTitle(), new net.minecraft.network.chat.TextComponent(page.navigationLabel()));
+     }
+ 
+     /**
+@@ -858,13 +858,13 @@
+         if (openDialogId != null) for (UiDialogRequest request : withShown(dialogs)) if (openDialogId.equals(request.id())) {
+             var dialog = request.dialog();
+             var words = new ArrayList<Component>();
+-            words.add(Component.literal(dialog.title()));
+-            if (dialog.message() != null && !dialog.message().isBlank()) words.add(Component.literal(dialog.message()));
++            words.add(new net.minecraft.network.chat.TextComponent(dialog.title()));
++            if (dialog.message() != null && !dialog.message().isBlank()) words.add(new net.minecraft.network.chat.TextComponent(dialog.message()));
+             String button = "dialog-confirm".equals(focusedId) ? dialog.confirmLabel() : "dialog-cancel".equals(focusedId) ? dialog.cancelLabel() : null;
+             List<UiNarration.Part> buttonParts = button == null || button.isBlank() ? List.of() : UiNarration.of(UiNarration.Role.BUTTON, button).parts(true);
+             // One title carries the dialog and its focused button; the button's usage follows.
+             for (UiNarration.Part part : buttonParts) if (part.type() == NarratedElementType.TITLE) words.add(part.text());
+-            parts.add(new UiNarration.Part(NarratedElementType.TITLE, words.stream().reduce(CommonComponents::joinForNarration).orElse(Component.empty())));
++            parts.add(new UiNarration.Part(NarratedElementType.TITLE, words.stream().reduce(CommonComponents::joinForNarration).orElse(new net.minecraft.network.chat.TextComponent(""))));
+             for (UiNarration.Part part : buttonParts) if (part.type() != NarratedElementType.TITLE) parts.add(part);
+             return parts;
+         }
+@@ -1626,7 +1626,7 @@
+         Minecraft client = Minecraft.getInstance();
+         java.net.URI uri;
+         try { uri = new java.net.URI(link.url()); } catch (java.net.URISyntaxException exception) { return false; }
+-        if (client.options.chatLinksPrompt().get()) client.setScreen(new net.minecraft.client.gui.screens.ConfirmLinkScreen(accepted -> {
++        if (client.options.chatLinksPrompt) client.setScreen(new net.minecraft.client.gui.screens.ConfirmLinkScreen(accepted -> {
+             if (accepted) net.minecraft.Util.getPlatform().openUri(uri);
+             client.setScreen(this);
+         }, uri.toString(), false));
+--- a/test/dev/pane/ui/UiCanvasTextTest.java
++++ b/test/dev/pane/ui/UiCanvasTextTest.java
+@@ -67,9 +67,9 @@
+ 
+     @Test
+     void componentRgbAndDecorationsRenderAndEllipsizeWithoutCodes() {
+-        Component component = Component.literal("Custom RGB ")
++        Component component = new net.minecraft.network.chat.TextComponent("Custom RGB ")
+             .withStyle(Style.EMPTY.withColor(0x12ABEF).withBold(true))
+-            .append(Component.literal("italic underline")
++            .append(new net.minecraft.network.chat.TextComponent("italic underline")
+                 .withStyle(Style.EMPTY.withItalic(true).withUnderlined(true).withStrikethrough(true)));
+         UiRichText rich = UiRichText.component(component);
+         assertEquals("Custom RGB italic underline", rich.plainText());

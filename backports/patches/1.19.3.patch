@@ -1,0 +1,107 @@
+--- a/main/dev/pane/ui/NativeOverlayContext.java
++++ b/main/dev/pane/ui/NativeOverlayContext.java
+@@ -135,9 +135,7 @@
+         float boxWidth = Math.max(.1F, entity.getBbWidth());
+         float boxHeight = Math.max(.1F, entity.getBbHeight());
+         int size = (int) Math.max(1, Math.min(width / (boxWidth * 2.2F), height / (boxHeight * 1.3F)));
+-        InventoryScreen.renderEntityInInventoryFollowsMouse(
+-            graphics.pose(), x1 + width / 2, y1 + height, size, x1 + width / 2F - mouseX, y1 + height / 2F - mouseY, entity
+-        );
++        graphics.withModelView(() -> InventoryScreen.renderEntityInInventory( x1 + width / 2, y1 + height, size, x1 + width / 2F - mouseX, y1 + height / 2F - mouseY, entity));
+     }
+ 
+     /**
+--- a/main/dev/pane/ui/NativeTextRenderer.java
++++ b/main/dev/pane/ui/NativeTextRenderer.java
+@@ -100,7 +100,7 @@
+         if (input.getContents() instanceof TranslatableContents translated) {
+             Object[] args = translated.getArgs().clone();
+             for (int i = 0; i < args.length; i++) if (args[i] instanceof Component child) args[i] = snapshot(child);
+-            result = Component.translatableWithFallback(translated.getKey(), translated.getFallback(), args);
++            result = Component.translatable(translated.getKey(), args);
+         }
+         result.setStyle(input.getStyle());
+         for (Component child : input.getSiblings()) result.append(snapshot(child));
+--- a/main/dev/pane/ui/PortGraphics.java
++++ b/main/dev/pane/ui/PortGraphics.java
+@@ -23,15 +23,28 @@
+         Gradient.paint(pose, x0, y0, x1, y1, top, bottom);
+     }
+     private static class Gradient extends GuiComponent {
++        private static final Gradient INSTANCE = new Gradient();
+         static void paint(PoseStack pose, int x0, int y0, int x1, int y1, int top, int bottom) {
+-            fillGradient(pose, x0, y0, x1, y1, top, bottom);
++            INSTANCE.fillGradient(pose, x0, y0, x1, y1, top, bottom);
+         }
+     }
+     public void drawString(Font font, FormattedCharSequence text, int x, int y, int color, boolean shadow) {
+         if (shadow) font.drawShadow(pose, text, x, y, color);
+         else font.draw(pose, text, x, y, color);
+     }
+-    public void renderItem(ItemStack stack, int x, int y) { Minecraft.getInstance().getItemRenderer().renderGuiItem(pose, stack, x, y); }
++    public void renderItem(ItemStack stack, int x, int y) { withModelView(() -> Minecraft.getInstance().getItemRenderer().renderGuiItem(stack, x, y)); }
++    void withModelView(Runnable draw) {
++        PoseStack modelView = com.mojang.blaze3d.systems.RenderSystem.getModelViewStack();
++        modelView.pushPose();
++        try {
++            modelView.mulPoseMatrix(pose.last().pose());
++            com.mojang.blaze3d.systems.RenderSystem.applyModelViewMatrix();
++            draw.run();
++        } finally {
++            modelView.popPose();
++            com.mojang.blaze3d.systems.RenderSystem.applyModelViewMatrix();
++        }
++    }
+     public void blit(ResourceLocation id, int x, int y, int w, int h, float u, float v, int sw, int sh, int tw, int th) {
+         PortBlit.draw(this, id, x, y, x+w, y+h, u/tw, (u+sw)/tw, v/th, (v+sh)/th);
+     }
+--- a/main/dev/pane/ui/UiCanvas.java
++++ b/main/dev/pane/ui/UiCanvas.java
+@@ -1947,8 +1947,8 @@
+             if (pixels == null) return null;
+             int width = pixels.getWidth(), height = pixels.getHeight();
+             BufferedImage image = new BufferedImage(width, height, BufferedImage.TYPE_INT_ARGB);
+-            int[] target = pixels.getPixelsRGBA();
+-            for (int i = 0; i < target.length; i++) target[i] = UiPixelTransfer.swapRedBlue(target[i]);
++            int[] target = new int[width * height];
++            for (int i = 0; i < target.length; i++) target[i] = UiPixelTransfer.swapRedBlue(pixels.getPixelRGBA(i % width, i / width));
+             image.setRGB(0, 0, width, height, target, 0, width);
+             return image;
+         } catch (RuntimeException ignored) {
+--- a/main/dev/pane/ui/UiScreen.java
++++ b/main/dev/pane/ui/UiScreen.java
+@@ -864,7 +864,7 @@
+             List<UiNarration.Part> buttonParts = button == null || button.isBlank() ? List.of() : UiNarration.of(UiNarration.Role.BUTTON, button).parts(true);
+             // One title carries the dialog and its focused button; the button's usage follows.
+             for (UiNarration.Part part : buttonParts) if (part.type() == NarratedElementType.TITLE) words.add(part.text());
+-            parts.add(new UiNarration.Part(NarratedElementType.TITLE, CommonComponents.joinForNarration(words.toArray(Component[]::new))));
++            parts.add(new UiNarration.Part(NarratedElementType.TITLE, words.stream().reduce(CommonComponents::joinForNarration).orElse(Component.empty())));
+             for (UiNarration.Part part : buttonParts) if (part.type() != NarratedElementType.TITLE) parts.add(part);
+             return parts;
+         }
+@@ -1626,7 +1626,10 @@
+         Minecraft client = Minecraft.getInstance();
+         java.net.URI uri;
+         try { uri = new java.net.URI(link.url()); } catch (java.net.URISyntaxException exception) { return false; }
+-        if (client.options.chatLinksPrompt().get()) net.minecraft.client.gui.screens.ConfirmLinkScreen.confirmLinkNow(uri.toString(), this, true);
++        if (client.options.chatLinksPrompt().get()) client.setScreen(new net.minecraft.client.gui.screens.ConfirmLinkScreen(accepted -> {
++            if (accepted) net.minecraft.Util.getPlatform().openUri(uri);
++            client.setScreen(this);
++        }, uri.toString(), false));
+         else net.minecraft.Util.getPlatform().openUri(uri);
+         return true;
+     }
+--- a/main/dev/pane/ui/internal/WorldFrameCapture.java
++++ b/main/dev/pane/ui/internal/WorldFrameCapture.java
+@@ -25,9 +25,9 @@
+         PENDING.clear();
+         try (var frame = Screenshot.takeScreenshot(target)) {
+                 int w = frame.getWidth(), h = frame.getHeight();
+-                int[] argb = frame.getPixelsRGBA();
++                int[] argb = new int[w * h];
+                 // The world target's alpha is not coverage; the frame is opaque.
+-                for (int i = 0; i < argb.length; i++) argb[i] = Integer.reverseBytes(Integer.rotateLeft(argb[i], 8)) | 0xFF000000;
++                for (int i = 0; i < argb.length; i++) argb[i] = Integer.reverseBytes(Integer.rotateLeft(frame.getPixelRGBA(i % w, i / w), 8)) | 0xFF000000;
+                 var image = new BufferedImage(w, h, BufferedImage.TYPE_INT_ARGB);
+                 image.setRGB(0, 0, w, h, argb, 0, w);
+                 for (var receiver : receivers) receiver.accept(image);

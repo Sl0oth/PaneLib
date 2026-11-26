@@ -1,0 +1,51 @@
+--- /dev/null
++++ b/main/dev/pane/mixin/HudMouseMixin.java
+@@ -0,0 +1,21 @@
++package dev.pane.mixin;
++
++import dev.pane.ui.HudHooks;
++import net.minecraft.client.MouseHandler;
++import net.minecraft.client.gui.screens.Screen;
++import org.spongepowered.asm.mixin.Mixin;
++import org.spongepowered.asm.mixin.injection.At;
++import com.llamalad7.mixinextras.injector.wrapoperation.Operation;
++import com.llamalad7.mixinextras.injector.wrapoperation.WrapOperation;
++
++@Mixin(MouseHandler.class)
++abstract class HudMouseMixin {
++    @WrapOperation(method = "*", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/screens/Screen;mouseClicked(DDI)Z"))
++    private boolean panelibClick(Screen screen, double x, double y, int button, Operation<Boolean> vanilla) {
++        return HudHooks.mouse(x, y, button, true) || vanilla.call(screen, x, y, button);
++    }
++    @WrapOperation(method = "*", at = @At(value = "INVOKE", target = "Lnet/minecraft/client/gui/screens/Screen;mouseReleased(DDI)Z"))
++    private boolean panelibRelease(Screen screen, double x, double y, int button, Operation<Boolean> vanilla) {
++        return HudHooks.mouse(x, y, button, false) || vanilla.call(screen, x, y, button);
++    }
++}
+--- a/main/dev/pane/ui/HudHooks.java
++++ b/main/dev/pane/ui/HudHooks.java
+@@ -18,5 +18,9 @@
+         "mount_health"
+     ).collect(java.util.stream.Collectors.toUnmodifiableMap(name -> name, ResourceLocation::new));
+     static boolean supports(ResourceLocation id) { return id.equals(ELEMENTS.get(id.getPath())); }
++    public static boolean mouse(double x, double y, int button, boolean down) {
++        return UiHud.Registry.mouse(net.minecraft.client.Minecraft.getInstance(), x, y, button, down);
++    }
++
+     public static boolean hidden(String name) { return UiHud.Registry.replacements.hidden(ELEMENTS.get(name)); }
+ }
+--- a/main/dev/pane/ui/UiHud.java
++++ b/main/dev/pane/ui/UiHud.java
+@@ -448,12 +448,6 @@
+             net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback.EVENT.register((graphics, delta) -> {
+                 for (UiHud hud : huds.values()) hud.extract(new PortGraphics(graphics));
+             });
+-            net.fabricmc.fabric.api.client.screen.v1.ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+-                net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents.allowMouseClick(screen).register((shown, x, y, button) ->
+-                    !mouse(client, x, y, button, true));
+-                net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents.allowMouseRelease(screen).register((shown, x, y, button) ->
+-                    !mouse(client, x, y, button, false));
+-            });
+             ClientTickEvents.END_CLIENT_TICK.register(client -> {
+                 for (UiHud hud : huds.values()) {
+                     if (!hud.eligible(client)) hud.clearNativeCounts();

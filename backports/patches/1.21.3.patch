@@ -1,0 +1,226 @@
+--- /dev/null
++++ b/main/dev/pane/mixin/VanillaHudMixin.java
+@@ -0,0 +1,96 @@
++package dev.pane.mixin;
++
++import dev.pane.ui.HudHooks;
++import net.minecraft.client.gui.Gui;
++import org.spongepowered.asm.mixin.Mixin;
++import org.spongepowered.asm.mixin.injection.At;
++import org.spongepowered.asm.mixin.injection.Inject;
++import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
++
++@Mixin(Gui.class)
++abstract class VanillaHudMixin {
++    @Inject(method = "renderCameraOverlays", at = @At("HEAD"), cancellable = true)
++    private void panelib$renderCameraOverlays(CallbackInfo info) {
++        if (HudHooks.hidden("misc_overlays")) info.cancel();
++    }
++
++    @Inject(method = "renderSleepOverlay", at = @At("HEAD"), cancellable = true)
++    private void panelib$renderSleepOverlay(CallbackInfo info) {
++        if (HudHooks.hidden("sleep")) info.cancel();
++    }
++
++    @Inject(method = "renderOverlayMessage", at = @At("HEAD"), cancellable = true)
++    private void panelib$renderOverlayMessage(CallbackInfo info) {
++        if (HudHooks.hidden("overlay_message")) info.cancel();
++    }
++
++    @Inject(method = "renderTitle", at = @At("HEAD"), cancellable = true)
++    private void panelib$renderTitle(CallbackInfo info) {
++        if (HudHooks.hidden("title_and_subtitle")) info.cancel();
++    }
++
++    @Inject(method = "renderChat", at = @At("HEAD"), cancellable = true)
++    private void panelib$renderChat(CallbackInfo info) {
++        if (HudHooks.hidden("chat")) info.cancel();
++    }
++
++    @Inject(method = "renderScoreboardSidebar", at = @At("HEAD"), cancellable = true)
++    private void panelib$renderScoreboardSidebar(CallbackInfo info) {
++        if (HudHooks.hidden("scoreboard")) info.cancel();
++    }
++
++    @Inject(method = "renderTabList", at = @At("HEAD"), cancellable = true)
++    private void panelib$renderTabList(CallbackInfo info) {
++        if (HudHooks.hidden("player_list")) info.cancel();
++    }
++
++    @Inject(method = "renderCrosshair", at = @At("HEAD"), cancellable = true)
++    private void panelib$renderCrosshair(CallbackInfo info) {
++        if (HudHooks.hidden("crosshair")) info.cancel();
++    }
++
++    @Inject(method = "renderEffects", at = @At("HEAD"), cancellable = true)
++    private void panelib$renderEffects(CallbackInfo info) {
++        if (HudHooks.hidden("status_effects")) info.cancel();
++    }
++
++    @Inject(method = "renderHotbarAndDecorations", at = @At("HEAD"), cancellable = true)
++    private void panelib$renderHotbarAndDecorations(CallbackInfo info) {
++        if (HudHooks.hidden("hotbar_and_bars")) info.cancel();
++    }
++
++    @Inject(method = "renderItemHotbar", at = @At("HEAD"), cancellable = true)
++    private void panelib$renderItemHotbar(CallbackInfo info) {
++        if (HudHooks.hidden("hotbar")) info.cancel();
++    }
++
++    @Inject(method = "renderExperienceBar", at = @At("HEAD"), cancellable = true)
++    private void panelib$renderExperienceBar(CallbackInfo info) {
++        if (HudHooks.hidden("experience_bar")) info.cancel();
++    }
++
++    @Inject(method = "renderExperienceLevel", at = @At("HEAD"), cancellable = true)
++    private void panelib$renderExperienceLevel(CallbackInfo info) {
++        if (HudHooks.hidden("experience_level")) info.cancel();
++    }
++
++    @Inject(method = "renderSelectedItemName", at = @At("HEAD"), cancellable = true)
++    private void panelib$renderSelectedItemName(CallbackInfo info) {
++        if (HudHooks.hidden("held_item_tooltip")) info.cancel();
++    }
++
++    @Inject(method = "renderDemoOverlay", at = @At("HEAD"), cancellable = true)
++    private void panelib$renderDemoOverlay(CallbackInfo info) {
++        if (HudHooks.hidden("demo_timer")) info.cancel();
++    }
++
++    @Inject(method = "renderPlayerHealth", at = @At("HEAD"), cancellable = true)
++    private void panelib$renderPlayerHealth(CallbackInfo info) {
++        if (HudHooks.hidden("player_health")) info.cancel();
++    }
++
++    @Inject(method = "renderVehicleHealth", at = @At("HEAD"), cancellable = true)
++    private void panelib$renderVehicleHealth(CallbackInfo info) {
++        if (HudHooks.hidden("mount_health")) info.cancel();
++    }
++}
+--- /dev/null
++++ b/main/dev/pane/ui/HudHooks.java
+@@ -0,0 +1,30 @@
++package dev.pane.ui;
++
++import java.util.Map;
++import net.minecraft.resources.ResourceLocation;
++
++/** Maps the identifiers used by PaneLib to vanilla HUD methods on pre-layer-registry clients. */
++public final class HudHooks {
++    private HudHooks() {}
++    private static final Map<String, ResourceLocation> ELEMENTS = java.util.stream.Stream.of(
++        "misc_overlays",
++        "sleep",
++        "overlay_message",
++        "title_and_subtitle",
++        "chat",
++        "scoreboard",
++        "player_list",
++        "crosshair",
++        "status_effects",
++        "hotbar_and_bars",
++        "hotbar",
++        "experience_bar",
++        "experience_level",
++        "held_item_tooltip",
++        "demo_timer",
++        "player_health",
++        "mount_health"
++    ).collect(java.util.stream.Collectors.toUnmodifiableMap(name -> name, ResourceLocation::withDefaultNamespace));
++    static boolean supports(ResourceLocation id) { return id.equals(ELEMENTS.get(id.getPath())); }
++    public static boolean hidden(String name) { return UiHud.Registry.replacements.hidden(ELEMENTS.get(name)); }
++}
+--- a/main/dev/pane/ui/PlayerPreviewRenderer.java
++++ b/main/dev/pane/ui/PlayerPreviewRenderer.java
+@@ -50,7 +50,6 @@
+         state.showHat = state.showJacket = state.showLeftSleeve = state.showRightSleeve = true;
+         state.showLeftPants = state.showRightPants = true;
+         state.showCape = false;
+-        state.rightArmPose = state.leftArmPose = HumanoidModel.ArmPose.EMPTY;
+         // Other fresh-state fields remain neutral: no name, shadow, fire, equipment or movement.
+         var camera = new Quaternionf().rotateX((float) Math.toRadians(options.cameraPitch()));
+         var client = net.minecraft.client.Minecraft.getInstance();
+--- a/main/dev/pane/ui/UiHud.java
++++ b/main/dev/pane/ui/UiHud.java
+@@ -4,9 +4,6 @@
+ import java.util.*;
+ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+ import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientLifecycleEvents;
+-import net.fabricmc.fabric.api.client.rendering.v1.HudLayerRegistrationCallback;
+-import net.fabricmc.fabric.api.client.rendering.v1.LayeredDrawerWrapper;
+-import net.fabricmc.fabric.api.client.rendering.v1.IdentifiedLayer;
+ import net.minecraft.client.Minecraft;
+ import net.minecraft.client.gui.GuiGraphics;
+ import net.minecraft.resources.ResourceLocation;
+@@ -433,10 +430,8 @@
+ 
+     static final class Registry {
+         static final Map<ResourceLocation, UiHud> huds = new LinkedHashMap<>();
+-        static LayeredDrawerWrapper drawer;
+         static final UiHudReplacements replacements = new UiHudReplacements((id, wrap) -> {
+-            if (drawer == null) throw new IllegalStateException("HUD layers have not initialized");
+-            drawer.replaceLayer(id, original -> IdentifiedLayer.of(id, wrap.apply(original)));
++            if (!HudHooks.supports(id)) throw new IllegalArgumentException("Unknown vanilla HUD element " + id);
+         });
+         static boolean installed;
+         static Object world;
+@@ -449,12 +444,8 @@
+         static void install() {
+             if (installed) return;
+             installed = true;
+-            HudLayerRegistrationCallback.EVENT.register(layers -> {
+-                drawer = layers;
+-                layers.attachLayerBefore(IdentifiedLayer.CHAT,
+-                ResourceLocation.fromNamespaceAndPath("panelib", "retained_huds"), (graphics, delta) -> {
+-                    for (UiHud hud : huds.values()) hud.extract(graphics);
+-                });
++            net.fabricmc.fabric.api.client.rendering.v1.HudRenderCallback.EVENT.register((graphics, delta) -> {
++                for (UiHud hud : huds.values()) hud.extract(graphics);
+             });
+             net.fabricmc.fabric.api.client.screen.v1.ScreenEvents.AFTER_INIT.register((client, screen, scaledWidth, scaledHeight) -> {
+                 net.fabricmc.fabric.api.client.screen.v1.ScreenMouseEvents.allowMouseClick(screen).register((shown, x, y, button) ->
+--- a/main/dev/pane/ui/UiHudReplacements.java
++++ b/main/dev/pane/ui/UiHudReplacements.java
+@@ -30,6 +30,12 @@
+         for (ResourceLocation id : elements) claims.get(id).put(owner, active);
+     }
+ 
++    boolean hidden(ResourceLocation id) {
++        var owners = claims.get(id);
++        if (owners != null) for (var active : owners.values()) if (active.getAsBoolean()) return true;
++        return false;
++    }
++
+     void remove(Object owner) { for (var owners : claims.values()) owners.remove(owner); }
+     void clear() { for (var owners : claims.values()) owners.clear(); }
+ }
+--- a/main/dev/pane/ui/UiRetainedTexture.java
++++ b/main/dev/pane/ui/UiRetainedTexture.java
+@@ -35,7 +35,6 @@
+     static ResourceLocation register(DynamicTexture texture) {
+         ResourceLocation id = ResourceLocation.fromNamespaceAndPath("panelib", "surface/" + nextId++);
+         Minecraft.getInstance().getTextureManager().register(id, texture);
+-        texture.setClamp(true);
+         texture.setFilter(true, false);
+         return id;
+     }
+@@ -66,7 +65,7 @@
+             }
+         }
+         texture.bind();
+-        nativeImage.upload(0, left, top, left, top, right - left, bottom - top, false);
++        nativeImage.upload(0, left, top, left, top, right - left, bottom - top, true, true, false, false);
+         return (right - left) * (bottom - top);
+     }
+ 
+--- a/main/dev/pane/ui/UiVirtualLists.java
++++ b/main/dev/pane/ui/UiVirtualLists.java
+@@ -180,7 +180,7 @@
+         for (int y = 0; y < uploadHeight; y++)
+             for (int x = 0; x < pixelWidth; x++) pixels.setPixel(x, top + y, UiPixelTransfer.swapRedBlue(upload.getInt()));
+         layer.atlas.bind();
+-        pixels.upload(0, 0, top, 0, top, pixelWidth, uploadHeight, false);
++        pixels.upload(0, 0, top, 0, top, pixelWidth, uploadHeight, true, true, false, false);
+         row.buttons = Map.copyOf(rowButtons);
+         row.narrations = Map.copyOf(rowNarrations);
+         row.hits = List.copyOf(hits);

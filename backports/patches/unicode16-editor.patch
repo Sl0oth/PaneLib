@@ -1,0 +1,81 @@
+--- a/main/dev/pane/ui/UiTextBoundary.java
++++ b/main/dev/pane/ui/UiTextBoundary.java
+@@ -32,7 +32,4 @@
+             length = text.length();
+             boundaries = new java.util.BitSet();
+-            var iterator = java.text.BreakIterator.getCharacterInstance(java.util.Locale.ROOT);
+-            iterator.setText(text);
+-            for (int at = iterator.first(); at != java.text.BreakIterator.DONE; at = iterator.next())
+-                boundaries.set(at);
++            UiGrapheme16.mark(text, boundaries);
+         }
+--- /dev/null
++++ b/main/dev/pane/ui/UiGrapheme16.java
+@@ -0,0 +1,67 @@
++package dev.pane.ui;
++
++import java.io.DataInputStream;
++import java.io.IOException;
++import java.util.Arrays;
++import java.util.BitSet;
++
++/** Unicode 16 extended grapheme boundaries (UAX #29, revision 45), independent of the host JDK. */
++final class UiGrapheme16 {
++    private static final int CR=1, LF=2, CONTROL=3, L=4, V=5, T=6, LV=7, LVT=8,
++        EXTEND=9, ZWJ=10, SPACING_MARK=11, PREPEND=12, RI=13;
++    private static final int EXTENDED_PICTOGRAPHIC=16, CONSONANT=32, INCB_EXTEND=64, LINKER=96;
++    private static final int[] starts;
++    private static final byte[] properties;
++
++    static {
++        try (var input = new DataInputStream(java.util.Objects.requireNonNull(
++                UiGrapheme16.class.getResourceAsStream("graphemes-16.bin")))) {
++            if (input.readInt() != 0x55434410) throw new IOException("Invalid Unicode 16 table");
++            int count = input.readInt();
++            starts = new int[count];
++            properties = new byte[count];
++            for (int i=0; i<count; i++) {
++                starts[i]=input.readInt();
++                properties[i]=input.readByte();
++            }
++        } catch (IOException e) { throw new ExceptionInInitializerError(e); }
++    }
++
++    private static int property(int cp) {
++        int index=Arrays.binarySearch(starts,cp);
++        return properties[index<0 ? -index-2 : index];
++    }
++
++    static void mark(String text, BitSet breaks) {
++        breaks.set(0);
++        int previous=0, regionalRun=0;
++        boolean pictographPrefix=false, pictographJoin=false, consonant=false, linked=false;
++        for (int offset=0; offset<text.length();) {
++            int cp=text.codePointAt(offset), flags=property(cp), current=flags & 15, indic=flags & 96;
++            boolean pictograph=(flags & EXTENDED_PICTOGRAPHIC)!=0;
++            if (offset>0 && !joins(previous,current,regionalRun,pictographJoin && pictograph,
++                    linked && indic==CONSONANT)) breaks.set(offset);
++            pictographJoin=current==ZWJ && pictographPrefix;
++            pictographPrefix=pictograph || (current==EXTEND && pictographPrefix);
++            if (indic==CONSONANT) { consonant=true; linked=false; }
++            else if (indic==LINKER) linked=consonant;
++            else if (indic!=INCB_EXTEND) { consonant=false; linked=false; }
++            regionalRun=current==RI ? regionalRun+1 : 0;
++            previous=current;
++            offset+=Character.charCount(cp);
++        }
++        breaks.set(text.length());
++    }
++
++    private static boolean joins(int left,int right,int regionalRun,boolean emojiJoin,boolean indicJoin) {
++        if (left==CR && right==LF) return true;
++        if ((left>=CR && left<=CONTROL) || (right>=CR && right<=CONTROL)) return false;
++        if (left==L && (right==L || right==V || right==LV || right==LVT)) return true;
++        if ((left==LV || left==V) && (right==V || right==T)) return true;
++        if ((left==LVT || left==T) && right==T) return true;
++        return right==EXTEND || right==ZWJ || right==SPACING_MARK || left==PREPEND ||
++            indicJoin || emojiJoin || (right==RI && (regionalRun & 1)==1);
++    }
++
++    private UiGrapheme16() {}
++}
